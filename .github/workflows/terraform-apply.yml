@@ -1,0 +1,226 @@
+name: Terraform Apply CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "terraform/**"
+      - ".github/workflows/**"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+  id-token: write
+
+jobs:
+  cancel-stale-runs:
+    name: cancel stale runs
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const branch = context.ref.replace("refs/heads/", "");
+            const currentRunId = context.runId;
+            const currentRunNumber = context.runNumber;
+            const workflowRef = process.env.GITHUB_WORKFLOW_REF || "";
+            const workflowId = workflowRef
+              .split("@")[0]
+              .replace(`${owner}/${repo}/`, "");
+
+            if (!workflowId) {
+              core.warning("Failed to resolve workflow_id from GITHUB_WORKFLOW_REF. Skip stale run cancellation.");
+              return;
+            }
+
+            const runs = await github.paginate(
+              github.rest.actions.listWorkflowRuns,
+              {
+                owner,
+                repo,
+                workflow_id: workflowId,
+                branch,
+                event: "push",
+                per_page: 100,
+              },
+            );
+
+            const activeStatuses = new Set([
+              "queued",
+              "in_progress",
+              "waiting",
+              "requested",
+              "pending",
+              "action_required",
+            ]);
+
+            const candidates = runs.filter((run) => {
+              if (run.id === currentRunId) return false;
+              if (run.run_number >= currentRunNumber) return false;
+              if (!activeStatuses.has(run.status)) return false;
+              return true;
+            });
+
+            let cancelled = 0;
+
+            for (const run of candidates) {
+              const jobs = await github.paginate(
+                github.rest.actions.listJobsForWorkflowRun,
+                {
+                  owner,
+                  repo,
+                  run_id: run.id,
+                  per_page: 100,
+                },
+              );
+
+              const applyJob = jobs.find((job) => job.name === "terraform apply");
+              const applyStarted =
+                Boolean(applyJob?.started_at) ||
+                applyJob?.status === "in_progress" ||
+                Boolean(applyJob?.conclusion);
+
+              if (applyStarted) {
+                core.info(`Skip run ${run.id}: apply already started.`);
+                continue;
+              }
+
+              await github.rest.actions.cancelWorkflowRun({
+                owner,
+                repo,
+                run_id: run.id,
+              });
+              cancelled += 1;
+              core.info(`Cancelled stale run ${run.id}.`);
+            }
+
+            core.info(`Cancelled ${cancelled} stale run(s).`);
+
+  plan:
+    name: terraform plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production-plan
+    if: github.event_name == 'push'
+    needs: cancel-stale-runs
+    outputs:
+      has_diff: ${{ steps.terraform-plan.outputs.exit_code == '2' }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Get Terraform version from mise.toml
+        id: terraform-version
+        run: |
+          if grep -q 'terraform = "latest"' mise.toml; then
+            echo "version=latest" >> $GITHUB_OUTPUT
+          else
+            version=$(grep 'terraform = ' mise.toml | sed 's/.*terraform = "\(.*\)".*/\1/')
+            echo "version=$version" >> $GITHUB_OUTPUT
+          fi
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@5e8dbf3c6d9deaf4193ca7a8fb23f2ac83bb6c85 # v4.0.0
+        with:
+          terraform_version: ${{ steps.terraform-version.outputs.version }}
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.SERVICE_ACCOUNT }}
+      - name: Terraform Init
+        run: cd terraform && terraform init
+      - name: Run terraform plan
+        id: terraform-plan
+        env:
+          GITHUB_TOKEN: ${{ secrets.TF_GITHUB_TOKEN }}
+          TF_VAR_cloudflare_api_token: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
+          TF_VAR_slack_bot_token: ${{ secrets.TF_VAR_SLACK_BOT_TOKEN }}
+          TF_VAR_slack_channel_id: ${{ secrets.TF_VAR_SLACK_CHANNEL_ID }}
+          TF_VAR_infracost_api_key: ${{ secrets.TF_VAR_INFRACOST_API_KEY }}
+        run: |
+          set +e
+
+          output_file="$(mktemp)"
+          slack_file="$(mktemp --suffix=.txt)"
+          cd terraform && terraform plan -no-color -detailed-exitcode 2>&1 | tee "$output_file"
+          exit_code="${PIPESTATUS[0]}"
+          cp "$output_file" "$slack_file"
+          if [ ! -s "$output_file" ]; then
+            echo "terraform plan produced no output." > "$output_file"
+          fi
+          if [ ! -s "$slack_file" ]; then
+            echo "terraform plan produced no output." > "$slack_file"
+          fi
+
+          {
+            echo "output_file=${output_file}"
+            echo "slack_file=${slack_file}"
+            echo "exit_code=${exit_code}"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "output_file=${output_file}"
+          } >> "$GITHUB_ENV"
+      - name: Upload plan result to Slack
+        id: slack-upload
+        if: steps.terraform-plan.outputs.exit_code == '2'
+        uses: slackapi/slack-github-action@91efab103c0de0a537f72a35f6b8cda0ee76bf0a # v2.1.1
+        with:
+          method: files.uploadV2
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          errors: true
+          payload: |
+            channel_id: ${{ secrets.SLACK_CHANNEL_ID }}
+            snippet_type: text
+            title: Terraform Plan Result (${{ github.repository }})
+            filename: terraform-plan-${{ github.run_id }}.txt
+            initial_comment: |
+              Terraform plan result for ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            file: ${{ steps.terraform-plan.outputs.slack_file }}
+      - name: Fail when terraform plan failed
+        if: steps.terraform-plan.outputs.exit_code == '1'
+        run: exit 1
+
+  apply:
+    name: terraform apply
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    if: github.event_name == 'push' && needs.plan.outputs.has_diff == 'true'
+    needs: plan
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-apply
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Get Terraform version from mise.toml
+        id: terraform-version
+        run: |
+          if grep -q 'terraform = "latest"' mise.toml; then
+            echo "version=latest" >> $GITHUB_OUTPUT
+          else
+            version=$(grep 'terraform = ' mise.toml | sed 's/.*terraform = "\(.*\)".*/\1/')
+            echo "version=$version" >> $GITHUB_OUTPUT
+          fi
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@5e8dbf3c6d9deaf4193ca7a8fb23f2ac83bb6c85 # v4.0.0
+        with:
+          terraform_version: ${{ steps.terraform-version.outputs.version }}
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.SERVICE_ACCOUNT }}
+      - name: Terraform Init
+        run: cd terraform && terraform init
+      - name: Run terraform apply
+        env:
+          GITHUB_TOKEN: ${{ secrets.TF_GITHUB_TOKEN }}
+          TF_VAR_cloudflare_api_token: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
+          TF_VAR_slack_bot_token: ${{ secrets.TF_VAR_SLACK_BOT_TOKEN }}
+          TF_VAR_slack_channel_id: ${{ secrets.TF_VAR_SLACK_CHANNEL_ID }}
+          TF_VAR_infracost_api_key: ${{ secrets.TF_VAR_INFRACOST_API_KEY }}
+        run: cd terraform && terraform apply -auto-approve
