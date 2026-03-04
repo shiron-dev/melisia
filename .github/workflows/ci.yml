@@ -229,4 +229,4 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: shiron-dev/actions/renovate-deps-comment@610bf954da62f20b3633814bff378a972048033e # v1.6.1
+      - uses: shiron-dev/actions/renovate-deps-comment@d898596addf114b0b4a4cd9a984775410e248e10 # v1.6.2
