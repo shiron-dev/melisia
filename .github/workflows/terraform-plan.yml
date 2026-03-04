@@ -1,0 +1,102 @@
+name: Terraform Plan CI
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "terraform/**"
+      - ".github/workflows/**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  plan:
+    name: terraform plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production-plan
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Get Terraform version from mise.toml
+        id: terraform-version
+        run: |
+          if grep -q 'terraform = "latest"' mise.toml; then
+            echo "version=latest" >> $GITHUB_OUTPUT
+          else
+            version=$(grep 'terraform = ' mise.toml | sed 's/.*terraform = "\(.*\)".*/\1/')
+            echo "version=$version" >> $GITHUB_OUTPUT
+          fi
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@5e8dbf3c6d9deaf4193ca7a8fb23f2ac83bb6c85 # v4.0.0
+        with:
+          terraform_version: ${{ steps.terraform-version.outputs.version }}
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.SERVICE_ACCOUNT }}
+      - name: Terraform Init
+        run: cd terraform && terraform init
+      - name: Run terraform plan
+        id: terraform-plan
+        env:
+          GITHUB_TOKEN: ${{ secrets.TF_GITHUB_TOKEN }}
+          TF_VAR_cloudflare_api_token: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
+          TF_VAR_slack_bot_token: ${{ secrets.TF_VAR_SLACK_BOT_TOKEN }}
+          TF_VAR_slack_channel_id: ${{ secrets.TF_VAR_SLACK_CHANNEL_ID }}
+          TF_VAR_infracost_api_key: ${{ secrets.TF_VAR_INFRACOST_API_KEY }}
+        run: |
+          set +e
+
+          output_file="$(mktemp)"
+          cd terraform && terraform plan -no-color -detailed-exitcode 2>&1 | tee "$output_file"
+          exit_code="${PIPESTATUS[0]}"
+
+          {
+            echo "output<<EOF"
+            cat "$output_file"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "exit_code=${exit_code}" >> "$GITHUB_OUTPUT"
+          cp "$output_file" "$GITHUB_WORKSPACE/plan_output.txt"
+          rm -f "$output_file"
+      - name: Prepare comment body
+        id: prepare-comment
+        run: |
+          exit_code="${{ steps.terraform-plan.outputs.exit_code }}"
+          comment_file="$GITHUB_WORKSPACE/comment_body.md"
+          if [ "$exit_code" = "0" ]; then
+            echo '### `terraform plan` result' > "$comment_file"
+            echo "" >> "$comment_file"
+            echo "No changes." >> "$comment_file"
+          else
+            {
+              echo '### `terraform plan` result'
+              echo ""
+              echo '```diff'
+              cat "$GITHUB_WORKSPACE/plan_output.txt"
+              echo '```'
+            } > "$comment_file"
+          fi
+          echo "path=${comment_file}" >> "$GITHUB_OUTPUT"
+      - name: Comment terraform plan result
+        uses: marocchino/sticky-pull-request-comment@773744901bac0e8cbb5a0dc842800d45e9b2b405 # v2.9.4
+        with:
+          header: terraform-plan
+          path: ${{ steps.prepare-comment.outputs.path }}
+      - name: Fail when terraform plan failed
+        if: steps.terraform-plan.outputs.exit_code == '1'
+        run: exit 1
