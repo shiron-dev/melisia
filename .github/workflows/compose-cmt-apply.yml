@@ -160,6 +160,7 @@ jobs:
           } >> "$GITHUB_ENV"
       - name: Upload plan result to Slack
         id: slack-upload
+        if: steps.cmt-plan.outputs.exit_code == '2'
         uses: slackapi/slack-github-action@91efab103c0de0a537f72a35f6b8cda0ee76bf0a # v2.1.1
         with:
           method: files.uploadV2
