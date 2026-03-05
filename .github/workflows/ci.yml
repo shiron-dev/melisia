@@ -27,6 +27,8 @@ jobs:
       - kics
       - sops-secrets-check
       - renovate-deps-comment
+      - gitleaks
+      - trufflehog
     if: ${{ always() }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -234,3 +236,31 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: shiron-dev/actions/renovate-deps-comment@d898596addf114b0b4a4cd9a984775410e248e10 # v1.6.2
+
+  gitleaks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@bf2dc8e55639c1e091e9b45970152e4313705814 # master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  trufflehog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+      - name: Run TruffleHog
+        uses: trufflesecurity/trufflehog@c3e599b7163e8198a55467f3133db0e7b2a492cb # main
+        with:
+          path: ./
+          base: ${{ github.event.pull_request.base.ref || github.event.repository.default_branch }}
+          head: ${{ github.event.pull_request.head.ref || github.ref_name }}
