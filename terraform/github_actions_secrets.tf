@@ -1,3 +1,9 @@
+resource "github_actions_secret" "gh_actions_ssh_private_key" {
+  repository      = local.github_repository
+  secret_name     = "GH_ACTIONS_SSH_PRIVATE_KEY"
+  plaintext_value = var.gh_actions_ssh_private_key
+}
+
 resource "github_actions_secret" "slack_bot_token" {
   repository      = local.github_repository
   secret_name     = "SLACK_BOT_TOKEN"
