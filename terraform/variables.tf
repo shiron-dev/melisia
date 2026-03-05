@@ -4,6 +4,12 @@ variable "cloudflare_api_token" {
   sensitive   = true
 }
 
+variable "gh_actions_ssh_private_key" {
+  description = "SSH private key for GitHub Actions to connect to arm-srv"
+  type        = string
+  sensitive   = true
+}
+
 variable "slack_bot_token" {
   description = "Slack Bot Token for GitHub Actions notifications"
   type        = string
