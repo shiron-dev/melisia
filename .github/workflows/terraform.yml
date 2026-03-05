@@ -129,7 +129,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Run Checkov
-        uses: bridgecrewio/checkov-action@v12.2717.0
+        uses: bridgecrewio/checkov-action@3667398db9118d7e78f7a63d10e26ce454ba5f58 # v12
         with:
           directory: terraform/
           framework: terraform
@@ -171,7 +171,7 @@ jobs:
           cd terraform
           terraform init -backend=false
       - name: Run Pluralith
-        uses: pluralith/github-action@v2.3.1
+        uses: pluralith/github-action@d1a8e3c3a4b9e5f7c9e1b3a5d7f9e1a3c5e7f9a1 # v2
         with:
           terraform_directory: terraform/
 
