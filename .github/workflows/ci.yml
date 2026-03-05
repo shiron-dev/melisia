@@ -192,10 +192,13 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: reviewdog/action-actionlint@0d952c597ef8459f634d7145b0b044a9699e5e43 # v1.71.0
-        with:
-          level: warning
-          fail_level: warning
+      - name: Install actionlint
+        run: |
+          mkdir -p /tmp/actionlint
+          curl -fsSL https://github.com/rhysd/actionlint/releases/download/v1.7.1/actionlint_linux_amd64.tar.gz | tar -xz -C /tmp/actionlint
+          sudo mv /tmp/actionlint/actionlint /usr/local/bin/
+      - name: Run actionlint
+        run: actionlint -format github-annotated .github/workflows/
 
   dotenv-lint:
     runs-on: ubuntu-latest
