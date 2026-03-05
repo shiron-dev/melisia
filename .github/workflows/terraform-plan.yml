@@ -47,22 +47,25 @@ jobs:
         with:
           workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.SERVICE_ACCOUNT }}
+      - name: Install SOPS
+        run: |
+          set -euo pipefail
+          SOPS_VERSION="v3.9.4"
+          curl -fsSL -o /tmp/sops "https://github.com/getsops/sops/releases/download/${SOPS_VERSION}/sops-${SOPS_VERSION}.linux.amd64"
+          chmod +x /tmp/sops
+          sudo mv /tmp/sops /usr/local/bin/sops
+          sops --version
+      - name: Decrypt secrets
+        run: make sops-decrypt
       - name: Terraform Init
         run: cd terraform && terraform init
       - name: Run terraform plan
         id: terraform-plan
-        env:
-          GITHUB_TOKEN: ${{ secrets.TF_GITHUB_TOKEN }}
-          TF_VAR_cloudflare_api_token: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
-          TF_VAR_gh_actions_ssh_private_key: ${{ secrets.TF_VAR_GH_ACTIONS_SSH_PRIVATE_KEY }}
-          TF_VAR_slack_bot_token: ${{ secrets.TF_VAR_SLACK_BOT_TOKEN }}
-          TF_VAR_slack_channel_id: ${{ secrets.TF_VAR_SLACK_CHANNEL_ID }}
-          TF_VAR_infracost_api_key: ${{ secrets.TF_VAR_INFRACOST_API_KEY }}
         run: |
           set +e
 
           output_file="$(mktemp)"
-          cd terraform && terraform plan -no-color -detailed-exitcode 2>&1 | tee "$output_file"
+          cd terraform && terraform plan -no-color -detailed-exitcode -var-file=terraform.secrets.tfvars 2>&1 | tee "$output_file"
           exit_code="${PIPESTATUS[0]}"
 
           {
