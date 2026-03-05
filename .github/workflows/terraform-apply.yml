@@ -138,6 +138,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.TF_GITHUB_TOKEN }}
           TF_VAR_cloudflare_api_token: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
+          TF_VAR_gh_actions_ssh_private_key: ${{ secrets.TF_VAR_GH_ACTIONS_SSH_PRIVATE_KEY }}
           TF_VAR_slack_bot_token: ${{ secrets.TF_VAR_SLACK_BOT_TOKEN }}
           TF_VAR_slack_channel_id: ${{ secrets.TF_VAR_SLACK_CHANNEL_ID }}
           TF_VAR_infracost_api_key: ${{ secrets.TF_VAR_INFRACOST_API_KEY }}
@@ -220,6 +221,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.TF_GITHUB_TOKEN }}
           TF_VAR_cloudflare_api_token: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
+          TF_VAR_gh_actions_ssh_private_key: ${{ secrets.TF_VAR_GH_ACTIONS_SSH_PRIVATE_KEY }}
           TF_VAR_slack_bot_token: ${{ secrets.TF_VAR_SLACK_BOT_TOKEN }}
           TF_VAR_slack_channel_id: ${{ secrets.TF_VAR_SLACK_CHANNEL_ID }}
           TF_VAR_infracost_api_key: ${{ secrets.TF_VAR_INFRACOST_API_KEY }}
