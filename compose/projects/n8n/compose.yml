@@ -7,6 +7,7 @@ services:
       N8N_HOST: "n8n.shiron.dev"
       WEBHOOK_URL: "https://n8n.shiron.dev"
       GENERIC_TIMEZONE: Asia/Tokyo
+      N8N_RESTRICT_FILE_ACCESS_TO: /home/node/.n8n-files,/files
     volumes:
       - ./n8n_data:/home/node/.n8n
       - ./local-files:/files
