@@ -198,6 +198,7 @@ jobs:
         with:
           level: warning
           fail_level: warning
+          fail_on_error: true
 
   dotenv-lint:
     runs-on: ubuntu-latest
