@@ -31,6 +31,8 @@ resource "google_iam_workload_identity_pool_provider" "github_actions" {
 resource "google_service_account" "github_actions_melisia" {
   account_id   = "github-actions-melisia"
   display_name = "GitHub Actions (shiron-dev/melisia)"
+
+  depends_on = [google_project_service.iam]
 }
 
 resource "google_service_account_iam_member" "github_actions_melisia_wif_user" {
