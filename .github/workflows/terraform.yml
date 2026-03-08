@@ -143,7 +143,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Run tfsec
-        uses: aquasecurity/tfsec-action@b466bca9e57e31f2db8a2c8c6a4961c49e9a59bb # v1.0.3
+        uses: aquasecurity/tfsec-action@b466648d6e39e7c75324f25d83891162a721f2d6 # v1.0.3
         with:
           working_directory: terraform/
 
