@@ -129,7 +129,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Run Checkov
-        uses: bridgecrewio/checkov-action@3667398db9118d7e78f7a63d10e26ce454ba5f58 # v12
+        uses: bridgecrewio/checkov-action@f9b0a2206b0401cad02ac0a66be2a7934a5be838 # v12
         with:
           directory: terraform/
           framework: terraform
