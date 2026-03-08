@@ -4,7 +4,7 @@ resource "github_actions_environment_secret" "cloudflare_access_client_id" {
   repository      = local.github_repository
   environment     = each.value
   secret_name     = "CF_ACCESS_CLIENT_ID"
-  plaintext_value = var.cf_access_client_id
+  plaintext_value = data.terraform_remote_state.main.outputs.cf_access_client_id
 }
 
 resource "github_actions_environment_secret" "cloudflare_access_client_secret" {
@@ -13,5 +13,5 @@ resource "github_actions_environment_secret" "cloudflare_access_client_secret" {
   repository      = local.github_repository
   environment     = each.value
   secret_name     = "CF_ACCESS_CLIENT_SECRET"
-  plaintext_value = var.cf_access_client_secret
+  plaintext_value = data.terraform_remote_state.main.outputs.cf_access_client_secret
 }

@@ -20,25 +20,3 @@ variable "infracost_api_key" {
   type        = string
   sensitive   = true
 }
-
-variable "workload_identity_provider" {
-  description = "GCP Workload Identity Pool Provider name (output from main terraform)"
-  type        = string
-}
-
-variable "service_account" {
-  description = "GCP Service Account email for GitHub Actions (output from main terraform)"
-  type        = string
-}
-
-variable "cf_access_client_id" {
-  description = "Cloudflare Zero Trust Access Service Token client ID (output from main terraform)"
-  type        = string
-  sensitive   = true
-}
-
-variable "cf_access_client_secret" {
-  description = "Cloudflare Zero Trust Access Service Token client secret (output from main terraform)"
-  type        = string
-  sensitive   = true
-}

@@ -4,7 +4,7 @@ resource "github_actions_environment_secret" "workload_identity_provider" {
   repository      = local.github_repository
   environment     = each.value
   secret_name     = "WORKLOAD_IDENTITY_PROVIDER"
-  plaintext_value = var.workload_identity_provider
+  plaintext_value = data.terraform_remote_state.main.outputs.workload_identity_provider
 }
 
 resource "github_actions_environment_secret" "service_account" {
@@ -13,5 +13,5 @@ resource "github_actions_environment_secret" "service_account" {
   repository      = local.github_repository
   environment     = each.value
   secret_name     = "SERVICE_ACCOUNT"
-  plaintext_value = var.service_account
+  plaintext_value = data.terraform_remote_state.main.outputs.service_account
 }
