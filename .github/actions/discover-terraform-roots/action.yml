@@ -1,0 +1,32 @@
+name: Discover Terraform roots
+description: Discover Terraform root directories by provider.tf and emit matrix JSON
+outputs:
+  matrix:
+    description: Matrix JSON for Terraform target directories
+    value: ${{ steps.discover.outputs.matrix }}
+runs:
+  using: composite
+  steps:
+    - name: Discover Terraform roots
+      id: discover
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        matrix_json=$(find terraform -type f -name provider.tf -not -path '*/.terraform/*' -exec dirname {} \; \
+          | sort -u \
+          | jq -R -s -c '
+              split("\n")
+              | map(select(length > 0))
+              | map({
+                  path: .,
+                  id: (sub("^terraform/?"; "") | gsub("/"; "-") | if . == "" then "root" else . end)
+                })
+            ')
+
+        if [ "${matrix_json}" = "[]" ]; then
+          echo "No Terraform root directories found (provider.tf missing)." >&2
+          exit 1
+        fi
+
+        echo "matrix=${matrix_json}" >> "$GITHUB_OUTPUT"

@@ -95,18 +95,18 @@ jobs:
           exit_code="${{ steps.cmt-plan.outputs.exit_code }}"
           comment_file="$GITHUB_WORKSPACE/comment_body.md"
           if [ "$exit_code" = "0" ]; then
-            echo '### `make cmt-plan` result' > "$comment_file"
+            echo "### \`make cmt-plan\` result" > "$comment_file"
             echo "" >> "$comment_file"
             echo "No changes." >> "$comment_file"
           else
             {
-              echo '### `make cmt-plan` result'
+              echo "### \`make cmt-plan\` result"
               echo ""
               echo "${{ steps.cmt-plan.outputs.summary }}"
               echo ""
-              echo '```diff'
+              echo "\`\`\`diff"
               cat "$GITHUB_WORKSPACE/plan_output.txt"
-              echo '```'
+              echo "\`\`\`"
             } > "$comment_file"
           fi
           echo "path=${comment_file}" >> "$GITHUB_OUTPUT"
@@ -118,4 +118,3 @@ jobs:
       - name: Fail when cmt plan failed
         if: steps.cmt-plan.outputs.exit_code == '1'
         run: exit 1
-
