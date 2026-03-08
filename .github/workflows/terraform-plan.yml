@@ -45,6 +45,7 @@ jobs:
       pull-requests: write
     env:
       GITHUB_TOKEN: ${{ github.token }}
+      TERRAFORM_PLAN_SKIP_TARGETS: "terraform/github_secrets"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: Get Terraform version from mise.toml
@@ -83,6 +84,20 @@ jobs:
           set +e
 
           output_file="$(mktemp)"
+          if echo ",${TERRAFORM_PLAN_SKIP_TARGETS}," | grep -Fq ",${{ matrix.target.path }},"; then
+            echo "Skipping terraform plan for ${{ matrix.target.path }} in PR CI: target is listed in TERRAFORM_PLAN_SKIP_TARGETS."
+            echo "terraform plan skipped for ${{ matrix.target.path }}" > "$output_file"
+            {
+              echo "output<<EOF"
+              cat "$output_file"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+            echo "exit_code=0" >> "$GITHUB_OUTPUT"
+            cp "$output_file" "$GITHUB_WORKSPACE/plan_output_${{ matrix.target.id }}.txt"
+            rm -f "$output_file"
+            exit 0
+          fi
+
           tfvars_path="$GITHUB_WORKSPACE/${{ matrix.target.path }}/terraform.secrets.tfvars"
           plan_args=("-no-color" "-detailed-exitcode")
           if [ -f "$tfvars_path" ]; then

@@ -2,11 +2,6 @@ resource "google_iam_workload_identity_pool" "github_actions" {
   workload_identity_pool_id = "github-actions-pool"
   display_name              = "GitHub Actions Pool"
   description               = "OIDC identities from GitHub Actions"
-
-  depends_on = [
-    google_project_service.iamcredentials,
-    google_project_service.sts,
-  ]
 }
 
 resource "google_iam_workload_identity_pool_provider" "github_actions" {
@@ -31,8 +26,6 @@ resource "google_iam_workload_identity_pool_provider" "github_actions" {
 resource "google_service_account" "github_actions_melisia" {
   account_id   = "github-actions-melisia"
   display_name = "GitHub Actions (shiron-dev/melisia)"
-
-  depends_on = [google_project_service.iam]
 }
 
 resource "google_service_account_iam_member" "github_actions_melisia_wif_user" {
@@ -56,5 +49,29 @@ resource "google_storage_bucket_iam_member" "github_actions_melisia_terraform_st
 resource "google_project_iam_member" "github_actions_melisia_service_usage_admin" {
   project = "shiron-dev"
   role    = "roles/serviceusage.serviceUsageAdmin"
+  member  = "serviceAccount:${google_service_account.github_actions_melisia.email}"
+}
+
+resource "google_project_iam_member" "github_actions_melisia_service_usage_consumer" {
+  project = "shiron-dev"
+  role    = "roles/serviceusage.serviceUsageConsumer"
+  member  = "serviceAccount:${google_service_account.github_actions_melisia.email}"
+}
+
+resource "google_project_iam_member" "github_actions_melisia_iam_security_reviewer" {
+  project = "shiron-dev"
+  role    = "roles/iam.securityReviewer"
+  member  = "serviceAccount:${google_service_account.github_actions_melisia.email}"
+}
+
+resource "google_project_iam_member" "github_actions_melisia_wif_pool_viewer" {
+  project = "shiron-dev"
+  role    = "roles/iam.workloadIdentityPoolViewer"
+  member  = "serviceAccount:${google_service_account.github_actions_melisia.email}"
+}
+
+resource "google_project_iam_member" "github_actions_melisia_cloudkms_viewer" {
+  project = "shiron-dev"
+  role    = "roles/cloudkms.viewer"
   member  = "serviceAccount:${google_service_account.github_actions_melisia.email}"
 }
