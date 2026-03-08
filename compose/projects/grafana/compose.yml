@@ -177,3 +177,46 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1@sha256:1a84d3f6f9f77e1e14fe00b12e2b76d2e26c4d2e89d9f2c8f3e1c4f5f6e1c2e3
+    container_name: cadvisor
+    restart: always
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      # kics-scan ignore-line
+      - "/:/rootfs:ro"
+      # kics-scan ignore-line
+      - "/var/run:/var/run:ro"
+      # kics-scan ignore-line
+      - "/sys:/sys:ro"
+      # kics-scan ignore-line
+      - "/var/lib/docker/:/var/lib/docker:ro"
+      # kics-scan ignore-line
+      - "/dev/disk/:/dev/disk:ro"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # kics-scan ignore-line
+    cap_add:
+      - SYS_ADMIN
+    # kics-scan ignore-line
+    devices:
+      - "/dev/kmsg"
+    environment:
+      - "GOGC=80"
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
