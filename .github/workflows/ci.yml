@@ -197,8 +197,7 @@ jobs:
       - uses: reviewdog/action-actionlint@0d952c597ef8459f634d7145b0b044a9699e5e43 # v1.71.0
         with:
           level: warning
-          fail_level: warning
-          fail_on_error: true
+          fail_level: any
 
   dotenv-lint:
     runs-on: ubuntu-latest
