@@ -51,20 +51,3 @@ resource "google_storage_bucket_iam_member" "github_actions_melisia_terraform_st
   member = "serviceAccount:${google_service_account.github_actions_melisia.email}"
 }
 
-resource "github_actions_environment_secret" "workload_identity_provider" {
-  for_each = local.github_environments
-
-  repository      = local.github_repository
-  environment     = each.value
-  secret_name     = "WORKLOAD_IDENTITY_PROVIDER"
-  plaintext_value = google_iam_workload_identity_pool_provider.github_actions.name
-}
-
-resource "github_actions_environment_secret" "service_account" {
-  for_each = local.github_environments
-
-  repository      = local.github_repository
-  environment     = each.value
-  secret_name     = "SERVICE_ACCOUNT"
-  plaintext_value = google_service_account.github_actions_melisia.email
-}
