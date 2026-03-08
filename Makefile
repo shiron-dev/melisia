@@ -57,8 +57,9 @@ CMT_BIN := $(CMT_DIR)/cmt
 CMT_CONFIG := compose/config.yml
 CMT_SCHEMA_DIR := $(CMT_DIR)/schemas
 CMT_OPT ?=
-TERRAFORM_DIR := terraform
-TERRAFORM_SECRETS_TFVARS := terraform.secrets.tfvars
+TERRAFORM_TARGET ?= terraform
+TERRAFORM_DIR = terraform/$(TERRAFORM_TARGET)
+TERRAFORM_SECRETS_TFVARS = terraform.secrets.tfvars
 TERRAFORM_SECRETS_ARG := $(if $(wildcard $(TERRAFORM_DIR)/$(TERRAFORM_SECRETS_TFVARS)),-var-file=$(TERRAFORM_SECRETS_TFVARS),)
 
 # cmt ビルド + JSON Schema 生成
@@ -89,20 +90,20 @@ terraform-plan: terraform-init
 
 .PHONY: terraform-apply
 terraform-apply: terraform-init
-	cd $(TERRAFORM_DIR) && terraform apply $(TERRAFORM_SECRETS_ARG)
+	cd $(TERRAFORM_DIR) && terraform apply $(TERRAFORM_SECRETS_ARG) -lock=false
 	$(MAKE) sops-encrypt
 
 .PHONY: terraform-lint
 terraform-lint: terraform-init
-	cd terraform && tflint
+	cd $(TERRAFORM_DIR) && tflint
 
 .PHONY: terraform-fmt
 terraform-fmt:
-	cd terraform && terraform fmt -recursive
+	cd $(TERRAFORM_DIR) && terraform fmt -recursive
 
 .PHONY: terraform-validate
 terraform-validate: terraform-init
-	cd terraform && terraform validate
+	cd $(TERRAFORM_DIR) && terraform validate
 
 # https://github.com/aquasecurity/trivy - IaC misconfig and vulnerability scanning
 .PHONY: terraform-trivy
@@ -115,21 +116,21 @@ terraform-ci: terraform-lint terraform-fmt terraform-validate terraform-trivy
 # コスト比較前のベースライン作成
 .PHONY: infracost-base
 infracost-base: terraform-plan
-	cd terraform && infracost breakdown --path=. --format json --out-file infracost-base.json
+	cd $(TERRAFORM_DIR) && infracost breakdown --path=. --format json --out-file infracost-base.json
 
 # コスト比較
 .PHONY: infracost-diff
 infracost-diff: terraform-plan
-	@if [ ! -f terraform/infracost-base.json ]; then \
+	@if [ ! -f $(TERRAFORM_DIR)/infracost-base.json ]; then \
 		echo "Error: infracost-base.json not found. Run 'make infracost-base' first."; \
 		exit 1; \
 	fi
-	cd terraform && infracost diff --path=. --compare-to infracost-base.json
+	cd $(TERRAFORM_DIR) && infracost diff --path=. --compare-to infracost-base.json
 
 # 今のコストチェック
 .PHONY: infracost-breakdown
 infracost-breakdown: terraform-plan
-	cd terraform && infracost breakdown --path=.
+	cd $(TERRAFORM_DIR) && infracost breakdown --path=.
 
 .PHONY: sops-encrypt
 sops-encrypt:

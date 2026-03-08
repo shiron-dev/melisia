@@ -1,0 +1,222 @@
+name: Terraform Apply CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "terraform/**"
+      - ".github/workflows/**"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+  id-token: write
+
+jobs:
+  discover-terraform-roots:
+    name: discover terraform roots
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.discover.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Discover terraform roots
+        id: discover
+        uses: ./.github/actions/discover-terraform-roots
+
+  cancel-stale-runs:
+    name: cancel stale runs
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        if: github.event_name == 'push'
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const branch = context.ref.replace("refs/heads/", "");
+            const currentRunId = context.runId;
+            const currentRunNumber = context.runNumber;
+            const workflowRef = process.env.GITHUB_WORKFLOW_REF || "";
+            const workflowId = workflowRef
+              .split("@")[0]
+              .replace(`${owner}/${repo}/`, "");
+
+            if (!workflowId) {
+              core.warning("Failed to resolve workflow_id from GITHUB_WORKFLOW_REF. Skip stale run cancellation.");
+              return;
+            }
+
+            const runs = await github.paginate(
+              github.rest.actions.listWorkflowRuns,
+              {
+                owner,
+                repo,
+                workflow_id: workflowId,
+                branch,
+                event: "push",
+                per_page: 100,
+              },
+            );
+
+            const activeStatuses = new Set([
+              "queued",
+              "in_progress",
+              "waiting",
+              "requested",
+              "pending",
+              "action_required",
+            ]);
+
+            const candidates = runs.filter((run) => {
+              if (run.id === currentRunId) return false;
+              if (run.run_number >= currentRunNumber) return false;
+              if (!activeStatuses.has(run.status)) return false;
+              return true;
+            });
+
+            let cancelled = 0;
+
+            for (const run of candidates) {
+              const jobs = await github.paginate(
+                github.rest.actions.listJobsForWorkflowRun,
+                {
+                  owner,
+                  repo,
+                  run_id: run.id,
+                  per_page: 100,
+                },
+              );
+
+              const applyJob = jobs.find((job) => job.name.includes("terraform plan/apply"));
+              const applyStarted =
+                Boolean(applyJob?.started_at) ||
+                applyJob?.status === "in_progress" ||
+                Boolean(applyJob?.conclusion);
+
+              if (applyStarted) {
+                core.info(`Skip run ${run.id}: apply already started.`);
+                continue;
+              }
+
+              await github.rest.actions.cancelWorkflowRun({
+                owner,
+                repo,
+                run_id: run.id,
+              });
+              cancelled += 1;
+              core.info(`Cancelled stale run ${run.id}.`);
+            }
+
+            core.info(`Cancelled ${cancelled} stale run(s).`);
+
+  plan-and-apply:
+    name: terraform plan/apply (${{ matrix.target.path }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs:
+      - discover-terraform-roots
+      - cancel-stale-runs
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJson(needs.discover-terraform-roots.outputs.matrix) }}
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-${{ matrix.target.id }}
+      cancel-in-progress: false
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Get Terraform version from mise.toml
+        id: terraform-version
+        run: |
+          if grep -q 'terraform = "latest"' mise.toml; then
+            echo "version=latest" >> "$GITHUB_OUTPUT"
+          else
+            version=$(grep 'terraform = ' mise.toml | sed 's/.*terraform = "\(.*\)".*/\1/')
+            echo "version=$version" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@5e8dbf3c6d9deaf4193ca7a8fb23f2ac83bb6c85 # v4.0.0
+        with:
+          terraform_version: ${{ steps.terraform-version.outputs.version }}
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.SERVICE_ACCOUNT }}
+      - name: Install SOPS
+        run: |
+          set -euo pipefail
+          SOPS_VERSION="v3.9.4"
+          curl -fsSL -o /tmp/sops "https://github.com/getsops/sops/releases/download/${SOPS_VERSION}/sops-${SOPS_VERSION}.linux.amd64"
+          chmod +x /tmp/sops
+          sudo mv /tmp/sops /usr/local/bin/sops
+          sops --version
+      - name: Decrypt secrets
+        run: make sops-decrypt
+      - name: Terraform Init
+        run: cd "${{ matrix.target.path }}" && terraform init
+      - name: Run terraform plan
+        id: terraform-plan
+        run: |
+          set +e
+
+          output_file="$(mktemp)"
+          slack_file="$(mktemp --suffix=.txt)"
+          tfvars_path="$GITHUB_WORKSPACE/${{ matrix.target.path }}/terraform.secrets.tfvars"
+          plan_args=("-no-color" "-detailed-exitcode")
+          if [ -f "$tfvars_path" ]; then
+            plan_args+=("-var-file=$tfvars_path")
+          fi
+
+          cd "${{ matrix.target.path }}" && terraform plan "${plan_args[@]}" 2>&1 | tee "$output_file"
+          exit_code="${PIPESTATUS[0]}"
+          cp "$output_file" "$slack_file"
+          if [ ! -s "$output_file" ]; then
+            echo "terraform plan produced no output." > "$output_file"
+          fi
+          if [ ! -s "$slack_file" ]; then
+            echo "terraform plan produced no output." > "$slack_file"
+          fi
+
+          {
+            echo "output_file=${output_file}"
+            echo "slack_file=${slack_file}"
+            echo "exit_code=${exit_code}"
+          } >> "$GITHUB_OUTPUT"
+      - name: Upload plan result to Slack
+        if: steps.terraform-plan.outputs.exit_code == '2'
+        uses: slackapi/slack-github-action@91efab103c0de0a537f72a35f6b8cda0ee76bf0a # v2.1.1
+        with:
+          method: files.uploadV2
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          errors: true
+          payload: |
+            channel_id: ${{ secrets.SLACK_CHANNEL_ID }}
+            snippet_type: text
+            title: Terraform Plan Result (${{ github.repository }} / ${{ matrix.target.path }})
+            filename: terraform-plan-${{ matrix.target.id }}-${{ github.run_id }}.txt
+            initial_comment: |
+              Terraform plan result for ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            file: ${{ steps.terraform-plan.outputs.slack_file }}
+      - name: Fail when terraform plan failed
+        if: steps.terraform-plan.outputs.exit_code == '1'
+        run: exit 1
+      - name: Run terraform apply
+        if: steps.terraform-plan.outputs.exit_code == '2'
+        run: |
+          tfvars_path="$GITHUB_WORKSPACE/${{ matrix.target.path }}/terraform.secrets.tfvars"
+          apply_args=("-auto-approve")
+          if [ -f "$tfvars_path" ]; then
+            apply_args+=("-var-file=$tfvars_path")
+          fi
+
+          cd "${{ matrix.target.path }}" && terraform apply "${apply_args[@]}"

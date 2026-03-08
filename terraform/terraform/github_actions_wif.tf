@@ -2,11 +2,6 @@ resource "google_iam_workload_identity_pool" "github_actions" {
   workload_identity_pool_id = "github-actions-pool"
   display_name              = "GitHub Actions Pool"
   description               = "OIDC identities from GitHub Actions"
-
-  depends_on = [
-    google_project_service.iamcredentials,
-    google_project_service.sts,
-  ]
 }
 
 resource "google_iam_workload_identity_pool_provider" "github_actions" {
@@ -45,20 +40,32 @@ resource "google_kms_crypto_key_iam_member" "github_actions_melisia_kms_decrypte
   member        = "serviceAccount:${google_service_account.github_actions_melisia.email}"
 }
 
-resource "github_actions_environment_secret" "workload_identity_provider" {
-  for_each = local.github_environments
-
-  repository      = local.github_repository
-  environment     = each.value
-  secret_name     = "WORKLOAD_IDENTITY_PROVIDER"
-  plaintext_value = google_iam_workload_identity_pool_provider.github_actions.name
+resource "google_storage_bucket_iam_member" "github_actions_melisia_terraform_state" {
+  bucket = "shiron-dev-terraform"
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.github_actions_melisia.email}"
 }
 
-resource "github_actions_environment_secret" "service_account" {
-  for_each = local.github_environments
+resource "google_project_iam_member" "github_actions_melisia_service_usage_consumer" {
+  project = "shiron-dev"
+  role    = "roles/serviceusage.serviceUsageConsumer"
+  member  = "serviceAccount:${google_service_account.github_actions_melisia.email}"
+}
 
-  repository      = local.github_repository
-  environment     = each.value
-  secret_name     = "SERVICE_ACCOUNT"
-  plaintext_value = google_service_account.github_actions_melisia.email
+resource "google_project_iam_member" "github_actions_melisia_iam_security_reviewer" {
+  project = "shiron-dev"
+  role    = "roles/iam.securityReviewer"
+  member  = "serviceAccount:${google_service_account.github_actions_melisia.email}"
+}
+
+resource "google_project_iam_member" "github_actions_melisia_wif_pool_viewer" {
+  project = "shiron-dev"
+  role    = "roles/iam.workloadIdentityPoolViewer"
+  member  = "serviceAccount:${google_service_account.github_actions_melisia.email}"
+}
+
+resource "google_project_iam_member" "github_actions_melisia_cloudkms_viewer" {
+  project = "shiron-dev"
+  role    = "roles/cloudkms.viewer"
+  member  = "serviceAccount:${google_service_account.github_actions_melisia.email}"
 }
