@@ -59,7 +59,7 @@ CMT_SCHEMA_DIR := $(CMT_DIR)/schemas
 CMT_OPT ?=
 TERRAFORM_TARGET ?= terraform
 TERRAFORM_DIR = terraform/$(TERRAFORM_TARGET)
-TERRAFORM_SECRETS_TFVARS = $(TERRAFORM_TARGET).secrets.tfvars
+TERRAFORM_SECRETS_TFVARS = terraform.secrets.tfvars
 TERRAFORM_SECRETS_ARG := $(if $(wildcard $(TERRAFORM_DIR)/$(TERRAFORM_SECRETS_TFVARS)),-var-file=$(TERRAFORM_SECRETS_TFVARS),)
 
 # cmt ビルド + JSON Schema 生成
@@ -90,7 +90,7 @@ terraform-plan: terraform-init
 
 .PHONY: terraform-apply
 terraform-apply: terraform-init
-	cd $(TERRAFORM_DIR) && terraform apply $(TERRAFORM_SECRETS_ARG)
+	cd $(TERRAFORM_DIR) && terraform apply $(TERRAFORM_SECRETS_ARG) -lock=false
 	$(MAKE) sops-encrypt
 
 .PHONY: terraform-lint
