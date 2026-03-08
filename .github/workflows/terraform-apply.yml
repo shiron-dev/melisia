@@ -177,9 +177,9 @@ jobs:
             plan_args+=("-var-file=$tfvars_path")
           fi
 
-          cd "${{ matrix.target.path }}" && terraform plan "${plan_args[@]}" 2>&1 | tee "$output_file"
-          exit_code="${PIPESTATUS[0]}"
-          cp "$output_file" "$slack_file"
+          cd "${{ matrix.target.path }}" && terraform plan "${plan_args[@]}" >"$output_file" 2>&1
+          exit_code="$?"
+          sed -E 's/\x1B\[[0-9;]*[[:alpha:]]//g' "$output_file" | iconv -f UTF-8 -t UTF-8 -c > "$slack_file" || cp "$output_file" "$slack_file"
           if [ ! -s "$output_file" ]; then
             echo "terraform plan produced no output." > "$output_file"
           fi
@@ -200,7 +200,7 @@ jobs:
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           errors: true
           payload: |
-            channel_id: ${{ secrets.SLACK_CHANNEL_ID }}
+            channel_id: ${{ secrets.SLACK_PLAN_CHANNEL_ID }}
             snippet_type: text
             title: Terraform Plan Result (${{ github.repository }} / ${{ matrix.target.path }})
             filename: terraform-plan-${{ matrix.target.id }}-${{ github.run_id }}.txt

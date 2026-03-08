@@ -133,8 +133,8 @@ jobs:
           set +e
 
           output_file="$(mktemp)"
-          make cmt-plan 2>&1 | tee "$output_file"
-          exit_code="${PIPESTATUS[0]}"
+          make cmt-plan >"$output_file" 2>&1
+          exit_code="$?"
           slack_file="$(mktemp --suffix=.txt)"
           sed -E 's/\x1B\[[0-9;]*[[:alpha:]]//g' "$output_file" | iconv -f UTF-8 -t UTF-8 -c > "$slack_file" || cp "$output_file" "$slack_file"
           if [ ! -s "$output_file" ]; then
@@ -167,7 +167,7 @@ jobs:
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           errors: true
           payload: |
-            channel_id: ${{ secrets.SLACK_CHANNEL_ID }}
+            channel_id: ${{ secrets.SLACK_PLAN_CHANNEL_ID }}
             snippet_type: text
             title: CMT Plan Result (${{ github.repository }})
             filename: cmt-plan-${{ github.run_id }}.txt

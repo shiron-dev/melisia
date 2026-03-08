@@ -15,6 +15,11 @@ variable "slack_channel_id" {
   type        = string
 }
 
+variable "slack_plan_channel_id" {
+  description = "Slack plan channel ID for GitHub Actions plan output"
+  type        = string
+}
+
 variable "infracost_api_key" {
   description = "Infracost API Key for cost estimation"
   type        = string

@@ -16,6 +16,12 @@ resource "github_actions_secret" "slack_channel_id" {
   plaintext_value = var.slack_channel_id
 }
 
+resource "github_actions_secret" "slack_plan_channel_id" {
+  repository      = local.github_repository
+  secret_name     = "SLACK_PLAN_CHANNEL_ID"
+  plaintext_value = var.slack_plan_channel_id
+}
+
 resource "github_actions_secret" "infracost_api_key" {
   repository      = local.github_repository
   secret_name     = "INFRACOST_API_KEY"
