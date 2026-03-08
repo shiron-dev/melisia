@@ -46,12 +46,6 @@ resource "google_storage_bucket_iam_member" "github_actions_melisia_terraform_st
   member = "serviceAccount:${google_service_account.github_actions_melisia.email}"
 }
 
-resource "google_project_iam_member" "github_actions_melisia_service_usage_admin" {
-  project = "shiron-dev"
-  role    = "roles/serviceusage.serviceUsageAdmin"
-  member  = "serviceAccount:${google_service_account.github_actions_melisia.email}"
-}
-
 resource "google_project_iam_member" "github_actions_melisia_service_usage_consumer" {
   project = "shiron-dev"
   role    = "roles/serviceusage.serviceUsageConsumer"
