@@ -178,7 +178,7 @@ services:
       retries: 3
       start_period: 40s
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.49.1@sha256:1a84d3f6f9f77e1e14fe00b12e2b76d2e26c4d2e89d9f2c8f3e1c4f5f6e1c2e3
+    image: gcr.io/cadvisor/cadvisor:v0.49.1@sha256:3cde6faf0791ebf7b41d6f8ae7145466fed712ea6f252c935294d2608b1af388
     container_name: cadvisor
     restart: always
     ports:
