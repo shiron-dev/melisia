@@ -110,8 +110,33 @@ terraform-validate: terraform-init
 terraform-trivy:
 	trivy config terraform/
 
+# https://www.checkov.io/ - Infrastructure as Code scanning
+.PHONY: terraform-checkov
+terraform-checkov:
+	checkov --directory terraform/ --framework terraform --compact
+
+# https://github.com/aquasecurity/tfsec - Terraform security scanner
+.PHONY: terraform-tfsec
+terraform-tfsec:
+	tfsec terraform/
+
+# https://www.pluralith.com/ - Terraform visualization and cost analysis
+.PHONY: pluralith
+pluralith:
+	cd terraform && pluralith graph
+
+# https://github.com/gitleaks/gitleaks - Secret scanning
+.PHONY: gitleaks
+gitleaks:
+	gitleaks detect --source . --verbose
+
+# https://github.com/trufflesecurity/trufflehog - Secret scanning
+.PHONY: trufflehog
+trufflehog:
+	trufflehog filesystem . --json
+
 .PHONY: terraform-ci
-terraform-ci: terraform-lint terraform-fmt terraform-validate terraform-trivy
+terraform-ci: terraform-lint terraform-fmt terraform-validate terraform-trivy terraform-checkov terraform-tfsec
 
 # コスト比較前のベースライン作成
 .PHONY: infracost-base
@@ -223,5 +248,9 @@ ci:
 
 	echo "Running kics...";
 	$(MAKE) kics;
+
+	echo "Running security scanning...";
+	$(MAKE) gitleaks;
+	$(MAKE) trufflehog;
 
 .DEFAULT_GOAL := help
