@@ -37,7 +37,6 @@ provider "google" {
 
 provider "github" {
   owner = local.github_owner
-  token = var.github_token
 }
 
 provider "cloudflare" {
