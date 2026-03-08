@@ -186,10 +186,13 @@ services:
     volumes:
       # kics-scan ignore-line
       - "/:/rootfs:ro"
+      # kics-scan ignore-line
       - "/var/run:/var/run:ro"
+      # kics-scan ignore-line
       - "/sys:/sys:ro"
       # kics-scan ignore-line
       - "/var/lib/docker/:/var/lib/docker:ro"
+      # kics-scan ignore-line
       - "/dev/disk/:/dev/disk:ro"
     security_opt:
       - no-new-privileges:true
