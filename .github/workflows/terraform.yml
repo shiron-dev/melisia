@@ -185,43 +185,10 @@ jobs:
       - name: Install Pluralith CLI
         run: |
           set -euo pipefail
-          install_from_api() {
-            local download_api download_url
-            download_api="https://api.pluralith.com/v1/dist/download/cli?os=linux&arch=amd64"
-            download_url="$(curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 "$download_api" | jq -er '.data.url')"
-            curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 "$download_url" -o "$RUNNER_TEMP/pluralith"
-            chmod +x "$RUNNER_TEMP/pluralith"
-            mkdir -p "$HOME/.local/bin"
-            mv "$RUNNER_TEMP/pluralith" "$HOME/.local/bin/pluralith"
-          }
-
-          install_from_script() {
-            curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 \
-              https://raw.githubusercontent.com/Pluralith/pluralith-cli/dev/scripts/install.sh | sh
-          }
-
-          if ! install_from_api; then
-            echo "Pluralith API download failed, fallback to install script."
-            install_from_script
-          fi
-
-          binary_path="$(command -v pluralith || true)"
-          if [ -z "$binary_path" ]; then
-            for path in "$HOME/.local/bin/pluralith" "$HOME/.pluralith/bin/pluralith" "/usr/local/bin/pluralith"; do
-              if [ -x "$path" ]; then
-                binary_path="$path"
-                break
-              fi
-            done
-          fi
-
-          if [ -z "$binary_path" ]; then
-            echo "pluralith binary not found after installation."
-            exit 1
-          fi
-
-          echo "$(dirname "$binary_path")" >> "$GITHUB_PATH"
-          "$binary_path" version
+          npm config set prefix "$HOME/.npm-global"
+          echo "$HOME/.npm-global/bin" >> "$GITHUB_PATH"
+          npm install -g pluralith-cli
+          "$HOME/.npm-global/bin/pluralith" version
       - name: Install Pluralith Graph Module
         run: pluralith install graph-module
       - name: Generate Pluralith Diagram (Local Only)
