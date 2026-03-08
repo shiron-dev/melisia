@@ -76,7 +76,7 @@ jobs:
       - name: Decrypt secrets
         run: make sops-decrypt
       - name: Terraform Init
-        run: cd "${{ matrix.target.path }}" && terraform init
+        run: cd "${{ matrix.target.path }}" && terraform init -backend=false
       - name: Run terraform plan
         id: terraform-plan
         run: |
