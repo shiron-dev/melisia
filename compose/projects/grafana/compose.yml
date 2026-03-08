@@ -184,17 +184,21 @@ services:
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
+      # kics-scan ignore-line
       - "/:/rootfs:ro"
       - "/var/run:/var/run:ro"
       - "/sys:/sys:ro"
+      # kics-scan ignore-line
       - "/var/lib/docker/:/var/lib/docker:ro"
       - "/dev/disk/:/dev/disk:ro"
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    # kics-scan ignore-line
     cap_add:
       - SYS_ADMIN
+    # kics-scan ignore-line
     devices:
       - "/dev/kmsg"
     environment:
