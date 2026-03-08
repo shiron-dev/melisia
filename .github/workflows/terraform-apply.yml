@@ -152,6 +152,12 @@ jobs:
         with:
           workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.SERVICE_ACCOUNT }}
+      - name: Bootstrap required GCP APIs
+        run: |
+          gcloud services enable \
+            cloudresourcemanager.googleapis.com \
+            iam.googleapis.com \
+            --project=shiron-dev
       - name: Install SOPS
         run: |
           set -euo pipefail
