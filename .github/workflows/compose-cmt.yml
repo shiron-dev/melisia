@@ -4,10 +4,6 @@ on:
   pull_request:
     branches:
       - main
-    paths:
-      - "compose/**"
-      - "tools/compose/**"
-      - ".github/workflows/**"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -18,12 +14,28 @@ permissions:
   id-token: write
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.filter.outputs.src }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
+        id: filter
+        with:
+          filters: |
+            src:
+              - "compose/**"
+              - "tools/compose/**"
+              - ".github/workflows/**"
+
   plan:
     name: cmt plan
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: production-plan
-    if: github.event_name == 'pull_request'
+    needs: changes
+    if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.should_run == 'true' }}
     permissions:
       contents: read
       id-token: write
@@ -118,3 +130,27 @@ jobs:
       - name: Fail when cmt plan failed
         if: steps.cmt-plan.outputs.exit_code == '1'
         run: exit 1
+
+  cmt-plan-status-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: ${{ always() }}
+    needs:
+      - changes
+      - plan
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Check cmt-plan-status-check
+        run: |
+          diff \
+            <(yq '.jobs | del(.cmt-plan-status-check) | keys.[]' .github/workflows/compose-cmt.yml) \
+            <(yq '.jobs.cmt-plan-status-check.needs.[]' .github/workflows/compose-cmt.yml)
+      - name: Fail if any needed job failed
+        env:
+          JOBS: ${{ toJson(needs) }}
+        run: |
+          for result in $(jq -r '.[].result' <<<"$JOBS"); do
+            if [[ ! "$result" =~ ^(success|skipped)$ ]]; then
+              exit 1
+            fi
+          done
