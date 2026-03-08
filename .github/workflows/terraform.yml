@@ -184,7 +184,15 @@ jobs:
           terraform init -backend=false
       - name: Install Pluralith CLI
         run: |
-          curl -fsSL https://raw.githubusercontent.com/Pluralith/pluralith-cli/dev/scripts/install.sh | sh
+          set -euo pipefail
+          download_api="https://api.pluralith.com/v1/dist/download/cli?os=linux&arch=amd64"
+          download_url="$(curl -fsSL "$download_api" | jq -r '.data.url')"
+          curl -fsSL "$download_url" -o "$RUNNER_TEMP/pluralith"
+          chmod +x "$RUNNER_TEMP/pluralith"
+          mkdir -p "$HOME/.local/bin"
+          mv "$RUNNER_TEMP/pluralith" "$HOME/.local/bin/pluralith"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/pluralith" version
       - name: Install Pluralith Graph Module
         run: pluralith install graph-module
       - name: Generate Pluralith Diagram (Local Only)
