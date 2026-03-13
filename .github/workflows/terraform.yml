@@ -185,12 +185,24 @@ jobs:
       - name: Install Pluralith CLI
         run: |
           set -euo pipefail
-          npm config set prefix "$HOME/.npm-global"
-          echo "$HOME/.npm-global/bin" >> "$GITHUB_PATH"
-          npm install -g pluralith-cli
-          "$HOME/.npm-global/bin/pluralith" version
+          PLURALITH_VERSION="v0.2.2"
+          ARCHIVE_URL="https://github.com/Pluralith/pluralith-cli/releases/download/${PLURALITH_VERSION}/pluralith_cli_tap_linux_amd64_${PLURALITH_VERSION}.tar.gz"
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 "$ARCHIVE_URL" -o "$RUNNER_TEMP/pluralith.tar.gz"
+          tar -xzf "$RUNNER_TEMP/pluralith.tar.gz" -C "$RUNNER_TEMP"
+          BINARY_PATH="$(find "$RUNNER_TEMP" -type f -name pluralith | head -n 1)"
+          if [ -z "$BINARY_PATH" ]; then
+            echo "pluralith binary was not found in release archive."
+            exit 1
+          fi
+          chmod +x "$BINARY_PATH"
+          mkdir -p "$HOME/.local/bin"
+          mv "$BINARY_PATH" "$HOME/.local/bin/pluralith"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/pluralith" version
       - name: Install Pluralith Graph Module
-        run: pluralith install graph-module
+        run: |
+          set -euo pipefail
+          pluralith install graph-module || echo "graph-module install is unavailable on this CLI version; continuing."
       - name: Generate Pluralith Diagram (Local Only)
         run: |
           cd terraform
