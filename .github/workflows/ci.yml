@@ -232,7 +232,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: shiron-dev/actions/renovate-deps-comment@d898596addf114b0b4a4cd9a984775410e248e10 # v1.6.2
+      - uses: shiron-dev/actions/renovate-deps-comment@0cc65c3143f6a0d119fa8085c8b2ae3dd25e657b # v1.6.3
 
   gitleaks:
     runs-on: ubuntu-latest
