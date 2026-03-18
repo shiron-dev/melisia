@@ -20,9 +20,9 @@ jobs:
     name: cancel stale runs
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    if: github.event_name == 'push'
     steps:
       - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        if: github.event_name == 'push'
         with:
           script: |
             const owner = context.repo.owner;
@@ -108,7 +108,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: production-plan
-    if: github.event_name == 'push'
     needs: cancel-stale-runs
     outputs:
       has_diff: ${{ steps.cmt-plan.outputs.exit_code == '2' }}
@@ -184,7 +183,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: production
-    if: github.event_name == 'push' && needs.plan.outputs.has_diff == 'true'
+    if: needs.plan.outputs.has_diff == 'true'
     needs: plan
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}-apply
