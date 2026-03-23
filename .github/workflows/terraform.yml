@@ -4,35 +4,21 @@ on:
   push:
     branches:
       - main
-    paths:
-      - 'terraform/**'
-      - '.github/workflows/**'
   pull_request:
     branches:
       - main
-    paths:
-      - 'terraform/**'
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  discover-terraform-roots:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      matrix: ${{ steps.discover.outputs.matrix }}
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - name: Discover terraform roots
-        id: discover
-        uses: ./.github/actions/discover-terraform-roots
-
   terraform-status-check:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs:
+      - changes
       - discover-terraform-roots
       - terraform-lint
       - terraform-trivy
@@ -57,6 +43,31 @@ jobs:
               exit 1
             fi
           done
+
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.filter.outputs.src }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        id: filter
+        with:
+          filters: |
+            src:
+              - "terraform/**"
+              - ".github/workflows/**"
+
+  discover-terraform-roots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.discover.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Discover terraform roots
+        id: discover
+        uses: ./.github/actions/discover-terraform-roots
 
   terraform-lint:
     runs-on: ubuntu-latest
