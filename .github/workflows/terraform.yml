@@ -4,41 +4,27 @@ on:
   push:
     branches:
       - main
-    paths:
-      - 'terraform/**'
-      - '.github/workflows/**'
   pull_request:
     branches:
       - main
-    paths:
-      - 'terraform/**'
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  discover-terraform-roots:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      matrix: ${{ steps.discover.outputs.matrix }}
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - name: Discover terraform roots
-        id: discover
-        uses: ./.github/actions/discover-terraform-roots
-
   terraform-status-check:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs:
+      - changes
       - discover-terraform-roots
       - terraform-lint
       - terraform-trivy
       - terraform-checkov
       - terraform-tfsec
-      - pluralith
+      # - pluralith
       - infracost
     if: ${{ always() }}
     steps:
@@ -57,6 +43,31 @@ jobs:
               exit 1
             fi
           done
+
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.filter.outputs.src }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        id: filter
+        with:
+          filters: |
+            src:
+              - "terraform/**"
+              - ".github/workflows/**"
+
+  discover-terraform-roots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.discover.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Discover terraform roots
+        id: discover
+        uses: ./.github/actions/discover-terraform-roots
 
   terraform-lint:
     runs-on: ubuntu-latest
@@ -147,33 +158,33 @@ jobs:
         with:
           working_directory: terraform/
 
-  pluralith:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - name: Get Terraform version from mise.toml
-        id: terraform-version
-        run: |
-          if grep -q 'terraform = "latest"' mise.toml; then
-            echo "version=latest" >> "$GITHUB_OUTPUT"
-          else
-            version=$(grep 'terraform = ' mise.toml | sed 's/.*terraform = "\(.*\)".*/\1/')
-            echo "version=$version" >> "$GITHUB_OUTPUT"
-          fi
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@5e8dbf3c6d9deaf4193ca7a8fb23f2ac83bb6c85 # v4.0.0
-        with:
-          terraform_version: ${{ steps.terraform-version.outputs.version }}
-      - name: Terraform Init
-        run: |
-          cd terraform
-          terraform init -backend=false
-      - name: Run Pluralith
-        uses: pluralith/github-action@d1a8e3c3a4b9e5f7c9e1b3a5d7f9e1a3c5e7f9a1 # v2
-        with:
-          terraform_directory: terraform/
+  # pluralith:
+  #   runs-on: ubuntu-latest
+  #   timeout-minutes: 10
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+  #     - name: Get Terraform version from mise.toml
+  #       id: terraform-version
+  #       run: |
+  #         if grep -q 'terraform = "latest"' mise.toml; then
+  #           echo "version=latest" >> "$GITHUB_OUTPUT"
+  #         else
+  #           version=$(grep 'terraform = ' mise.toml | sed 's/.*terraform = "\(.*\)".*/\1/')
+  #           echo "version=$version" >> "$GITHUB_OUTPUT"
+  #         fi
+  #     - name: Setup Terraform
+  #       uses: hashicorp/setup-terraform@5e8dbf3c6d9deaf4193ca7a8fb23f2ac83bb6c85 # v4.0.0
+  #       with:
+  #         terraform_version: ${{ steps.terraform-version.outputs.version }}
+  #     - name: Terraform Init
+  #       run: |
+  #         cd terraform
+  #         terraform init -backend=false
+  #     - name: Run Pluralith
+  #       uses: pluralith/github-action@d1a8e3c3a4b9e5f7c9e1b3a5d7f9e1a3c5e7f9a1 # v2
+  #       with:
+  #         terraform_directory: terraform/
 
   infracost:
     runs-on: ubuntu-latest
