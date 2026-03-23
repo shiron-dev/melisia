@@ -1,11 +1,17 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["github>shiron-dev/renovate-config"],
+  "extends": [
+    "github>shiron-dev/renovate-config"
+  ],
   "customManagers": [
     {
       "customType": "regex",
-      "fileMatch": ["(^|/)Makefile$"],
-      "matchStrings": ["KICS_IMAGE \\?= (?<depName>[^:]+):(?<currentValue>[^\\s]+)"],
+      "managerFilePatterns": [
+        "/(^|/)Makefile$/"
+      ],
+      "matchStrings": [
+        "KICS_IMAGE \\?= (?<depName>[^:]+):(?<currentValue>[^\\s]+)"
+      ],
       "datasourceTemplate": "docker"
     }
   ],
