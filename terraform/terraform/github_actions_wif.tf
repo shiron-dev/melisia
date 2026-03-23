@@ -16,7 +16,7 @@ resource "google_iam_workload_identity_pool_provider" "github_actions" {
     "attribute.ref"        = "assertion.ref"
   }
 
-  attribute_condition = "assertion.repository == \"shiron-dev/melisia\""
+  attribute_condition = "assertion.sub == 'repo:shiron-dev/melisia:ref:refs/heads/main' || assertion.sub == 'repo:shiron-dev/melisia:pull_request'"
 
   oidc {
     issuer_uri = "https://token.actions.githubusercontent.com"

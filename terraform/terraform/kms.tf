@@ -9,6 +9,10 @@ resource "google_kms_crypto_key" "sops_key" {
   purpose  = "ENCRYPT_DECRYPT"
 
   rotation_period = "7776000s"
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 output "kms_keyring_name" {
