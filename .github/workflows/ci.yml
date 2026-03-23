@@ -218,10 +218,8 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: checkmarx/kics-github-action@05aa5eb70eede1355220f4ca5238d96b397e30a6 # v2.1.20
-        with:
-          path: .
-          exclude_paths: "**/*.secrets.*,terraform/terraform.tfvars"
+      - name: Run KICS via Docker (Makefile target)
+        run: make kics
 
   sops-secrets-check:
     runs-on: ubuntu-latest
