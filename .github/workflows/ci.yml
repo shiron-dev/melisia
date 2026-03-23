@@ -214,7 +214,7 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: checkmarx/kics-github-action@05aa5eb70eede1355220f4ca5238d96b397e30a6 # v2.1.20
+      - uses: checkmarx/kics-github-action@b974e53df1e3a2cd22ea90f0ec01882394feede4 # v2.1.20
         with:
           path: .
           exclude_paths: "**/*.secrets.*,terraform/terraform.tfvars"
