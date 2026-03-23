@@ -4,6 +4,7 @@ UV_ANSIBLE := uv run --project tools/ansible --
 PROJECT_ID := shiron-dev
 
 CHECK_SECRETS_SCRIPT := scripts/check-secrets.sh
+KICS_IMAGE ?= checkmarx/kics:v2.1.20
 
 .PHONY: help
 help:
@@ -229,7 +230,7 @@ sops-ci:
 kics:
 	@dir=$$(mktemp -d) && \
 	rsync -a --exclude='tools/ansible/.venv' --exclude='*.secrets.*' --exclude='terraform/terraform.tfvars' $(PWD)/ $$dir/ && \
-	docker run -t -v $$dir:/path checkmarx/kics scan -p /path; \
+	docker run -t -v $$dir:/path $(KICS_IMAGE) scan -p /path; \
 	status=$$?; rm -rf $$dir; exit $$status
 
 .PHONY: ci
