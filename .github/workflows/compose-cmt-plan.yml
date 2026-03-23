@@ -82,43 +82,82 @@ jobs:
         run: |
           set +e
 
-          output_file="$(mktemp)"
-          make cmt-plan 2>&1 | tee "$output_file"
-          exit_code="${PIPESTATUS[0]}"
+          make cmt-plan > "$GITHUB_WORKSPACE/plan_output.txt" 2>&1
+          exit_code=$?
 
-          {
-            echo "output<<EOF"
-            cat "$output_file"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-
-          summary_line="$(tr -d '\r' < "$output_file" | awk '/^Summary: /{line=$0} END{print line}')"
+          summary_line="$(tr -d '\r' < "$GITHUB_WORKSPACE/plan_output.txt" | awk '/^Summary: /{line=$0} END{print line}')"
           if [ -z "$summary_line" ]; then
             summary_line="Summary: (not found)"
           fi
 
           echo "summary=${summary_line}" >> "$GITHUB_OUTPUT"
           echo "exit_code=${exit_code}" >> "$GITHUB_OUTPUT"
-          cp "$output_file" "$GITHUB_WORKSPACE/plan_output.txt"
-          rm -f "$output_file"
+      - name: Upload plan to Slack
+        id: slack-upload
+        if: steps.cmt-plan.outputs.exit_code != '0' && steps.cmt-plan.outputs.exit_code != ''
+        uses: slackapi/slack-github-action@af78098f536edbc4de71162a307590698245be95 # v3.0.1
+        with:
+          method: files.uploadV2
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          errors: true
+          payload: |
+            channel_id: ${{ secrets.SLACK_PLAN_CHANNEL_ID }}
+            snippet_type: text
+            title: "CMT Plan (${{ github.repository }}) - PR #${{ github.event.number }}"
+            filename: cmt-plan-${{ github.run_id }}.txt
+            initial_comment: |
+              CMT plan result for PR #${{ github.event.number }}: ${{ github.server_url }}/${{ github.repository }}/pull/${{ github.event.number }}
+              ${{ steps.cmt-plan.outputs.summary }}
+            file: ${{ github.workspace }}/plan_output.txt
+      - name: Extract Slack permalink
+        id: slack-link
+        if: steps.slack-upload.outcome == 'success'
+        env:
+          SLACK_RESPONSE: ${{ steps.slack-upload.outputs.response-payload }}
+        run: |
+          permalink=$(jq -r '(.files[0].permalink // empty)' <<< "$SLACK_RESPONSE" 2>/dev/null || true)
+          echo "url=${permalink}" >> "$GITHUB_OUTPUT"
       - name: Prepare comment body
         id: prepare-comment
+        env:
+          PLAN_EXIT_CODE: ${{ steps.cmt-plan.outputs.exit_code }}
+          PLAN_SUMMARY: ${{ steps.cmt-plan.outputs.summary }}
+          SLACK_URL: ${{ steps.slack-link.outputs.url }}
         run: |
-          exit_code="${{ steps.cmt-plan.outputs.exit_code }}"
           comment_file="$GITHUB_WORKSPACE/comment_body.md"
-          if [ "$exit_code" = "0" ]; then
-            echo "### \`make cmt-plan\` result" > "$comment_file"
-            echo "" >> "$comment_file"
-            echo "No changes." >> "$comment_file"
+          if [ "$PLAN_EXIT_CODE" = "0" ]; then
+            {
+              echo "### \`make cmt-plan\` result"
+              echo ""
+              echo "No changes."
+            } > "$comment_file"
+          elif [ "$PLAN_EXIT_CODE" = "2" ]; then
+            {
+              echo "### \`make cmt-plan\` result"
+              echo ""
+              echo "$PLAN_SUMMARY"
+              echo ""
+              echo ":warning: Changes detected."
+              if [ -n "$SLACK_URL" ]; then
+                echo ""
+                echo "Plan details: [View in Slack]($SLACK_URL)"
+              else
+                echo ""
+                echo "Plan details have been posted to the Slack plan channel."
+              fi
+            } > "$comment_file"
           else
             {
               echo "### \`make cmt-plan\` result"
               echo ""
-              echo "${{ steps.cmt-plan.outputs.summary }}"
-              echo ""
-              echo "\`\`\`diff"
-              cat "$GITHUB_WORKSPACE/plan_output.txt"
-              echo "\`\`\`"
+              echo ":x: Plan failed (exit code: $PLAN_EXIT_CODE)."
+              if [ -n "$SLACK_URL" ]; then
+                echo ""
+                echo "Details: [View in Slack]($SLACK_URL)"
+              else
+                echo ""
+                echo "Details have been posted to the Slack plan channel."
+              fi
             } > "$comment_file"
           fi
           echo "path=${comment_file}" >> "$GITHUB_OUTPUT"
