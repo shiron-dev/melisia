@@ -2631,7 +2631,7 @@ func TestMergeMaskPatterns_DeduplicatesSamePattern(t *testing.T) {
 	t.Parallel()
 
 	primary := []maskPattern{{prefix: "p=", suffix: ""}}
-	secondary := []maskPattern{{prefix: "p=", suffix: ""}}  // 同じパターン
+	secondary := []maskPattern{{prefix: "p=", suffix: ""}} // 同じパターン
 
 	merged := mergeMaskPatterns(primary, secondary)
 	if len(merged) != 1 {
@@ -2644,8 +2644,8 @@ func TestMergeMaskPatterns_MergesDistinct(t *testing.T) {
 
 	primary := []maskPattern{{prefix: "a=", suffix: ""}}
 	secondary := []maskPattern{
-		{prefix: "a=", suffix: ""},  // duplicate → skip
-		{prefix: "b=", suffix: ""},  // new
+		{prefix: "a=", suffix: ""}, // duplicate → skip
+		{prefix: "b=", suffix: ""}, // new
 	}
 
 	merged := mergeMaskPatterns(primary, secondary)
@@ -2785,6 +2785,7 @@ func TestBuildLocalFilePlan_Modified(t *testing.T) {
 	localPath := base + "/compose.yml"
 	localContent := []byte("services:\n  web:\n    image: nginx:latest\n")
 	remoteContent := []byte("services:\n  web:\n    image: nginx:old\n")
+
 	mustWriteFile(t, localPath, localContent)
 
 	ctrl := gomock.NewController(t)
@@ -2854,7 +2855,7 @@ func TestMaskDiffWithPatterns_DiffWithoutTrailingNewline(t *testing.T) {
 	t.Parallel()
 
 	// 末尾に改行がないdiffでトリム分岐をカバーします。
-	diff := "+SECRET=old_value\n-SECRET=new_value"  // 末尾に改行なし
+	diff := "+SECRET=old_value\n-SECRET=new_value" // 末尾に改行なし
 	patterns := []maskPattern{{prefix: "SECRET=", suffix: ""}}
 
 	got := maskDiffWithPatterns(diff, patterns)

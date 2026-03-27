@@ -8,6 +8,8 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
+var errConnectionRefused = errors.New("connection refused")
+
 func TestParseSSHGOutput(t *testing.T) {
 	t.Parallel()
 
@@ -274,7 +276,7 @@ func TestResolveSSHConfigWithRunner_SSHError(t *testing.T) {
 
 	runner.EXPECT().
 		SSHOutput(gomock.Any()).
-		Return(nil, errors.New("connection refused"))
+		Return(nil, errConnectionRefused)
 
 	err := ResolveSSHConfigWithRunner(entry, "", "/tmp/hosts/server1", runner)
 	if err == nil {
