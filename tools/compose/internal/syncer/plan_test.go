@@ -2785,6 +2785,7 @@ func TestBuildLocalFilePlan_Modified(t *testing.T) {
 	localPath := base + "/compose.yml"
 	localContent := []byte("services:\n  web:\n    image: nginx:latest\n")
 	remoteContent := []byte("services:\n  web:\n    image: nginx:old\n")
+
 	mustWriteFile(t, localPath, localContent)
 
 	ctrl := gomock.NewController(t)

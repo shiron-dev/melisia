@@ -8,6 +8,12 @@ import (
 	"cmt/internal/config"
 )
 
+var (
+	errExitStatus1 = errors.New("exit status 1")
+	errSSHFailed   = errors.New("ssh failed")
+	errExit1       = errors.New("exit 1")
+)
+
 // mockCommandRunner は CommandRunner のテスト用実装です。
 type mockCommandRunner struct {
 	sshOutput []byte
@@ -222,13 +228,14 @@ func TestClient_MkdirAll(t *testing.T) {
 	t.Parallel()
 
 	runner := &mockCommandRunner{sshOutput: []byte(""), sshErr: nil}
-	client, err := NewClientWithRunner(config.HostEntry{Name: "s1", Host: "h1"}, runner)
 
+	client, err := NewClientWithRunner(config.HostEntry{Name: "s1", Host: "h1"}, runner)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if mkdirErr := client.MkdirAll("/srv/data"); mkdirErr != nil {
+	mkdirErr := client.MkdirAll("/srv/data")
+	if mkdirErr != nil {
 		t.Fatalf("MkdirAll: %v", mkdirErr)
 	}
 
@@ -242,13 +249,14 @@ func TestClient_Remove(t *testing.T) {
 	t.Parallel()
 
 	runner := &mockCommandRunner{sshOutput: []byte(""), sshErr: nil}
-	client, err := NewClientWithRunner(config.HostEntry{Name: "s1", Host: "h1"}, runner)
 
+	client, err := NewClientWithRunner(config.HostEntry{Name: "s1", Host: "h1"}, runner)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if removeErr := client.Remove("/srv/data/old.txt"); removeErr != nil {
+	removeErr := client.Remove("/srv/data/old.txt")
+	if removeErr != nil {
 		t.Fatalf("Remove: %v", removeErr)
 	}
 
@@ -262,8 +270,8 @@ func TestClient_ReadFile(t *testing.T) {
 	t.Parallel()
 
 	runner := &mockCommandRunner{sshOutput: []byte("file content"), sshErr: nil}
-	client, err := NewClientWithRunner(config.HostEntry{Name: "s1", Host: "h1"}, runner)
 
+	client, err := NewClientWithRunner(config.HostEntry{Name: "s1", Host: "h1"}, runner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -286,9 +294,9 @@ func TestClient_ReadFile(t *testing.T) {
 func TestClient_ReadFile_SSHError(t *testing.T) {
 	t.Parallel()
 
-	runner := &mockCommandRunner{sshOutput: []byte("ssh: connection refused"), sshErr: errors.New("exit status 1")}
-	client, err := NewClientWithRunner(config.HostEntry{Name: "s1", Host: "h1"}, runner)
+	runner := &mockCommandRunner{sshOutput: []byte("ssh: connection refused"), sshErr: errExitStatus1}
 
+	client, err := NewClientWithRunner(config.HostEntry{Name: "s1", Host: "h1"}, runner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -303,8 +311,8 @@ func TestClient_RunCommand_NoWorkdir(t *testing.T) {
 	t.Parallel()
 
 	runner := &mockCommandRunner{sshOutput: []byte("ok"), sshErr: nil}
-	client, err := NewClientWithRunner(config.HostEntry{Name: "s1", Host: "h1"}, runner)
 
+	client, err := NewClientWithRunner(config.HostEntry{Name: "s1", Host: "h1"}, runner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -329,8 +337,8 @@ func TestClient_RunCommand_WithWorkdir(t *testing.T) {
 	t.Parallel()
 
 	runner := &mockCommandRunner{sshOutput: []byte("done"), sshErr: nil}
-	client, err := NewClientWithRunner(config.HostEntry{Name: "s1", Host: "h1"}, runner)
 
+	client, err := NewClientWithRunner(config.HostEntry{Name: "s1", Host: "h1"}, runner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -351,8 +359,8 @@ func TestClient_ListFilesRecursive(t *testing.T) {
 
 	findOutput := "/srv/grafana/compose.yml\n/srv/grafana/config/grafana.ini\n"
 	runner := &mockCommandRunner{sshOutput: []byte(findOutput), sshErr: nil}
-	client, err := NewClientWithRunner(config.HostEntry{Name: "s1", Host: "h1"}, runner)
 
+	client, err := NewClientWithRunner(config.HostEntry{Name: "s1", Host: "h1"}, runner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -379,8 +387,8 @@ func TestClient_ListFilesRecursive_Empty(t *testing.T) {
 	t.Parallel()
 
 	runner := &mockCommandRunner{sshOutput: []byte(""), sshErr: nil}
-	client, err := NewClientWithRunner(config.HostEntry{Name: "s1", Host: "h1"}, runner)
 
+	client, err := NewClientWithRunner(config.HostEntry{Name: "s1", Host: "h1"}, runner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -399,13 +407,14 @@ func TestClient_Close(t *testing.T) {
 	t.Parallel()
 
 	runner := &mockCommandRunner{}
-	client, err := NewClientWithRunner(config.HostEntry{Name: "s1", Host: "h1"}, runner)
 
+	client, err := NewClientWithRunner(config.HostEntry{Name: "s1", Host: "h1"}, runner)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if closeErr := client.Close(); closeErr != nil {
+	closeErr := client.Close()
+	if closeErr != nil {
 		t.Errorf("Close() = %v, want nil", closeErr)
 	}
 }
@@ -433,8 +442,8 @@ func TestClient_Stat_Exists(t *testing.T) {
 	t.Parallel()
 
 	runner := &mockCommandRunner{sshOutput: []byte(""), sshErr: nil}
-	client, err := NewClientWithRunner(config.HostEntry{Name: "s1", Host: "h1"}, runner)
 
+	client, err := NewClientWithRunner(config.HostEntry{Name: "s1", Host: "h1"}, runner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -456,9 +465,9 @@ func TestClient_Stat_Exists(t *testing.T) {
 func TestClient_Stat_UnknownError(t *testing.T) {
 	t.Parallel()
 
-	runner := &mockCommandRunner{sshOutput: []byte("connection refused"), sshErr: errors.New("ssh failed")}
-	client, err := NewClientWithRunner(config.HostEntry{Name: "s1", Host: "h1"}, runner)
+	runner := &mockCommandRunner{sshOutput: []byte("connection refused"), sshErr: errSSHFailed}
 
+	client, err := NewClientWithRunner(config.HostEntry{Name: "s1", Host: "h1"}, runner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -481,8 +490,8 @@ func TestClient_StatDirMetadata(t *testing.T) {
 	t.Parallel()
 
 	runner := &mockCommandRunner{sshOutput: []byte("755 0 0 root root\n"), sshErr: nil}
-	client, err := NewClientWithRunner(config.HostEntry{Name: "s1", Host: "h1"}, runner)
 
+	client, err := NewClientWithRunner(config.HostEntry{Name: "s1", Host: "h1"}, runner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -504,9 +513,9 @@ func TestClient_StatDirMetadata(t *testing.T) {
 func TestClient_StatDirMetadata_Error(t *testing.T) {
 	t.Parallel()
 
-	runner := &mockCommandRunner{sshOutput: []byte("stat: cannot stat"), sshErr: errors.New("exit 1")}
-	client, err := NewClientWithRunner(config.HostEntry{Name: "s1", Host: "h1"}, runner)
+	runner := &mockCommandRunner{sshOutput: []byte("stat: cannot stat"), sshErr: errExit1}
 
+	client, err := NewClientWithRunner(config.HostEntry{Name: "s1", Host: "h1"}, runner)
 	if err != nil {
 		t.Fatal(err)
 	}

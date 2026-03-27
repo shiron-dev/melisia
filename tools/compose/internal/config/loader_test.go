@@ -1096,6 +1096,7 @@ func TestDirConfig_UnmarshalYAML_SequenceNode(t *testing.T) {
 	}
 
 	var w wrapper
+
 	yamlInput := "dir:\n  - item1\n  - item2\n"
 
 	err := unmarshalYAML([]byte(yamlInput), &w)
@@ -1116,7 +1117,9 @@ func TestLoadHostConfig_Dirs_BecomeUser_NestedMapping(t *testing.T) {
 	base := t.TempDir()
 
 	hostDir := filepath.Join(base, "hosts", "server1")
-	if err := os.MkdirAll(hostDir, 0750); err != nil {
+
+	err := os.MkdirAll(hostDir, 0750)
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -1132,7 +1135,9 @@ projects:
           become: true
           becomeUser: deploy
 `
-	if err := os.WriteFile(filepath.Join(hostDir, "host.yml"), []byte(hostYAML), 0600); err != nil {
+
+	err = os.WriteFile(filepath.Join(hostDir, "host.yml"), []byte(hostYAML), 0600)
+	if err != nil {
 		t.Fatal(err)
 	}
 
