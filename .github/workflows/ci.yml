@@ -261,5 +261,5 @@ jobs:
         uses: trufflesecurity/trufflehog@6c64db94d5b2e09d7e0948fb6bd3166cc6fffbc7 # v3.94.0
         with:
           path: ./
-          base: ${{ github.event.pull_request.base.ref || github.event.repository.default_branch }}
-          head: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          base: ${{ github.event.pull_request.base.sha || github.event.before }}
+          head: ${{ github.event.pull_request.head.sha || github.sha }}
