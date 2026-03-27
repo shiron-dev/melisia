@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"path/filepath"
 	"testing"
 
@@ -261,4 +262,96 @@ func TestResolveSSHConfigWithRunner(t *testing.T) {
 	if entry.IdentityAgent != "/tmp/agent.sock" {
 		t.Errorf("IdentityAgent = %q", entry.IdentityAgent)
 	}
+}
+
+func TestResolveSSHConfigWithRunner_SSHError(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	runner := NewMockSSHConfigRunner(ctrl)
+
+	entry := &HostEntry{Name: "server1", Host: "server1-alias"}
+
+	runner.EXPECT().
+		SSHOutput(gomock.Any()).
+		Return(nil, errors.New("connection refused"))
+
+	err := ResolveSSHConfigWithRunner(entry, "", "/tmp/hosts/server1", runner)
+	if err == nil {
+		t.Fatal("expected error when SSH fails")
+	}
+}
+
+func TestResolveSSHConfigWithRunner_NoSshConfig(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	runner := NewMockSSHConfigRunner(ctrl)
+
+	entry := &HostEntry{Name: "server1", Host: "server1-alias", User: "deploy", Port: 22}
+
+	// sshConfigPath が空の場合、-F オプションなしで ssh -G が呼ばれます。
+	runner.EXPECT().
+		SSHOutput("-G", "-l", "deploy", "-p", "22", "server1-alias").
+		Return([]byte("hostname 10.0.0.1\nport 22\nuser deploy\n"), nil)
+
+	err := ResolveSSHConfigWithRunner(entry, "", "/tmp/hosts/server1", runner)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if entry.Host != "10.0.0.1" {
+		t.Errorf("Host = %q, want 10.0.0.1", entry.Host)
+	}
+}
+
+func TestBuildSSHGArgs_AbsoluteSshConfigPath(t *testing.T) {
+	t.Parallel()
+
+	entry := &HostEntry{Host: "server1"}
+	// 絶対パスの sshConfigPath は Join されず、そのまま使われます。
+	args := buildSSHGArgs(entry, "/etc/ssh/custom_config", "/tmp/base/hosts/server1")
+
+	if !containsSSHSeq(args, "-F", "/etc/ssh/custom_config") {
+		t.Errorf("args should contain -F /etc/ssh/custom_config, got %v", args)
+	}
+}
+
+func TestBuildSSHGArgs_EmptySshConfigPath(t *testing.T) {
+	t.Parallel()
+
+	entry := &HostEntry{Host: "server1", User: "deploy"}
+	args := buildSSHGArgs(entry, "", "/tmp/base/hosts/server1")
+
+	for _, arg := range args {
+		if arg == "-F" {
+			t.Errorf("args should not contain -F when sshConfigPath is empty, got %v", args)
+		}
+	}
+
+	if !containsSSHSeq(args, "-l", "deploy") {
+		t.Errorf("args should contain -l deploy, got %v", args)
+	}
+}
+
+func TestBuildSSHGArgs_WithPort(t *testing.T) {
+	t.Parallel()
+
+	entry := &HostEntry{Host: "server1", Port: 2222}
+	args := buildSSHGArgs(entry, "", "/tmp/base/hosts/server1")
+
+	if !containsSSHSeq(args, "-p", "2222") {
+		t.Errorf("args should contain -p 2222, got %v", args)
+	}
+}
+
+// containsSSHSeq は args の中に key, val の連続ペアが含まれるかを返します。
+func containsSSHSeq(args []string, key, val string) bool {
+	for i := range args {
+		if args[i] == key && i+1 < len(args) && args[i+1] == val {
+			return true
+		}
+	}
+
+	return false
 }
