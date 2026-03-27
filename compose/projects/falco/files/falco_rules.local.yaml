@@ -1,0 +1,3 @@
+# Local Falco rule customizations
+# Override or extend default rules from /etc/falco/falco_rules.yaml
+# See https://falco.org/docs/rules/overriding/

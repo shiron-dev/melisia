@@ -62,6 +62,8 @@ projects:
         group: 0
         become: true
 
+  falco:
+
   discord-webhook:
 
   snipeit:
