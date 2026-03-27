@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestLoadCmtConfig(t *testing.T) {
@@ -1052,4 +1054,144 @@ func TestResolveProjectConfig_Dirs(t *testing.T) {
 	if resolved.Dirs[1].Owner != "app" {
 		t.Errorf("Dirs[1].Owner = %q", resolved.Dirs[1].Owner)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// resolveFromDefaults - nil branch
+// ---------------------------------------------------------------------------
+
+func TestResolveProjectConfig_NilDefaults(t *testing.T) {
+	t.Parallel()
+
+	// defaults が nil のとき、空の ResolvedProjectConfig が返ることを確認します。
+	resolved := ResolveProjectConfig(nil, nil, "grafana")
+
+	if resolved.RemotePath != "" {
+		t.Errorf("RemotePath = %q, want empty", resolved.RemotePath)
+	}
+
+	if resolved.PostSyncCommand != "" {
+		t.Errorf("PostSyncCommand = %q, want empty", resolved.PostSyncCommand)
+	}
+
+	if resolved.ComposeAction != ComposeActionUp {
+		t.Errorf("ComposeAction = %q, want %q (default)", resolved.ComposeAction, ComposeActionUp)
+	}
+
+	if resolved.RemoveOrphans {
+		t.Error("RemoveOrphans should be false")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// DirConfig.UnmarshalYAML - SequenceNode (defensive branch)
+// ---------------------------------------------------------------------------
+
+func TestDirConfig_UnmarshalYAML_SequenceNode(t *testing.T) {
+	t.Parallel()
+
+	// sequence型のYAMLをDirConfigにUnmarshalしようとするとエラーになることを確認します。
+	type wrapper struct {
+		Dir DirConfig `yaml:"dir"`
+	}
+
+	var w wrapper
+	yamlInput := "dir:\n  - item1\n  - item2\n"
+
+	err := unmarshalYAML([]byte(yamlInput), &w)
+	if err == nil {
+		t.Error("expected error when unmarshaling sequence node into DirConfig")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// mergeNonEmptyDirConfigAttrs - BecomeUser via nested mapping form
+// ---------------------------------------------------------------------------
+
+func TestLoadHostConfig_Dirs_BecomeUser_NestedMapping(t *testing.T) {
+	t.Parallel()
+
+	// path-key形式でネストされたmapping値の中に becomeUser を含む場合のテストです。
+	// この形式は mergeNonEmptyDirConfigAttrs の BecomeUser 分岐をカバーします。
+	base := t.TempDir()
+
+	hostDir := filepath.Join(base, "hosts", "server1")
+	if err := os.MkdirAll(hostDir, 0750); err != nil {
+		t.Fatal(err)
+	}
+
+	// path-key形式: パスをキーとし、attrs をネストされたmappingで指定します。
+	hostYAML := `
+projects:
+  app:
+    dirs:
+      - /srv/data:
+          permission: "0750"
+          owner: app
+          group: app
+          become: true
+          becomeUser: deploy
+`
+	if err := os.WriteFile(filepath.Join(hostDir, "host.yml"), []byte(hostYAML), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadHostConfig(base, "server1")
+	if err != nil {
+		t.Fatalf("LoadHostConfig: %v", err)
+	}
+
+	proj := cfg.Projects["app"]
+	if proj == nil {
+		t.Fatal("project 'app' not found")
+	}
+
+	if len(proj.Dirs) != 1 {
+		t.Fatalf("Dirs = %d, want 1", len(proj.Dirs))
+	}
+
+	d := proj.Dirs[0]
+
+	if d.Path != "/srv/data" {
+		t.Errorf("Path = %q, want %q", d.Path, "/srv/data")
+	}
+
+	if !d.Become {
+		t.Error("Become should be true")
+	}
+
+	if d.BecomeUser != "deploy" {
+		t.Errorf("BecomeUser = %q, want %q", d.BecomeUser, "deploy")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// applyHostOverrides - TemplateVarSources branch
+// ---------------------------------------------------------------------------
+
+func TestResolveProjectConfig_HostTemplateVarSources(t *testing.T) {
+	t.Parallel()
+
+	defaults := &SyncDefaults{RemotePath: "/opt"}
+	hostCfg := &HostConfig{
+		TemplateVarSources: []string{"*.env", "secrets.yml"},
+	}
+
+	resolved := ResolveProjectConfig(defaults, hostCfg, "grafana")
+
+	if len(resolved.TemplateVarSources) != 2 {
+		t.Fatalf("TemplateVarSources = %v, want 2 sources", resolved.TemplateVarSources)
+	}
+
+	if resolved.TemplateVarSources[0] != "*.env" {
+		t.Errorf("TemplateVarSources[0] = %q, want %q", resolved.TemplateVarSources[0], "*.env")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// helper for YAML unmarshaling in tests
+// ---------------------------------------------------------------------------
+
+func unmarshalYAML(data []byte, dst any) error {
+	return yaml.Unmarshal(data, dst)
 }

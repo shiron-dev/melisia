@@ -2364,3 +2364,753 @@ func TestBuildDirPlans_Recursive(t *testing.T) {
 		t.Errorf("Owner = %q, Group = %q", plans[0].Owner, plans[0].Group)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// buildDeleteFilePlans
+// ---------------------------------------------------------------------------
+
+func TestBuildDeleteFilePlans_NilManifest(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client := remote.NewMockRemoteClient(ctrl)
+
+	plans := buildDeleteFilePlans(nil, map[string]bool{}, "/srv/grafana", client)
+	if len(plans) != 0 {
+		t.Errorf("expected no plans for nil manifest, got %d", len(plans))
+	}
+}
+
+func TestBuildDeleteFilePlans_ManagedFileGone(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client := remote.NewMockRemoteClient(ctrl)
+
+	manifest := &Manifest{
+		ManagedFiles: []string{"old.txt", "compose.yml"},
+	}
+	// old.txt はローカルにないが compose.yml は残っている
+	localSet := map[string]bool{"compose.yml": true}
+
+	client.EXPECT().ReadFile("/srv/grafana/old.txt").Return([]byte("old content"), nil)
+
+	plans := buildDeleteFilePlans(manifest, localSet, "/srv/grafana", client)
+
+	if len(plans) != 1 {
+		t.Fatalf("expected 1 delete plan, got %d", len(plans))
+	}
+
+	if plans[0].RelativePath != "old.txt" {
+		t.Errorf("RelativePath = %q, want %q", plans[0].RelativePath, "old.txt")
+	}
+
+	if plans[0].Action != ActionDelete {
+		t.Errorf("Action = %v, want ActionDelete", plans[0].Action)
+	}
+
+	if string(plans[0].RemoteData) != "old content" {
+		t.Errorf("RemoteData = %q, want %q", string(plans[0].RemoteData), "old content")
+	}
+}
+
+func TestBuildDeleteFilePlans_ManifestFileExcluded(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client := remote.NewMockRemoteClient(ctrl)
+
+	// manifestFile自体はmanifest.ManagedFilesに入ることはないが、
+	// 念のため含まれていても削除対象にならないことを確認します。
+	manifest := &Manifest{
+		ManagedFiles: []string{manifestFile},
+	}
+
+	plans := buildDeleteFilePlans(manifest, map[string]bool{}, "/srv/grafana", client)
+	if len(plans) != 0 {
+		t.Errorf("manifest file should not appear as delete plan, got %d plans", len(plans))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// readManifest
+// ---------------------------------------------------------------------------
+
+func TestReadManifest_NotFound(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client := remote.NewMockRemoteClient(ctrl)
+
+	client.EXPECT().ReadFile("/srv/grafana/.cmt-manifest.json").Return(nil, errTestManifestNotFound)
+
+	manifest := readManifest(client, "/srv/grafana")
+	if manifest != nil {
+		t.Errorf("expected nil manifest when file not found, got %+v", manifest)
+	}
+}
+
+func TestReadManifest_InvalidJSON(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client := remote.NewMockRemoteClient(ctrl)
+
+	client.EXPECT().ReadFile("/srv/grafana/.cmt-manifest.json").Return([]byte("not json {{{"), nil)
+
+	manifest := readManifest(client, "/srv/grafana")
+	if manifest != nil {
+		t.Errorf("expected nil manifest on invalid JSON, got %+v", manifest)
+	}
+}
+
+func TestReadManifest_Valid(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client := remote.NewMockRemoteClient(ctrl)
+
+	jsonData := `{"managedFiles":["compose.yml","config.ini"]}`
+	client.EXPECT().ReadFile("/srv/grafana/.cmt-manifest.json").Return([]byte(jsonData), nil)
+
+	manifest := readManifest(client, "/srv/grafana")
+	if manifest == nil {
+		t.Fatal("expected non-nil manifest")
+	}
+
+	if len(manifest.ManagedFiles) != 2 {
+		t.Errorf("ManagedFiles len = %d, want 2", len(manifest.ManagedFiles))
+	}
+
+	if manifest.ManagedFiles[0] != "compose.yml" {
+		t.Errorf("ManagedFiles[0] = %q, want %q", manifest.ManagedFiles[0], "compose.yml")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// maskHintsFromManifest
+// ---------------------------------------------------------------------------
+
+func TestMaskHintsFromManifest_NilManifest(t *testing.T) {
+	t.Parallel()
+
+	hints := maskHintsFromManifest(nil, "compose.yml")
+	if hints != nil {
+		t.Errorf("expected nil for nil manifest, got %v", hints)
+	}
+}
+
+func TestMaskHintsFromManifest_NoMaskHints(t *testing.T) {
+	t.Parallel()
+
+	manifest := &Manifest{ManagedFiles: []string{"compose.yml"}}
+	hints := maskHintsFromManifest(manifest, "compose.yml")
+
+	if hints != nil {
+		t.Errorf("expected nil for manifest with no MaskHints, got %v", hints)
+	}
+}
+
+func TestMaskHintsFromManifest_KeyNotFound(t *testing.T) {
+	t.Parallel()
+
+	manifest := &Manifest{
+		ManagedFiles: []string{"compose.yml"},
+		MaskHints: map[string][]MaskHint{
+			"other.yml": {{Prefix: "pass=", Suffix: ""}},
+		},
+	}
+
+	hints := maskHintsFromManifest(manifest, "compose.yml")
+	if hints != nil {
+		t.Errorf("expected nil when key not found, got %v", hints)
+	}
+}
+
+func TestMaskHintsFromManifest_KeyFound(t *testing.T) {
+	t.Parallel()
+
+	manifest := &Manifest{
+		ManagedFiles: []string{"compose.yml"},
+		MaskHints: map[string][]MaskHint{
+			"compose.yml": {{Prefix: "PASSWORD=", Suffix: ""}},
+		},
+	}
+
+	hints := maskHintsFromManifest(manifest, "compose.yml")
+	if len(hints) != 1 {
+		t.Fatalf("expected 1 hint, got %d", len(hints))
+	}
+
+	if hints[0].Prefix != "PASSWORD=" {
+		t.Errorf("Prefix = %q, want %q", hints[0].Prefix, "PASSWORD=")
+	}
+
+	// 元のスライスとは独立したコピーであることを確認します。
+	hints[0].Prefix = "MODIFIED="
+	if manifest.MaskHints["compose.yml"][0].Prefix != "PASSWORD=" {
+		t.Error("maskHintsFromManifest should return a copy, not a reference")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// maskHintsFromPatterns
+// ---------------------------------------------------------------------------
+
+func TestMaskHintsFromPatterns_Empty(t *testing.T) {
+	t.Parallel()
+
+	hints := maskHintsFromPatterns(nil)
+	if hints != nil {
+		t.Errorf("expected nil for empty patterns, got %v", hints)
+	}
+
+	hints = maskHintsFromPatterns([]maskPattern{})
+	if hints != nil {
+		t.Errorf("expected nil for empty slice, got %v", hints)
+	}
+}
+
+func TestMaskHintsFromPatterns_NonEmpty(t *testing.T) {
+	t.Parallel()
+
+	patterns := []maskPattern{
+		{prefix: "password=", suffix: ""},
+		{prefix: "key=", suffix: " #secret"},
+	}
+
+	hints := maskHintsFromPatterns(patterns)
+	if len(hints) != 2 {
+		t.Fatalf("expected 2 hints, got %d", len(hints))
+	}
+
+	if hints[0].Prefix != "password=" {
+		t.Errorf("hints[0].Prefix = %q, want %q", hints[0].Prefix, "password=")
+	}
+
+	if hints[1].Suffix != " #secret" {
+		t.Errorf("hints[1].Suffix = %q, want %q", hints[1].Suffix, " #secret")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// mergeMaskPatterns
+// ---------------------------------------------------------------------------
+
+func TestMergeMaskPatterns_EmptyPrimary(t *testing.T) {
+	t.Parallel()
+
+	secondary := []maskPattern{{prefix: "a=", suffix: ""}}
+	merged := mergeMaskPatterns(nil, secondary)
+
+	if len(merged) != 1 {
+		t.Fatalf("expected 1 pattern, got %d", len(merged))
+	}
+
+	if merged[0].prefix != "a=" {
+		t.Errorf("merged[0].prefix = %q, want %q", merged[0].prefix, "a=")
+	}
+}
+
+func TestMergeMaskPatterns_EmptySecondary(t *testing.T) {
+	t.Parallel()
+
+	primary := []maskPattern{{prefix: "b=", suffix: ""}}
+	merged := mergeMaskPatterns(primary, nil)
+
+	if len(merged) != 1 {
+		t.Fatalf("expected 1 pattern, got %d", len(merged))
+	}
+
+	if merged[0].prefix != "b=" {
+		t.Errorf("merged[0].prefix = %q, want %q", merged[0].prefix, "b=")
+	}
+}
+
+func TestMergeMaskPatterns_DeduplicatesSamePattern(t *testing.T) {
+	t.Parallel()
+
+	primary := []maskPattern{{prefix: "p=", suffix: ""}}
+	secondary := []maskPattern{{prefix: "p=", suffix: ""}}  // 同じパターン
+
+	merged := mergeMaskPatterns(primary, secondary)
+	if len(merged) != 1 {
+		t.Errorf("duplicate patterns should be deduplicated, got %d patterns", len(merged))
+	}
+}
+
+func TestMergeMaskPatterns_MergesDistinct(t *testing.T) {
+	t.Parallel()
+
+	primary := []maskPattern{{prefix: "a=", suffix: ""}}
+	secondary := []maskPattern{
+		{prefix: "a=", suffix: ""},  // duplicate → skip
+		{prefix: "b=", suffix: ""},  // new
+	}
+
+	merged := mergeMaskPatterns(primary, secondary)
+	if len(merged) != 2 {
+		t.Errorf("expected 2 merged patterns, got %d: %v", len(merged), merged)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// projectFilesOrDirsChanged
+// ---------------------------------------------------------------------------
+
+func TestProjectFilesOrDirsChanged_AllUnchanged(t *testing.T) {
+	t.Parallel()
+
+	filePlans := []FilePlan{
+		{Action: ActionUnchanged},
+		{Action: ActionUnchanged},
+	}
+	dirPlans := []DirPlan{
+		{Action: ActionUnchanged},
+	}
+
+	if projectFilesOrDirsChanged(filePlans, dirPlans) {
+		t.Error("expected false when all unchanged")
+	}
+}
+
+func TestProjectFilesOrDirsChanged_FileChanged(t *testing.T) {
+	t.Parallel()
+
+	filePlans := []FilePlan{
+		{Action: ActionUnchanged},
+		{Action: ActionModify},
+	}
+	dirPlans := []DirPlan{}
+
+	if !projectFilesOrDirsChanged(filePlans, dirPlans) {
+		t.Error("expected true when a file is modified")
+	}
+}
+
+func TestProjectFilesOrDirsChanged_FileAdded(t *testing.T) {
+	t.Parallel()
+
+	filePlans := []FilePlan{{Action: ActionAdd}}
+	dirPlans := []DirPlan{}
+
+	if !projectFilesOrDirsChanged(filePlans, dirPlans) {
+		t.Error("expected true when a file is added")
+	}
+}
+
+func TestProjectFilesOrDirsChanged_DirChanged(t *testing.T) {
+	t.Parallel()
+
+	filePlans := []FilePlan{{Action: ActionUnchanged}}
+	dirPlans := []DirPlan{{Action: ActionAdd}}
+
+	if !projectFilesOrDirsChanged(filePlans, dirPlans) {
+		t.Error("expected true when a dir is added")
+	}
+}
+
+func TestProjectFilesOrDirsChanged_Empty(t *testing.T) {
+	t.Parallel()
+
+	if projectFilesOrDirsChanged(nil, nil) {
+		t.Error("expected false for empty slices")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// buildLocalFilePlan
+// ---------------------------------------------------------------------------
+
+func TestBuildLocalFilePlan_NewFile(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	localPath := base + "/compose.yml"
+	mustWriteFile(t, localPath, []byte("services: {}"))
+
+	ctrl := gomock.NewController(t)
+	client := remote.NewMockRemoteClient(ctrl)
+	client.EXPECT().ReadFile("/srv/grafana/compose.yml").Return(nil, errTestRemoteFileMissing)
+
+	plan, err := buildLocalFilePlan(
+		"compose.yml", localPath, "/srv/grafana", client, nil, nil,
+	)
+	if err != nil {
+		t.Fatalf("buildLocalFilePlan: %v", err)
+	}
+
+	if plan.Action != ActionAdd {
+		t.Errorf("Action = %v, want ActionAdd", plan.Action)
+	}
+
+	if string(plan.LocalData) != "services: {}" {
+		t.Errorf("LocalData = %q, want %q", string(plan.LocalData), "services: {}")
+	}
+
+	if plan.RemotePath != "/srv/grafana/compose.yml" {
+		t.Errorf("RemotePath = %q, want %q", plan.RemotePath, "/srv/grafana/compose.yml")
+	}
+}
+
+func TestBuildLocalFilePlan_Unchanged(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	localPath := base + "/compose.yml"
+	content := []byte("services: {}")
+	mustWriteFile(t, localPath, content)
+
+	ctrl := gomock.NewController(t)
+	client := remote.NewMockRemoteClient(ctrl)
+	// リモートも同じ内容
+	client.EXPECT().ReadFile("/srv/grafana/compose.yml").Return(content, nil)
+
+	plan, err := buildLocalFilePlan(
+		"compose.yml", localPath, "/srv/grafana", client, nil, nil,
+	)
+	if err != nil {
+		t.Fatalf("buildLocalFilePlan: %v", err)
+	}
+
+	if plan.Action != ActionUnchanged {
+		t.Errorf("Action = %v, want ActionUnchanged", plan.Action)
+	}
+}
+
+func TestBuildLocalFilePlan_Modified(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	localPath := base + "/compose.yml"
+	localContent := []byte("services:\n  web:\n    image: nginx:latest\n")
+	remoteContent := []byte("services:\n  web:\n    image: nginx:old\n")
+	mustWriteFile(t, localPath, localContent)
+
+	ctrl := gomock.NewController(t)
+	client := remote.NewMockRemoteClient(ctrl)
+	client.EXPECT().ReadFile("/srv/grafana/compose.yml").Return(remoteContent, nil)
+
+	plan, err := buildLocalFilePlan(
+		"compose.yml", localPath, "/srv/grafana", client, nil, nil,
+	)
+	if err != nil {
+		t.Fatalf("buildLocalFilePlan: %v", err)
+	}
+
+	if plan.Action != ActionModify {
+		t.Errorf("Action = %v, want ActionModify", plan.Action)
+	}
+
+	if plan.Diff == "" {
+		t.Error("Diff should not be empty for modified file")
+	}
+
+	if !strings.Contains(plan.Diff, "-") || !strings.Contains(plan.Diff, "+") {
+		t.Errorf("Diff should contain +/- markers, got: %s", plan.Diff)
+	}
+}
+
+func TestBuildLocalFilePlan_WithMaskHints(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	localPath := base + "/config.env"
+	content := []byte("DB_PASSWORD=supersecret\n")
+	mustWriteFile(t, localPath, content)
+
+	ctrl := gomock.NewController(t)
+	client := remote.NewMockRemoteClient(ctrl)
+	client.EXPECT().ReadFile("/srv/app/config.env").Return([]byte("DB_PASSWORD=old_secret\n"), nil)
+
+	hints := []MaskHint{{Prefix: "DB_PASSWORD=", Suffix: ""}}
+
+	plan, err := buildLocalFilePlan(
+		"config.env", localPath, "/srv/app", client, nil, hints,
+	)
+	if err != nil {
+		t.Fatalf("buildLocalFilePlan: %v", err)
+	}
+
+	if plan.Action != ActionModify {
+		t.Errorf("Action = %v, want ActionModify", plan.Action)
+	}
+
+	// マスクヒントが結果に保存されていることを確認します。
+	if len(plan.MaskHints) == 0 {
+		t.Error("MaskHints should be propagated to the plan")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// buildComposePlan - 未テストの分岐
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// maskDiffWithPatterns - trim branch (diff without trailing newline)
+// ---------------------------------------------------------------------------
+
+func TestMaskDiffWithPatterns_DiffWithoutTrailingNewline(t *testing.T) {
+	t.Parallel()
+
+	// 末尾に改行がないdiffでトリム分岐をカバーします。
+	diff := "+SECRET=old_value\n-SECRET=new_value"  // 末尾に改行なし
+	patterns := []maskPattern{{prefix: "SECRET=", suffix: ""}}
+
+	got := maskDiffWithPatterns(diff, patterns)
+
+	// マスクが適用されていることを確認します。
+	if strings.Contains(got, "old_value") || strings.Contains(got, "new_value") {
+		t.Errorf("secrets should be masked, got: %s", got)
+	}
+
+	if !strings.Contains(got, maskPlaceholder) {
+		t.Errorf("result should contain mask placeholder, got: %s", got)
+	}
+
+	// 末尾に余分な改行がないことを確認します。
+	if strings.HasSuffix(got, "\n") {
+		t.Errorf("result should not end with newline when input doesn't, got: %q", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// matchesPattern - suffix mismatch branch
+// ---------------------------------------------------------------------------
+
+func TestMatchesPattern_SuffixMismatch(t *testing.T) {
+	t.Parallel()
+
+	pat := maskPattern{prefix: `pw = """`, suffix: `"""`}
+
+	// suffixが一致しない場合はfalseを返すべきです。
+	if matchesPattern(`pw = """secret`, pat) {
+		t.Error("matchesPattern should return false when suffix doesn't match")
+	}
+}
+
+func TestMatchesPattern_NoSuffix(t *testing.T) {
+	t.Parallel()
+
+	pat := maskPattern{prefix: "SECRET=", suffix: ""}
+
+	// suffixなしで一致する場合はtrueを返すべきです。
+	if !matchesPattern("SECRET=abc123", pat) {
+		t.Error("matchesPattern should return true when prefix matches and no suffix required")
+	}
+}
+
+// ---------------------------------------------------------------------------
+
+func TestBuildComposePlan_DownWithRunningServices(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client := remote.NewMockRemoteClient(ctrl)
+
+	client.EXPECT().
+		RunCommand("/srv/grafana", "docker compose ps --services --filter status=running 2>/dev/null").
+		Return("grafana\ninfluxdb\n", nil)
+
+	plan := buildComposePlan(config.ComposeActionDown, "/srv/grafana", client, false)
+	if plan == nil {
+		t.Fatal("plan should not be nil")
+	}
+
+	if plan.ActionType != ComposeStopServices {
+		t.Errorf("ActionType = %v, want ComposeStopServices", plan.ActionType)
+	}
+
+	if len(plan.Services) != 2 {
+		t.Errorf("Services = %v, want 2 services", plan.Services)
+	}
+}
+
+func TestBuildComposePlan_DownWithNoRunningServices(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client := remote.NewMockRemoteClient(ctrl)
+
+	client.EXPECT().
+		RunCommand("/srv/grafana", "docker compose ps --services --filter status=running 2>/dev/null").
+		Return("", nil)
+
+	plan := buildComposePlan(config.ComposeActionDown, "/srv/grafana", client, false)
+	if plan == nil {
+		t.Fatal("plan should not be nil")
+	}
+
+	if plan.ActionType != ComposeNoChange {
+		t.Errorf("ActionType = %v, want ComposeNoChange", plan.ActionType)
+	}
+
+	if plan.HasChanges() {
+		t.Error("down with no running services should not have changes")
+	}
+}
+
+func TestBuildComposePlan_UpWithSomeServicesStopped(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client := remote.NewMockRemoteClient(ctrl)
+
+	// defined: web, db, cache / running: web, db → cache が止まっている
+	client.EXPECT().
+		RunCommand("/srv/app", "docker compose config --services 2>/dev/null").
+		Return("web\ndb\ncache\n", nil)
+	client.EXPECT().
+		RunCommand("/srv/app", "docker compose ps --services --filter status=running 2>/dev/null").
+		Return("web\ndb\n", nil)
+
+	plan := buildComposePlan(config.ComposeActionUp, "/srv/app", client, false)
+	if plan == nil {
+		t.Fatal("plan should not be nil")
+	}
+
+	if plan.ActionType != ComposeStartServices {
+		t.Errorf("ActionType = %v, want ComposeStartServices", plan.ActionType)
+	}
+
+	if len(plan.Services) != 1 || plan.Services[0] != "cache" {
+		t.Errorf("Services = %v, want [cache]", plan.Services)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// printFileDiff
+// ---------------------------------------------------------------------------
+
+func TestPrintFileDiff_Empty(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	printFileDiff(&buf, outputStyle{}, "")
+
+	if buf.Len() != 0 {
+		t.Errorf("expected empty output for empty diff, got %q", buf.String())
+	}
+}
+
+func TestPrintFileDiff_NonEmpty(t *testing.T) {
+	t.Parallel()
+
+	diff := "--- a.yml (remote)\n+++ a.yml (local)\n@@ -1 +1 @@\n-old\n+new\n"
+
+	var buf bytes.Buffer
+	printFileDiff(&buf, outputStyle{enabled: false}, diff)
+
+	output := buf.String()
+	if !strings.Contains(output, "old") {
+		t.Errorf("output should contain 'old', got %q", output)
+	}
+
+	if !strings.Contains(output, "new") {
+		t.Errorf("output should contain 'new', got %q", output)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// outputStyle.diffLine
+// ---------------------------------------------------------------------------
+
+func TestOutputStyle_DiffLine(t *testing.T) {
+	t.Parallel()
+
+	style := outputStyle{enabled: false}
+
+	tests := []struct {
+		line string
+	}{
+		{"--- a.yml (remote)"},
+		{"+++ a.yml (local)"},
+		{"@@ -1 +1 @@"},
+		{"+added line"},
+		{"-removed line"},
+		{" context line"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.line, func(t *testing.T) {
+			t.Parallel()
+
+			// カラーなしモードではそのまま返る
+			got := style.diffLine(tt.line)
+			if got != tt.line {
+				t.Errorf("diffLine(%q) = %q, want same (no color)", tt.line, got)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// shouldUseColor
+// ---------------------------------------------------------------------------
+
+func TestShouldUseColor_NoColor(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("CLICOLOR_FORCE", "")
+
+	if shouldUseColor(&bytes.Buffer{}) {
+		t.Error("shouldUseColor should return false when NO_COLOR is set")
+	}
+}
+
+func TestShouldUseColor_CLIColorDisabled(t *testing.T) {
+	t.Setenv("NO_COLOR", "")
+	t.Setenv("CLICOLOR", "0")
+	t.Setenv("CLICOLOR_FORCE", "")
+
+	if shouldUseColor(&bytes.Buffer{}) {
+		t.Error("shouldUseColor should return false when CLICOLOR=0")
+	}
+}
+
+func TestShouldUseColor_CLIColorForce(t *testing.T) {
+	t.Setenv("NO_COLOR", "")
+	t.Setenv("CLICOLOR", "")
+	t.Setenv("CLICOLOR_FORCE", "1")
+
+	if !shouldUseColor(&bytes.Buffer{}) {
+		t.Error("shouldUseColor should return true when CLICOLOR_FORCE is set")
+	}
+}
+
+func TestShouldUseColor_NonFdWriter(t *testing.T) {
+	t.Setenv("NO_COLOR", "")
+	t.Setenv("CLICOLOR", "")
+	t.Setenv("CLICOLOR_FORCE", "")
+
+	// bytes.Buffer は Fd() を持たないので false になる
+	if shouldUseColor(&bytes.Buffer{}) {
+		t.Error("shouldUseColor should return false for non-fd writer")
+	}
+}
+
+// ---------------------------------------------------------------------------
+
+func TestBuildComposePlan_UpNoServicesDefinedAndNoFileChanges(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client := remote.NewMockRemoteClient(ctrl)
+
+	// defined services がない場合は recreate せず ComposeNoChange になる
+	client.EXPECT().
+		RunCommand("/srv/app", "docker compose config --services 2>/dev/null").
+		Return("", nil)
+	client.EXPECT().
+		RunCommand("/srv/app", "docker compose ps --services --filter status=running 2>/dev/null").
+		Return("", nil)
+
+	plan := buildComposePlan(config.ComposeActionUp, "/srv/app", client, true)
+	if plan == nil {
+		t.Fatal("plan should not be nil")
+	}
+
+	// defined が 0 なので hasFileChanges=true でも ComposeNoChange
+	if plan.ActionType != ComposeNoChange {
+		t.Errorf("ActionType = %v, want ComposeNoChange when no services defined", plan.ActionType)
+	}
+}
