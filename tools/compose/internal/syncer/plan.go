@@ -918,6 +918,16 @@ func buildHostPlan(
 	localRunner LocalCommandRunner,
 	progress planProgress,
 ) (*HostPlan, error) {
+	if hostCfg != nil && len(hostCfg.Projects) > 0 {
+		filtered := make([]string, 0, len(projects))
+		for _, p := range projects {
+			if _, ok := hostCfg.Projects[p]; ok {
+				filtered = append(filtered, p)
+			}
+		}
+		projects = filtered
+	}
+
 	hostPlan := &HostPlan{
 		Host:     host,
 		Projects: make([]ProjectPlan, len(projects)),

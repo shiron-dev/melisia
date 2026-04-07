@@ -162,6 +162,10 @@ func (c *Client) WriteFile(remotePath string, data []byte) error {
 		return fmt.Errorf("close temp file: %w", closeErr)
 	}
 
+	if err = os.Chmod(tmpPath, 0o644); err != nil {
+		return fmt.Errorf("chmod temp file: %w", err)
+	}
+
 	err = c.runSCP(tmpPath, remotePath)
 	if err != nil {
 		return fmt.Errorf("scp to %s: %w", remotePath, err)
@@ -332,7 +336,7 @@ func buildCommonOptions(entry config.HostEntry) []string {
 	}
 
 	if entry.IdentityAgent != "" && entry.IdentityAgent != "none" {
-		commonOpts = append(commonOpts, "-o", "IdentityAgent="+entry.IdentityAgent)
+		commonOpts = append(commonOpts, "-o", `IdentityAgent="`+entry.IdentityAgent+`"`)
 	}
 
 	for _, keyPath := range entry.IdentityFiles {
