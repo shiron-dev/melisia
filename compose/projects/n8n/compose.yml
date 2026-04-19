@@ -61,7 +61,7 @@ services:
       start_period: 40s
 
   postgres:
-    image: postgres:16-alpine@sha256:20edbde7749f822887a1a022ad526fde0a47d6b2be9a8364433605cf65099416
+    image: postgres:18-alpine@sha256:52098013b4b64a746626437d38afc03cabff6cdeb4d3d92e2342aa95f0ce56ea
     container_name: n8n-postgres
     restart: always
     user: "1000:1000"
