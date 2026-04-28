@@ -10,10 +10,10 @@
 package remote
 
 import (
-	config "github.com/shiron-dev/melisia/tools/cmt/internal/config"
 	fs "io/fs"
 	reflect "reflect"
 
+	config "github.com/shiron-dev/melisia/tools/cmt/internal/config"
 	gomock "go.uber.org/mock/gomock"
 )
 
