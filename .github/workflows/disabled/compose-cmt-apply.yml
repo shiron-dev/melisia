@@ -6,7 +6,7 @@ on:
       - main
     paths:
       - "compose/**"
-      - "tools/compose/**"
+      - "tools/cmt/**"
       - ".github/workflows/**"
   workflow_dispatch:
 

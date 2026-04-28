@@ -19,7 +19,7 @@ permissions:
 
 defaults:
   run:
-    working-directory: tools/compose
+    working-directory: tools/cmt
 
 jobs:
   changes:
@@ -34,7 +34,7 @@ jobs:
           filters: |
             src:
               - ".github/workflows/**"
-              - "tools/compose/**"
+              - "tools/cmt/**"
 
   cmt-status-check:
     runs-on: ubuntu-latest
@@ -74,8 +74,8 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
         with:
-          go-version-file: tools/compose/go.mod
-          cache-dependency-path: tools/compose/go.sum
+          go-version-file: tools/cmt/go.mod
+          cache-dependency-path: tools/cmt/go.sum
       - uses: GoTestTools/gotestfmt-action@8b4478c7019be847373babde9300210e7de34bfb # v2.2.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -87,7 +87,7 @@ jobs:
         uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6.0.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: tools/compose/coverage.out
+          files: tools/cmt/coverage.out
           flags: cmt
 
   fmt-lint:
@@ -100,8 +100,8 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
         with:
-          go-version-file: tools/compose/go.mod
-          cache-dependency-path: tools/compose/go.sum
+          go-version-file: tools/cmt/go.mod
+          cache-dependency-path: tools/cmt/go.sum
       - name: Check go fmt
         run: |
           go fmt
@@ -121,8 +121,8 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
         with:
-          go-version-file: tools/compose/go.mod
-          cache-dependency-path: tools/compose/go.sum
+          go-version-file: tools/cmt/go.mod
+          cache-dependency-path: tools/cmt/go.sum
       - name: Run go generate
         run: go generate ./...
       - name: Verify generated files are up to date
@@ -138,8 +138,8 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
         with:
-          go-version-file: tools/compose/go.mod
-          cache-dependency-path: tools/compose/go.sum
+          go-version-file: tools/cmt/go.mod
+          cache-dependency-path: tools/cmt/go.sum
       - name: Run go vet
         run: go vet ./...
 
@@ -153,7 +153,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
         with:
-          go-version-file: tools/compose/go.mod
-          cache-dependency-path: tools/compose/go.sum
+          go-version-file: tools/cmt/go.mod
+          cache-dependency-path: tools/cmt/go.sum
       - name: Build cmt
         run: go build -o cmt .

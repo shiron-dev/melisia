@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"cmt/cmd"
+	"github.com/shiron-dev/melisia/tools/cmt/cmd"
 )
 
 func main() {

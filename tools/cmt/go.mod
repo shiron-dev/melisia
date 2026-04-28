@@ -1,4 +1,4 @@
-module cmt
+module github.com/shiron-dev/melisia/tools/cmt
 
 go 1.26.1
 

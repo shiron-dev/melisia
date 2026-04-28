@@ -53,7 +53,7 @@ ansible-check: ansible-init
 ansible-run: ansible-init
 	$(UV_ANSIBLE) bash -c "cd $(ANSIBLE_DIR) && ansible-playbook -i hosts.yml site.yml $(ANSIBLE_DEFAULT_OPT)"
 
-CMT_DIR := tools/compose
+CMT_DIR := tools/cmt
 CMT_BIN := $(CMT_DIR)/cmt
 CMT_CONFIG := compose/config.yml
 CMT_SCHEMA_DIR := $(CMT_DIR)/schemas

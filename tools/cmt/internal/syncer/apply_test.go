@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"cmt/internal/config"
-	"cmt/internal/remote"
+	"github.com/shiron-dev/melisia/tools/cmt/internal/config"
+	"github.com/shiron-dev/melisia/tools/cmt/internal/remote"
 
 	"go.uber.org/mock/gomock"
 )

@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"cmt/internal/config"
+	"github.com/shiron-dev/melisia/tools/cmt/internal/config"
 )
 
 // ---------------------------------------------------------------------------

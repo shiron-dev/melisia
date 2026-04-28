@@ -115,5 +115,5 @@ password = {{ .smtp_password }}
 
 ## Sync to hosts
 
-Syncing is handled by the **Compose Manage Tool** (`/tools/compose`).  
-See [`/tools/compose/README.md`](/tools/compose/README.md) for usage.
+Syncing is handled by the **Compose Manage Tool** (`/tools/cmt`).  
+See [`/tools/cmt/README.md`](/tools/cmt/README.md) for usage.

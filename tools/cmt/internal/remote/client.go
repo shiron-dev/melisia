@@ -1,6 +1,6 @@
 package remote
 
-//go:generate go run go.uber.org/mock/mockgen@v0.6.0 -destination=mock_remote_interfaces.go -package=remote cmt/internal/remote RemoteClient,ClientFactory,CommandRunner
+//go:generate go run go.uber.org/mock/mockgen@v0.6.0 -destination=mock_remote_interfaces.go -package=remote github.com/shiron-dev/melisia/tools/cmt/internal/remote RemoteClient,ClientFactory,CommandRunner
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"cmt/internal/config"
+	"github.com/shiron-dev/melisia/tools/cmt/internal/config"
 )
 
 var (

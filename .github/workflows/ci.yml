@@ -155,12 +155,12 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
         with:
-          go-version-file: tools/compose/go.mod
-          cache-dependency-path: tools/compose/go.sum
+          go-version-file: tools/cmt/go.mod
+          cache-dependency-path: tools/cmt/go.sum
       - name: Install check-jsonschema
         run: python -m pip install --upgrade check-jsonschema
       - name: Generate cmt schemas
-        working-directory: tools/compose
+        working-directory: tools/cmt
         run: |
           set -euo pipefail
           mkdir -p /tmp/cmt-schemas

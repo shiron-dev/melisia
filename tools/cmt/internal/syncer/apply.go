@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"strings"
 
-	"cmt/internal/config"
-	"cmt/internal/remote"
+	"github.com/shiron-dev/melisia/tools/cmt/internal/config"
+	"github.com/shiron-dev/melisia/tools/cmt/internal/remote"
 )
 
 type ApplyDependencies struct {
