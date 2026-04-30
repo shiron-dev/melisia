@@ -313,6 +313,6 @@ cmt schema hook-before-apply         > schemas/hook-before-apply.schema.json
 ## ビルド
 
 ```bash
-cd tools/compose
+cd tools/cmt
 go build -o cmt .
 ```

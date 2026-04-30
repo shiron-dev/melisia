@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../tools/compose/schemas/cmt-config.schema.json
+# yaml-language-server: $schema=../tools/cmt/schemas/cmt-config.schema.json
 
 basePath: .
 

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"cmt/internal/config"
+	"github.com/shiron-dev/melisia/tools/cmt/internal/config"
 )
 
 func TestRunHook_NilCommand(t *testing.T) {

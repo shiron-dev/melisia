@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"cmt/internal/config"
+	"github.com/shiron-dev/melisia/tools/cmt/internal/config"
 )
 
 type HookRunner func(command string, workdir string, stdinData []byte) (exitCode int, combinedOutput string, err error)

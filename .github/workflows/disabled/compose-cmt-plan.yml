@@ -26,7 +26,7 @@ jobs:
           filters: |
             src:
               - "compose/**"
-              - "tools/compose/**"
+              - "tools/cmt/**"
               - ".github/workflows/**"
 
   plan:

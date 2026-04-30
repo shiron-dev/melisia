@@ -1,9 +1,9 @@
 package cmd
 
 import (
-	"cmt/internal/config"
 	"os"
 
+	"github.com/shiron-dev/melisia/tools/cmt/internal/config"
 	"github.com/spf13/cobra"
 )
 

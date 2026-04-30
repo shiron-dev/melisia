@@ -1,6 +1,6 @@
 package config
 
-//go:generate go run go.uber.org/mock/mockgen@v0.6.0 -destination=mock_ssh_interfaces.go -package=config cmt/internal/config SSHConfigRunner,SSHConfigResolver
+//go:generate go run go.uber.org/mock/mockgen@v0.6.0 -destination=mock_ssh_interfaces.go -package=config github.com/shiron-dev/melisia/tools/cmt/internal/config SSHConfigRunner,SSHConfigResolver
 
 import (
 	"bufio"

@@ -3,8 +3,8 @@ package cmd
 import (
 	"os"
 
-	"cmt/internal/config"
-	"cmt/internal/syncer"
+	"github.com/shiron-dev/melisia/tools/cmt/internal/config"
+	"github.com/shiron-dev/melisia/tools/cmt/internal/syncer"
 
 	"github.com/spf13/cobra"
 )

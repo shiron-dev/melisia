@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../../../tools/compose/schemas/host-config.schema.json
+# yaml-language-server: $schema=../../../tools/cmt/schemas/host-config.schema.json
 
 sshConfig: ../../ssh_config
 
