@@ -1,0 +1,26 @@
+[connection]
+id={{ raspberrypi_wifi_connection_name }}
+type=wifi
+interface-name={{ raspberrypi_wifi_interface }}
+autoconnect=true
+autoconnect-priority={{ raspberrypi_wifi_autoconnect_priority }}
+
+[wifi]
+mode=infrastructure
+ssid={{ raspberrypi_wifi_ssid }}
+
+[wifi-security]
+auth-alg=open
+key-mgmt=wpa-psk
+psk={{ raspberrypi_wifi_psk }}
+
+[ipv4]
+method=auto
+route-metric={{ raspberrypi_wifi_ipv4_route_metric }}
+
+[ipv6]
+addr-gen-mode=default
+method=auto
+route-metric={{ raspberrypi_wifi_ipv6_route_metric }}
+
+[proxy]

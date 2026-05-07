@@ -1,2 +1,2 @@
-# - name: Home servers
-#   import_playbook: home_servers.yml
+- name: Home servers
+  import_playbook: home_servers.yml

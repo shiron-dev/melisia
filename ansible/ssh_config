@@ -2,3 +2,10 @@ Match host arm-srv.shiron.dev exec "cloudflared access ssh-gen --hostname %h"
 ProxyCommand cloudflared access ssh --hostname %h
 IdentityFile ~/.cloudflared/%h-cf_key
 CertificateFile ~/.cloudflared/%h-cf_key-cert.pub
+
+Host home-ep
+  HostName 192.168.1.61
+  User ansible_user
+  IdentityFile ~/.ssh/home-ep.pub
+  IdentitiesOnly yes
+  IdentityAgent "~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"

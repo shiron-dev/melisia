@@ -1,4 +1,4 @@
-- name: Enable init_task
+- name: enable init_task
   become: true
   ansible.builtin.systemd:
     name: init_task
@@ -7,7 +7,12 @@
     daemon_reload: true
   notify: reboot
 
-- name: Reboot
+- name: reload NetworkManager connections
+  become: true
+  ansible.builtin.command:
+    cmd: nmcli connection reload
+
+- name: reboot
   become: true
   ansible.builtin.reboot:
     reboot_timeout: 300
