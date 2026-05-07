@@ -1,0 +1,7 @@
+# - platform: group
+#   name: "Color Bulbs Group"
+#   unique_id: color_bulbs_group
+#   entities:
+#     - light.color_bulb_13ce
+#     - light.color_bulb_e1f6
+#     - light.color_bulb_eb42

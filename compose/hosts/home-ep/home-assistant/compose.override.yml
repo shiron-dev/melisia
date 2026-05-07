@@ -1,0 +1,4 @@
+services:
+  zigbee2mqtt:
+    environment:
+      - ZIGBEE2MQTT_CONFIG_SERIAL_PORT=tcp://192.168.1.71:6638

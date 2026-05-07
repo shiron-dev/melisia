@@ -1,0 +1,40 @@
+# yaml-language-server: $schema=../../../tools/compose/schemas/host-config.schema.json
+
+sshConfig: ssh_config
+
+projects:
+  home-assistant:
+    postSyncCommand: "chmod 0644 mosquitto.conf && ([ \"$(ls -A config/custom_components/hacs 2>/dev/null)\" ] || docker exec homeassistant bash -c 'wget -O - https://get.hacs.xyz | bash -')"
+    dirs:
+      - config:
+        permission: "0777"
+        owner: ansible_user
+        become: true
+      - config/custom_components:
+        permission: "0777"
+        owner: ansible_user
+        become: true
+      - mosquitto_data:
+        owner: 1883
+        group: 1883
+        become: true
+      - mosquitto_log:
+        owner: 1883
+        group: 1883
+        become: true
+      - zigbee2mqtt_data:
+        owner: 1000
+        group: 1000
+        become: true
+      - matter_data:
+        permission: "0777"
+        owner: ansible_user
+        become: true
+      - switchbot-mqtt:
+        permission: "0777"
+        owner: ansible_user
+        become: true
+      - esphome_config:
+        permission: "0777"
+        owner: ansible_user
+        become: true

@@ -1,0 +1,237 @@
+version: "3"
+
+networks:
+  home-automation:
+    driver: bridge
+
+volumes:
+  esphome_build_cache:
+
+services:
+  homeassistant:
+    container_name: homeassistant
+    image: "ghcr.io/home-assistant/home-assistant:2026.4.1@sha256:8848691147f01a6eee7753de2ade21b04d6168fcd2e2a7089f6f84e3b7b86960"
+    network_mode: host
+    volumes:
+      - ./config:/config:rw
+      # kics-scan ignore-line
+      - /etc/localtime:/etc/localtime:ro
+      # kics-scan ignore-line
+      - /run/dbus:/run/dbus:ro
+    restart: unless-stopped
+    privileged: false
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # kics-scan ignore-line
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8123"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  mosquitto:
+    container_name: mosquitto
+    image: eclipse-mosquitto:2.0.21
+    user: "1883:1883"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto_data:/mosquitto/data:rw
+      - ./mosquitto_log:/mosquitto/log:rw
+    ports:
+      - "127.0.0.1:1883:1883"
+    networks:
+      - home-automation
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-t", "$$SYS/#", "-C", "1", "-i", "healthcheck", "-W", "3"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  homeassistant-tunnel:
+    container_name: homeassistant-tunnel
+    image: cloudflare/cloudflared:2026.3.0@sha256:6b599ca3e974349ead3286d178da61d291961182ec3fe9c505e1dd02c8ac31b0
+    command: tunnel run
+    environment:
+      TUNNEL_TOKEN: "{{ .cf_tunnel_token }}"
+    extra_hosts:
+      - "homeassistant:host-gateway"
+    restart: unless-stopped
+    networks:
+      - home-automation
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    depends_on:
+      homeassistant:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "cloudflared", "version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  esphome:
+    container_name: esphome
+    image: ghcr.io/esphome/esphome:2025.3.3
+    volumes:
+      - ./esphome_config:/config:rw
+      - esphome_build_cache:/config/.esphome
+      # kics-scan ignore-line
+      - /etc/localtime:/etc/localtime:ro
+    networks:
+      - home-automation
+    ports:
+      - "127.0.0.1:6052:6052"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '0.1'
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6052"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  zigbee2mqtt:
+    container_name: zigbee2mqtt
+    image: koenkk/zigbee2mqtt:2.0.0
+    user: "1000:1000"
+    volumes:
+      - ./zigbee2mqtt_data:/app/data:rw
+      # kics-scan ignore-line
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      - ZIGBEE2MQTT_CONFIG_MQTT_SERVER=mqtt://mosquitto
+      - ZIGBEE2MQTT_CONFIG_SERIAL_ADAPTER=ember
+      - ZIGBEE2MQTT_CONFIG_FRONTEND_PORT=8080
+      - ZIGBEE2MQTT_CONFIG_HOMEASSISTANT_ENABLED=true
+    networks:
+      - home-automation
+    ports:
+      - "127.0.0.1:8080:8080"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # kics-scan ignore-line
+    # node binary has cap_net_bind_service=ep file capability; bounding set must include it
+    # or execve fails with EPERM. The capability is not actually used (port 8080 > 1024).
+    cap_add:
+      - NET_BIND_SERVICE
+    depends_on:
+      - mosquitto
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  switchbot-mqtt:
+    container_name: switchbot-mqtt
+    image: ghcr.io/hsakoh/switchbotmqtt-aarch64:latest
+    volumes:
+      - ./switchbot-mqtt:/data:rw
+      # kics-scan ignore-line
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      OVERRIDE_DATA_PATH: /data/
+    networks:
+      - home-automation
+    ports:
+      - "127.0.0.1:8098:8098"
+      - "127.0.0.1:8099:8099"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+  matter-server:
+    container_name: matter-server
+    image: ghcr.io/home-assistant-libs/python-matter-server:8.1@sha256:3a65f83161516c916566b13e65ce9e20a7a661e0784ab70e062a7423f416875b
+    command: --primary-interface eth0 --storage-path /data
+    network_mode: host
+    volumes:
+      - ./matter_data:/data:rw
+      # kics-scan ignore-line
+      - /etc/localtime:/etc/localtime:ro
+      # kics-scan ignore-line
+      - /run/dbus:/run/dbus:ro
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
