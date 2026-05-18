@@ -1,0 +1,2 @@
+cloudflare_access_infrastructure_ssh_ca_public_key: ""
+cloudflare_access_infrastructure_ssh_ca_path: /etc/ssh/ca.pub
