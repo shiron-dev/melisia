@@ -23,8 +23,25 @@ from typing import Any
 
 import urllib3
 
-# Configure debug mode
-_debug = bool(os.environ.get("DEBUG"))
+
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").lower() in ("1", "true", "yes", "on")
+
+
+def _redact_tokens(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: "***REDACTED***" if key.lower() == "token" else _redact_tokens(item)
+            for key, item in value.items()
+        }
+
+    if isinstance(value, list):
+        return [_redact_tokens(item) for item in value]
+
+    return value
+
+
+_debug = _env_flag("DEBUG")
 
 # Configure logging with enhanced formatting
 _log_format = (
@@ -57,7 +74,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """
 
     _logger.info("Processing Alexa request")
-    _logger.debug("Event payload: %s", json.dumps(event, indent=2))
+    _logger.debug("Event payload: %s", json.dumps(_redact_tokens(event), indent=2))
 
     try:
         base_url = os.environ.get("BASE_URL")
@@ -95,17 +112,15 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             raise ValueError(f"Only BearerToken scope is supported, got {scope_type}")
 
         token = scope.get("token")
-        if token is None and _debug:
-            _logger.debug(
-                "Token not found in request, using LONG_LIVED_ACCESS_TOKEN from environment"
-            )
+        if token is None:
+            _logger.debug("Token not found in request, using environment fallback")
             token = os.environ.get("LONG_LIVED_ACCESS_TOKEN")
 
         if token is None:
             _logger.error("No authentication token available")
             raise ValueError("Authentication token is required")
 
-        verify_ssl = not bool(os.environ.get("NOT_VERIFY_SSL"))
+        verify_ssl = not _env_flag("NOT_VERIFY_SSL")
         _logger.debug("SSL verification enabled: %s", verify_ssl)
 
         http = urllib3.PoolManager(

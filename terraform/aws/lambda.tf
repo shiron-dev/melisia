@@ -22,7 +22,7 @@ resource "aws_lambda_function" "alexa_ha" {
   environment {
     variables = {
       BASE_URL                = var.ha_url
-      DEBUG                   = "True"
+      DEBUG                   = "False"
       LONG_LIVED_ACCESS_TOKEN = var.ha_token
     }
   }
