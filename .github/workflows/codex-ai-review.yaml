@@ -372,6 +372,7 @@ jobs:
       bot_login: ${{ steps.add_eyes.outputs.bot_login }}
     permissions:
       issues: write
+      pull-requests: write
     steps:
       - name: Create GitHub App token
         id: app_token
