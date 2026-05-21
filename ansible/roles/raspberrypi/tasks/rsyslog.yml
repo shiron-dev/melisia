@@ -6,7 +6,7 @@
   become: true
   ansible.builtin.apt:
     name: rsyslog
-  notify: reboot
+  notify: Reboot
 
 - name: Enable rsyslog
   become: true

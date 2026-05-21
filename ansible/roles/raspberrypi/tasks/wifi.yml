@@ -1,0 +1,14 @@
+- name: Configure Wi-Fi fallback profile
+  become: true
+  ansible.builtin.template:
+    src: wifi.nmconnection.j2
+    dest: "/etc/NetworkManager/system-connections/{{ raspberrypi_wifi_connection_name }}.nmconnection"
+    owner: root
+    group: root
+    mode: "0600"
+  when:
+    - raspberrypi_wifi_ssid is defined
+    - raspberrypi_wifi_psk is defined
+    - raspberrypi_wifi_ssid | length > 0
+    - raspberrypi_wifi_psk | length > 0
+  notify: Reload NetworkManager connections

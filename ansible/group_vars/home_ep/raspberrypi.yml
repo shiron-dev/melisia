@@ -1,0 +1,5 @@
+raspberrypi_wifi_connection_name: home-ep-wifi
+raspberrypi_wifi_interface: wlan0
+raspberrypi_wifi_autoconnect_priority: -1000
+raspberrypi_wifi_ipv4_route_metric: 600
+raspberrypi_wifi_ipv6_route_metric: 600
