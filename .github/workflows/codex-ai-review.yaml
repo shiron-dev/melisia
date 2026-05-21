@@ -485,7 +485,7 @@ jobs:
           CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
         run: |
           if [[ -z "$CODEX_AUTH_JSON" ]]; then
-            echo "Missing required secret: CODEX_AUTH_JSON" >&2
+            echo "Missing required Codex auth JSON" >&2
             exit 1
           fi
 
