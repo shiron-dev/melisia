@@ -1,0 +1,1242 @@
+name: Codex AI Review
+
+on:
+  pull_request:
+    types:
+      - opened
+      - edited
+      - review_requested
+      - synchronize
+      - reopened
+      - ready_for_review
+  issue_comment:
+    types:
+      - created
+  pull_request_review_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+
+jobs:
+  review-precheck:
+    if: >-
+      ${{
+        github.event_name == 'pull_request' ||
+        (
+          (
+            github.event_name == 'pull_request_review_comment' ||
+            (github.event_name == 'issue_comment' && github.event.issue.pull_request)
+          ) &&
+          (
+            github.event.comment.author_association == 'OWNER' ||
+            github.event.comment.author_association == 'MEMBER' ||
+            github.event.comment.author_association == 'COLLABORATOR'
+          )
+        )
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      should_run: ${{ steps.precheck.outputs.should_run }}
+      pr_number: ${{ steps.precheck.outputs.pr_number }}
+      base_sha: ${{ steps.precheck.outputs.base_sha }}
+      head_sha: ${{ steps.precheck.outputs.head_sha }}
+      base_ref: ${{ steps.precheck.outputs.base_ref }}
+      pr_title: ${{ steps.precheck.outputs.pr_title }}
+      draft: ${{ steps.precheck.outputs.draft }}
+      is_internal_pr: ${{ steps.precheck.outputs.is_internal_pr }}
+      force_run: ${{ steps.precheck.outputs.force_run }}
+    permissions:
+      pull-requests: read
+    steps:
+      - name: Precheck review trigger before loading app secrets
+        id: precheck
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const allowedAssociations = new Set(["OWNER", "MEMBER", "COLLABORATOR"]);
+            const reviewCommandPattern = /(^|\n)\s*\/review(?:\s|$)/;
+
+            const setPullRequestOutputs = (pr, shouldRun, forceRun = false) => {
+              const isInternalPr = pr.head.repo.full_name === `${owner}/${repo}`;
+              core.setOutput("should_run", shouldRun ? "true" : "false");
+              core.setOutput("pr_number", String(pr.number));
+              core.setOutput("base_sha", pr.base.sha);
+              core.setOutput("head_sha", pr.head.sha);
+              core.setOutput("base_ref", pr.base.ref);
+              core.setOutput("pr_title", pr.title);
+              core.setOutput("draft", String(Boolean(pr.draft)));
+              core.setOutput("is_internal_pr", String(isInternalPr));
+              core.setOutput("force_run", forceRun ? "true" : "false");
+            };
+
+            if (context.eventName === "pull_request") {
+              const pr = context.payload.pull_request;
+              const isInternalPr = pr.head.repo.full_name === `${owner}/${repo}`;
+              setPullRequestOutputs(pr, !pr.draft && isInternalPr, false);
+              return;
+            }
+
+            if (context.eventName !== "issue_comment" && context.eventName !== "pull_request_review_comment") {
+              core.setOutput("should_run", "false");
+              core.setOutput("force_run", "false");
+              return;
+            }
+
+            const body = (context.payload.comment?.body || "").trim();
+            if (!reviewCommandPattern.test(body)) {
+              core.setOutput("should_run", "false");
+              core.setOutput("force_run", "false");
+              return;
+            }
+
+            const association = context.payload.comment?.author_association;
+            if (!allowedAssociations.has(association)) {
+              core.setOutput("should_run", "false");
+              core.setOutput("force_run", "false");
+              return;
+            }
+
+            let pullNumber = null;
+            if (context.eventName === "issue_comment") {
+              const issue = context.payload.issue;
+              if (!issue?.pull_request) {
+                core.setOutput("should_run", "false");
+                core.setOutput("force_run", "false");
+                return;
+              }
+              pullNumber = issue.number;
+            } else {
+              pullNumber = context.payload.pull_request?.number ?? null;
+              if (!pullNumber) {
+                const pullRequestUrl = context.payload.comment?.pull_request_url;
+                const match = typeof pullRequestUrl === "string" ? pullRequestUrl.match(/\/pulls?\/(\d+)$/) : null;
+                if (match) {
+                  pullNumber = Number(match[1]);
+                }
+              }
+
+              if (!pullNumber) {
+                core.setOutput("should_run", "false");
+                core.setOutput("force_run", "false");
+                return;
+              }
+            }
+
+            const response = await github.rest.pulls.get({
+              owner,
+              repo,
+              pull_number: pullNumber,
+            });
+            const pr = response.data;
+            const isInternalPr = pr.head.repo.full_name === `${owner}/${repo}`;
+            setPullRequestOutputs(pr, !pr.draft && isInternalPr, true);
+
+  review-state:
+    needs: review-precheck
+    if: ${{ needs.review-precheck.result == 'success' && needs.review-precheck.outputs.should_run == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: codex-ai-review-${{ needs.review-precheck.outputs.pr_number }}
+      cancel-in-progress: true
+    outputs:
+      should_run: ${{ steps.review_state.outputs.should_run }}
+      pr_number: ${{ steps.review_state.outputs.pr_number }}
+      base_sha: ${{ steps.review_state.outputs.base_sha }}
+      head_sha: ${{ steps.review_state.outputs.head_sha }}
+      base_ref: ${{ steps.review_state.outputs.base_ref }}
+      pr_title: ${{ steps.review_state.outputs.pr_title }}
+      draft: ${{ steps.review_state.outputs.draft }}
+      is_internal_pr: ${{ steps.review_state.outputs.is_internal_pr }}
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Create GitHub App token
+        id: app_token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3
+        with:
+          app-id: ${{ secrets.CODEX_REVIEW_APP_ID }}
+          private-key: ${{ secrets.CODEX_REVIEW_APP_PRIVATE_KEY }}
+
+      - name: Decide whether review should run
+        id: review_state
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        env:
+          REVIEW_MARKER: <!-- codex-ai-review -->
+          APP_SLUG: ${{ steps.app_token.outputs.app-slug }}
+          PR_NUMBER: ${{ needs.review-precheck.outputs.pr_number }}
+          FORCE_RUN: ${{ needs.review-precheck.outputs.force_run }}
+        with:
+          github-token: ${{ steps.app_token.outputs.token }}
+          script: |
+            const marker = process.env.REVIEW_MARKER;
+            const appSlug = process.env.APP_SLUG;
+            const { owner, repo } = context.repo;
+            const pullNumber = Number(process.env.PR_NUMBER);
+            const forceRun = process.env.FORCE_RUN === "true";
+
+            const response = await github.rest.pulls.get({
+              owner,
+              repo,
+              pull_number: pullNumber,
+            });
+            const pr = response.data;
+
+            const isInternalPr = pr.head.repo.full_name === `${owner}/${repo}`;
+            const botLogin = appSlug ? `${appSlug}[bot]` : null;
+            const prAuthorLogin = pr.user?.login ?? null;
+
+            core.setOutput("pr_number", String(pr.number));
+            core.setOutput("base_sha", pr.base.sha);
+            core.setOutput("head_sha", pr.head.sha);
+            core.setOutput("base_ref", pr.base.ref);
+            core.setOutput("pr_title", pr.title);
+            core.setOutput("draft", String(Boolean(pr.draft)));
+            core.setOutput("is_internal_pr", String(isInternalPr));
+
+            if (pr.draft || !isInternalPr) {
+              core.setOutput("should_run", "false");
+              return;
+            }
+
+            const reviews = await github.paginate(github.rest.pulls.listReviews, {
+              owner,
+              repo,
+              pull_number: pr.number,
+              per_page: 100,
+            });
+
+            const codexApprovedReviews = reviews.filter((review) => {
+              return (
+                review.state === "APPROVED" &&
+                (!botLogin || review.user?.login === botLogin) &&
+                typeof review.body === "string" &&
+                review.body.includes(marker)
+              );
+            });
+
+            if (context.payload.action === "synchronize") {
+              for (const review of codexApprovedReviews) {
+                await github.rest.pulls.dismissReview({
+                  owner,
+                  repo,
+                  pull_number: pr.number,
+                  review_id: review.id,
+                  message: "PR が更新されたため、以前の Codex 承認を取り消します。",
+                });
+              }
+
+              if (!(botLogin && prAuthorLogin === botLogin)) {
+                core.setOutput("should_run", "true");
+                return;
+              }
+            }
+
+            if (botLogin && prAuthorLogin === botLogin) {
+              core.info(`Skipping Codex AI review for PR #${pr.number} because it was opened by ${botLogin}.`);
+              core.setOutput("should_run", "false");
+              return;
+            }
+
+            const fetchThreadCommentAuthors = async (threadId, initialConnection) => {
+              const authors = [
+                ...((initialConnection?.nodes || []).map((comment) => comment.author?.login).filter(Boolean)),
+              ];
+              let hasNextPage = Boolean(initialConnection?.pageInfo?.hasNextPage);
+              let cursor = initialConnection?.pageInfo?.endCursor ?? null;
+
+              while (hasNextPage) {
+                const response = await github.graphql(
+                  `
+                    query($threadId: ID!, $after: String) {
+                      node(id: $threadId) {
+                        ... on PullRequestReviewThread {
+                          comments(first: 100, after: $after) {
+                            nodes {
+                              author {
+                                login
+                              }
+                            }
+                            pageInfo {
+                              hasNextPage
+                              endCursor
+                            }
+                          }
+                        }
+                      }
+                    }
+                  `,
+                  {
+                    threadId,
+                    after: cursor,
+                  }
+                );
+                const connection = response.node?.comments;
+                authors.push(
+                  ...((connection?.nodes || []).map((comment) => comment.author?.login).filter(Boolean))
+                );
+                hasNextPage = Boolean(connection?.pageInfo?.hasNextPage);
+                cursor = connection?.pageInfo?.endCursor ?? null;
+              }
+
+              return authors;
+            };
+
+            const reviewThreads = [];
+            let reviewThreadsCursor = null;
+            let hasMoreReviewThreads = true;
+
+            while (hasMoreReviewThreads) {
+              const response = await github.graphql(
+                `
+                  query($owner: String!, $repo: String!, $pullNumber: Int!, $after: String) {
+                    repository(owner: $owner, name: $repo) {
+                      pullRequest(number: $pullNumber) {
+                        reviewThreads(first: 100, after: $after) {
+                          nodes {
+                            id
+                            isResolved
+                            comments(first: 100) {
+                              nodes {
+                                author {
+                                  login
+                                }
+                              }
+                              pageInfo {
+                                hasNextPage
+                                endCursor
+                              }
+                            }
+                          }
+                          pageInfo {
+                            hasNextPage
+                            endCursor
+                          }
+                        }
+                      }
+                    }
+                  }
+                `,
+                {
+                  owner,
+                  repo,
+                  pullNumber: pr.number,
+                  after: reviewThreadsCursor,
+                }
+              );
+              const connection = response.repository.pullRequest.reviewThreads;
+              for (const thread of connection.nodes || []) {
+                const authors = await fetchThreadCommentAuthors(thread.id, thread.comments);
+                reviewThreads.push({
+                  id: thread.id,
+                  isResolved: thread.isResolved,
+                  authors,
+                });
+              }
+              hasMoreReviewThreads = Boolean(connection.pageInfo?.hasNextPage);
+              reviewThreadsCursor = connection.pageInfo?.endCursor ?? null;
+            }
+
+            const codexThreads = reviewThreads.filter((thread) =>
+              thread.authors.some((authorLogin) => !botLogin || authorLogin === botLogin)
+            );
+            const unresolvedCodexThreads = codexThreads.filter((thread) => !thread.isResolved);
+
+            if (forceRun) {
+              core.setOutput("should_run", "true");
+              return;
+            }
+
+            if (unresolvedCodexThreads.length > 0) {
+              core.setOutput("should_run", "false");
+              return;
+            }
+
+            core.setOutput("should_run", codexApprovedReviews.length > 0 ? "false" : "true");
+
+  mark-review-start:
+    needs:
+      - review-precheck
+      - review-state
+    if: ${{ needs.review-state.result == 'success' && needs.review-state.outputs.should_run == 'true' }}
+    concurrency:
+      group: codex-ai-review-${{ needs.review-precheck.outputs.pr_number }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      bot_login: ${{ steps.add_eyes.outputs.bot_login }}
+    permissions:
+      issues: write
+    steps:
+      - name: Create GitHub App token
+        id: app_token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3
+        with:
+          app-id: ${{ secrets.CODEX_REVIEW_APP_ID }}
+          private-key: ${{ secrets.CODEX_REVIEW_APP_PRIVATE_KEY }}
+
+      - name: Add eyes reaction to PR
+        id: add_eyes
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        env:
+          PR_NUMBER: ${{ needs.review-state.outputs.pr_number }}
+        with:
+          github-token: ${{ steps.app_token.outputs.token }}
+          script: |
+            const prNumber = Number(process.env.PR_NUMBER);
+            const response = await github.request("POST /repos/{owner}/{repo}/issues/{issue_number}/reactions", {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              content: "eyes",
+              headers: {
+                accept: "application/vnd.github+json",
+              },
+            });
+
+            core.setOutput("bot_login", response.data.user?.login || "");
+            const botLogin = response.data.user?.login || "";
+            if (botLogin) {
+              const reactions = await github.paginate("GET /repos/{owner}/{repo}/issues/{issue_number}/reactions", {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                per_page: 100,
+                headers: {
+                  accept: "application/vnd.github+json",
+                },
+              });
+
+              for (const reaction of reactions) {
+                if (reaction.content === "rocket" && reaction.user?.login === botLogin) {
+                  await github.request("DELETE /repos/{owner}/{repo}/issues/{issue_number}/reactions/{reaction_id}", {
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: prNumber,
+                    reaction_id: reaction.id,
+                    headers: {
+                      accept: "application/vnd.github+json",
+                    },
+                  });
+                }
+              }
+            }
+
+      - name: Add eyes reaction to review command
+        if: ${{ github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment' }}
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        with:
+          github-token: ${{ steps.app_token.outputs.token }}
+          script: |
+            const commentId = context.payload.comment?.id;
+            if (!commentId) return;
+            const route = context.eventName === "pull_request_review_comment"
+              ? "POST /repos/{owner}/{repo}/pulls/comments/{comment_id}/reactions"
+              : "POST /repos/{owner}/{repo}/issues/comments/{comment_id}/reactions";
+
+            await github.request(route, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: commentId,
+              content: "eyes",
+              headers: {
+                accept: "application/vnd.github+json",
+              },
+            });
+
+  codex-review:
+    needs:
+      - review-precheck
+      - review-state
+      - mark-review-start
+    if: ${{ needs.review-state.result == 'success' && needs.review-state.outputs.should_run == 'true' }}
+    concurrency:
+      group: codex-ai-review-${{ needs.review-precheck.outputs.pr_number }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Check out PR head commit
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ needs.review-state.outputs.head_sha }}
+          fetch-depth: 0
+
+      - name: Pre-fetch exact base and head commits for the PR event
+        env:
+          BASE_SHA: ${{ needs.review-state.outputs.base_sha }}
+          HEAD_SHA: ${{ needs.review-state.outputs.head_sha }}
+        run: |
+          git fetch --no-tags origin \
+            "$BASE_SHA" \
+            "$HEAD_SHA"
+
+      - name: Prepare Codex auth home
+        env:
+          CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
+        run: |
+          if [[ -z "$CODEX_AUTH_JSON" ]]; then
+            echo "Missing required secret: CODEX_AUTH_JSON" >&2
+            exit 1
+          fi
+
+          mkdir -p "$RUNNER_TEMP/codex-home"
+          printf '%s' "$CODEX_AUTH_JSON" > "$RUNNER_TEMP/codex-home/auth.json"
+          chmod 600 "$RUNNER_TEMP/codex-home/auth.json"
+
+      - name: Load review assets from trusted base commit
+        env:
+          BASE_SHA: ${{ needs.review-state.outputs.base_sha }}
+          TRUSTED_PROMPT_PATH: ${{ runner.temp }}/trusted-codex-pr-review.md
+          TRUSTED_SCHEMA_PATH: ${{ runner.temp }}/trusted-codex-pr-review.schema.json
+          TRUSTED_SERENA_PROJECT_PATH: ${{ runner.temp }}/trusted-serena-project.yml
+        run: |
+          if
+            git cat-file -e "$BASE_SHA:.github/prompts/codex-pr-review.md" 2>/dev/null &&
+            git cat-file -e "$BASE_SHA:.github/schemas/codex-pr-review.schema.json" 2>/dev/null &&
+            git cat-file -e "$BASE_SHA:.serena/project.codex-review.yml" 2>/dev/null
+          then
+            git show "$BASE_SHA:.github/prompts/codex-pr-review.md" > "$TRUSTED_PROMPT_PATH"
+            git show "$BASE_SHA:.github/schemas/codex-pr-review.schema.json" > "$TRUSTED_SCHEMA_PATH"
+            git show "$BASE_SHA:.serena/project.codex-review.yml" > "$TRUSTED_SERENA_PROJECT_PATH"
+          else
+            echo "Trusted review assets are missing in base commit $BASE_SHA; using checked-out assets for workflow bootstrap." >&2
+            cp .github/prompts/codex-pr-review.md "$TRUSTED_PROMPT_PATH"
+            cp .github/schemas/codex-pr-review.schema.json "$TRUSTED_SCHEMA_PATH"
+            cp .serena/project.codex-review.yml "$TRUSTED_SERENA_PROJECT_PATH"
+          fi
+
+      - name: Collect prior review context
+        env:
+          PR_NUMBER: ${{ needs.review-state.outputs.pr_number }}
+          REVIEW_CONTEXT_PATH: ${{ runner.temp }}/prior-review-context.json
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        with:
+          script: |
+            const fs = require("fs");
+            const pull_number = Number(process.env.PR_NUMBER);
+            const { owner, repo } = context.repo;
+            const MAX_REVIEWS = 20;
+            const MAX_REVIEW_COMMENTS = 50;
+            const MAX_REVIEW_THREADS_TO_SCAN = 300;
+            const MAX_THREAD_COMMENT_PAGES = 3;
+            const normalizeBody = (value) => {
+              if (typeof value !== "string") {
+                return null;
+              }
+
+              const normalized = value
+                .replace(/\r\n/g, "\n")
+                .replace(/\r/g, "\n")
+                .replace(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/g, " ")
+                .replace(/\n[ \t]+/g, "\n")
+                .trim();
+              if (!normalized) {
+                return null;
+              }
+
+              return normalized;
+            };
+
+            const parseLastPage = (linkHeader) => {
+              if (typeof linkHeader !== "string") {
+                return null;
+              }
+
+              const lastMatch = linkHeader.match(/[?&]page=(\d+)>; rel="last"/);
+              if (lastMatch) {
+                return Number(lastMatch[1]);
+              }
+
+              return null;
+            };
+
+            const hasNextPage = (linkHeader) => {
+              return typeof linkHeader === "string" && /rel="next"/.test(linkHeader);
+            };
+
+            const fetchRecentItems = async ({ fetchPage, isRelevant, limit }) => {
+              if (limit <= 0) {
+                return [];
+              }
+
+              const firstResponse = await fetchPage(1);
+              const lastPage = parseLastPage(firstResponse.headers?.link);
+              const cachedResponses = new Map([[1, firstResponse]]);
+              const recentItems = [];
+
+              if (lastPage === null) {
+                let page = 1;
+                let response = firstResponse;
+
+                while (true) {
+                  const items = Array.isArray(response.data) ? response.data : [];
+                  for (const item of items) {
+                    if (!isRelevant(item)) {
+                      continue;
+                    }
+                    recentItems.push(item);
+                    if (recentItems.length > limit) {
+                      recentItems.shift();
+                    }
+                  }
+
+                  if (!hasNextPage(response.headers?.link)) {
+                    return recentItems.slice().reverse();
+                  }
+
+                  page += 1;
+                  response = await fetchPage(page);
+                }
+              }
+
+              for (let page = lastPage; page >= 1 && recentItems.length < limit; page -= 1) {
+                const response = cachedResponses.get(page) || await fetchPage(page);
+                cachedResponses.set(page, response);
+
+                const items = Array.isArray(response.data) ? response.data : [];
+                for (let index = items.length - 1; index >= 0 && recentItems.length < limit; index -= 1) {
+                  const item = items[index];
+                  if (isRelevant(item)) {
+                    recentItems.push(item);
+                  }
+                }
+              }
+
+              return recentItems;
+            };
+
+            const reviews = (await fetchRecentItems({
+              fetchPage: (page) =>
+                github.rest.pulls.listReviews({
+                  owner,
+                  repo,
+                  pull_number,
+                  per_page: 100,
+                  page,
+                }),
+              isRelevant: (review) => review.state !== "PENDING",
+              limit: MAX_REVIEWS,
+            }))
+              .sort((left, right) => {
+                const leftTime = Date.parse(left.submitted_at || left.created_at || 0);
+                const rightTime = Date.parse(right.submitted_at || right.created_at || 0);
+                return rightTime - leftTime;
+              })
+              .slice(0, MAX_REVIEWS);
+            const selectedReviewIds = new Set(reviews.map((review) => review.id));
+
+            const reviewComments = (await fetchRecentItems({
+              fetchPage: (page) =>
+                github.rest.pulls.listReviewComments({
+                  owner,
+                  repo,
+                  pull_number,
+                  per_page: 100,
+                  page,
+                }),
+              isRelevant: (comment) => selectedReviewIds.has(comment.pull_request_review_id),
+              limit: MAX_REVIEW_COMMENTS,
+            }))
+              .sort((left, right) => {
+                const leftTime = Date.parse(left.created_at || 0);
+                const rightTime = Date.parse(right.created_at || 0);
+                return rightTime - leftTime;
+              })
+              .slice(0, MAX_REVIEW_COMMENTS);
+
+            const commentsByReviewId = new Map();
+            for (const comment of reviewComments) {
+              const reviewId = comment.pull_request_review_id;
+              if (!reviewId) {
+                continue;
+              }
+              const existing = commentsByReviewId.get(reviewId) || [];
+              existing.push({
+                id: comment.id,
+                in_reply_to_id: comment.in_reply_to_id ?? null,
+                path: comment.path ?? null,
+                line: comment.line ?? null,
+                start_line: comment.start_line ?? null,
+                side: comment.side ?? null,
+                start_side: comment.start_side ?? null,
+                commit_id: comment.commit_id ?? null,
+                original_commit_id: comment.original_commit_id ?? null,
+                body: normalizeBody(comment.body),
+                author: comment.user?.login ?? null,
+                created_at: comment.created_at ?? null,
+                updated_at: comment.updated_at ?? null,
+                url: comment.html_url ?? null,
+              });
+              commentsByReviewId.set(reviewId, existing);
+            }
+
+            const targetCommentIds = new Set(reviewComments.map((comment) => comment.id));
+
+            const summarizeThreadComments = (comments) => {
+              const filteredComments = (comments || []).filter(Boolean);
+              const uniqueAuthors = [
+                ...new Set(filteredComments.map((comment) => comment.author).filter(Boolean)),
+              ].slice(0, 5);
+              const latestComments = filteredComments
+                .slice()
+                .sort((left, right) => {
+                  const leftTime = Date.parse(left.created_at || left.updated_at || 0);
+                  const rightTime = Date.parse(right.created_at || right.updated_at || 0);
+                  return rightTime - leftTime;
+                })
+                .slice(0, 3)
+                .map((comment) => ({
+                  author: comment.author,
+                  created_at: comment.created_at,
+                  body: comment.body,
+                }));
+
+              return {
+                comment_count: filteredComments.length,
+                participant_count: uniqueAuthors.length,
+                participants: uniqueAuthors,
+                latest_comments: latestComments,
+              };
+            };
+
+            const fetchThreadContext = async (threadId, initialConnection, targetIds) => {
+              const comments = ((initialConnection?.nodes || []).map((comment) => ({
+                databaseId: comment.databaseId,
+                author: comment.author?.login ?? null,
+                created_at: comment.createdAt ?? null,
+                updated_at: comment.updatedAt ?? null,
+                body: normalizeBody(comment.body ?? null),
+              }))).filter((comment) => comment.databaseId);
+              const matchedDatabaseIds = comments
+                .map((comment) => comment.databaseId)
+                .filter((commentId) => targetIds.has(commentId));
+              if (matchedDatabaseIds.length > 0 && !Boolean(initialConnection?.pageInfo?.hasPreviousPage)) {
+                return {
+                  matchedDatabaseIds,
+                  threadCommentSummary: summarizeThreadComments(comments),
+                };
+              }
+
+              let hasPreviousPage = Boolean(initialConnection?.pageInfo?.hasPreviousPage);
+              let threadCommentsCursor = initialConnection?.pageInfo?.startCursor ?? null;
+              let fetchedCommentPages = initialConnection ? 1 : 0;
+
+              // Walk backward from the newest comments so capped scans preserve recent thread state.
+              while (hasPreviousPage && fetchedCommentPages < MAX_THREAD_COMMENT_PAGES) {
+                const response = await github.graphql(
+                  `
+                    query($threadId: ID!, $before: String) {
+                      node(id: $threadId) {
+                        ... on PullRequestReviewThread {
+                          comments(last: 100, before: $before) {
+                            nodes {
+                              databaseId
+                              body
+                              createdAt
+                              updatedAt
+                              author {
+                                login
+                              }
+                            }
+                            pageInfo {
+                              hasPreviousPage
+                              startCursor
+                            }
+                          }
+                        }
+                      }
+                    }
+                  `,
+                  {
+                    threadId,
+                    before: threadCommentsCursor,
+                  }
+                );
+
+                const connection = response.node?.comments;
+                const nextComments = ((connection?.nodes || []).map((comment) => ({
+                  databaseId: comment.databaseId,
+                  author: comment.author?.login ?? null,
+                  created_at: comment.createdAt ?? null,
+                  updated_at: comment.updatedAt ?? null,
+                  body: normalizeBody(comment.body ?? null),
+                }))).filter((comment) => comment.databaseId);
+                comments.unshift(...nextComments);
+                hasPreviousPage = Boolean(connection?.pageInfo?.hasPreviousPage);
+                threadCommentsCursor = connection?.pageInfo?.startCursor ?? null;
+                fetchedCommentPages += 1;
+              }
+
+              return {
+                matchedDatabaseIds: comments
+                  .map((comment) => comment.databaseId)
+                  .filter((commentId) => targetIds.has(commentId)),
+                threadCommentSummary: summarizeThreadComments(comments),
+              };
+            };
+
+            const threadByCommentId = new Map();
+            if (targetCommentIds.size > 0) {
+              let cursor = null;
+              let hasPreviousPage = true;
+              let scannedReviewThreads = 0;
+
+              // Scan newest threads first so the cap preserves recent review context.
+              while (
+                hasPreviousPage &&
+                threadByCommentId.size < targetCommentIds.size &&
+                scannedReviewThreads < MAX_REVIEW_THREADS_TO_SCAN
+              ) {
+                const response = await github.graphql(
+                  `
+                    query($owner: String!, $repo: String!, $pullNumber: Int!, $before: String) {
+                      repository(owner: $owner, name: $repo) {
+                        pullRequest(number: $pullNumber) {
+                          reviewThreads(last: 100, before: $before) {
+                            nodes {
+                              id
+                              isResolved
+                              isOutdated
+                              path
+                              line
+                              originalLine
+                              comments(last: 100) {
+                                nodes {
+                                  databaseId
+                                  body
+                                  createdAt
+                                  updatedAt
+                                  author {
+                                    login
+                                  }
+                                }
+                                pageInfo {
+                                  hasPreviousPage
+                                  startCursor
+                                }
+                              }
+                            }
+                            pageInfo {
+                              hasPreviousPage
+                              startCursor
+                            }
+                          }
+                        }
+                      }
+                    }
+                  `,
+                  {
+                    owner,
+                    repo,
+                    pullNumber: pull_number,
+                    before: cursor,
+                  }
+                );
+
+                const connection = response.repository.pullRequest.reviewThreads;
+                const threads = connection.nodes || [];
+                scannedReviewThreads += threads.length;
+                for (const thread of threads) {
+                  const threadContext = await fetchThreadContext(
+                    thread.id,
+                    thread.comments,
+                    targetCommentIds
+                  );
+                  const matchedCommentIds = threadContext.matchedDatabaseIds;
+                  if (matchedCommentIds.length === 0) {
+                    continue;
+                  }
+
+                  for (const commentId of matchedCommentIds) {
+                    threadByCommentId.set(commentId, {
+                      id: thread.id,
+                      isResolved: Boolean(thread.isResolved),
+                      isOutdated: Boolean(thread.isOutdated),
+                      path: thread.path ?? null,
+                      line: thread.line ?? null,
+                      originalLine: thread.originalLine ?? null,
+                      summary: threadContext.threadCommentSummary,
+                    });
+                  }
+                }
+
+                hasPreviousPage = Boolean(connection.pageInfo?.hasPreviousPage);
+                cursor = connection.pageInfo?.startCursor ?? null;
+              }
+            }
+
+            const priorReviewContext = reviews.map((review) => {
+              const comments = (commentsByReviewId.get(review.id) || []).map((comment) => ({
+                ...comment,
+                thread: threadByCommentId.get(comment.id) || null,
+              }));
+
+              return {
+                id: review.id,
+                state: review.state,
+                submitted_at: review.submitted_at ?? null,
+                commit_id: review.commit_id ?? null,
+                author: review.user?.login ?? null,
+                has_body: typeof review.body === "string" && review.body.trim().length > 0,
+                body: normalizeBody(review.body),
+                html_url: review.html_url ?? null,
+                comments,
+              };
+            });
+
+            fs.writeFileSync(
+              process.env.REVIEW_CONTEXT_PATH,
+              JSON.stringify(priorReviewContext, null, 2)
+            );
+
+      - name: Render Codex prompt
+        env:
+          PR_NUMBER: ${{ needs.review-state.outputs.pr_number }}
+          REPOSITORY: ${{ github.repository }}
+          BASE_SHA: ${{ needs.review-state.outputs.base_sha }}
+          HEAD_SHA: ${{ needs.review-state.outputs.head_sha }}
+          PR_TITLE: ${{ needs.review-state.outputs.pr_title }}
+          PROMPT_TEMPLATE: ${{ runner.temp }}/trusted-codex-pr-review.md
+          REVIEW_CONTEXT_PATH: ${{ runner.temp }}/prior-review-context.json
+        run: |
+          {
+            echo "Repository: $REPOSITORY"
+            echo "Pull request number: #$PR_NUMBER"
+            echo "Base SHA: $BASE_SHA"
+            echo "Head SHA: $HEAD_SHA"
+            echo
+            echo "Review only this diff:"
+            echo "git diff --stat $BASE_SHA...$HEAD_SHA"
+            echo "git diff $BASE_SHA...$HEAD_SHA"
+            echo
+            echo "Pull request title:"
+            echo "$PR_TITLE"
+            echo
+            echo "Prior review context file:"
+            echo "$REVIEW_CONTEXT_PATH"
+            echo
+            cat "$PROMPT_TEMPLATE"
+          } > "$RUNNER_TEMP/codex-pr-review.md"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: "24.15.0"
+
+      - name: Install Codex CLI
+        run: npm install -g @openai/codex@0.124.0
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          python-version: "3.13"
+
+      - name: Install Serena
+        run: uv tool install -p 3.13 --force "serena-agent==1.1.2"
+
+      - name: Restrict Serena for review
+        env:
+          TRUSTED_SERENA_PROJECT_PATH: ${{ runner.temp }}/trusted-serena-project.yml
+        run: cp "$TRUSTED_SERENA_PROJECT_PATH" .serena/project.yml
+
+      - name: Run Codex review
+        env:
+          CODEX_HOME: ${{ runner.temp }}/codex-home
+          CODEX_OUTPUT_PATH: ${{ runner.temp }}/codex-pr-review.json
+          CODEX_SCHEMA_PATH: ${{ runner.temp }}/trusted-codex-pr-review.schema.json
+        run: |
+          codex exec \
+            --cd "$GITHUB_WORKSPACE" \
+            --sandbox read-only \
+            --ignore-user-config \
+            -c 'mcp_servers.serena.command="serena"' \
+            -c 'mcp_servers.serena.args=["start-mcp-server","--project-from-cwd","--context=codex"]' \
+            -c 'mcp_servers.serena.startup_timeout_sec=15' \
+            -c service_tier=fast \
+            -c 'mcp_servers.serena.command="serena"' \
+            -c 'mcp_servers.serena.args=["start-mcp-server","--project-from-cwd","--context=codex"]' \
+            -c 'mcp_servers.serena.startup_timeout_sec=15' \
+            --model gpt-5.5 \
+            --output-schema "$CODEX_SCHEMA_PATH" \
+            --output-last-message "$CODEX_OUTPUT_PATH" \
+            - < "$RUNNER_TEMP/codex-pr-review.md"
+
+      - name: Create GitHub App token
+        id: app_token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3
+        with:
+          app-id: ${{ secrets.CODEX_REVIEW_APP_ID }}
+          private-key: ${{ secrets.CODEX_REVIEW_APP_PRIVATE_KEY }}
+
+      - name: Submit review to GitHub
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        env:
+          BOT_LOGIN: ${{ needs.mark-review-start.outputs.bot_login }}
+          CODEX_REVIEW_PATH: ${{ runner.temp }}/codex-pr-review.json
+          PR_NUMBER: ${{ needs.review-state.outputs.pr_number }}
+        with:
+          github-token: ${{ steps.app_token.outputs.token }}
+          script: |
+            const fs = require("fs");
+            const review = JSON.parse(fs.readFileSync(process.env.CODEX_REVIEW_PATH, "utf8"));
+            const pull_number = Number(process.env.PR_NUMBER);
+            const parsePatch = (patch) => {
+              const hunks = [];
+              if (!patch) {
+                return hunks;
+              }
+
+              const lines = patch.split("\n");
+              let rightLine = null;
+              let currentHunk = null;
+
+              for (const line of lines) {
+                const match = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+                if (match) {
+                  rightLine = Number(match[1]);
+                  currentHunk = {
+                    validRightLines: new Set(),
+                  };
+                  hunks.push(currentHunk);
+                  continue;
+                }
+
+                if (rightLine === null || !currentHunk || line.startsWith("\\")) {
+                  continue;
+                }
+
+                const prefix = line[0];
+                if (prefix === "+" || prefix === " ") {
+                  currentHunk.validRightLines.add(rightLine);
+                  rightLine += 1;
+                  continue;
+                }
+
+                if (prefix === "-") {
+                  continue;
+                }
+              }
+
+              return hunks;
+            };
+
+            const isValidCommentRange = (hunks, startLine, endLine) => {
+              if (!Array.isArray(hunks) || hunks.length === 0 || !endLine) {
+                return false;
+              }
+
+              const normalizedStart = startLine ? Math.min(startLine, endLine) : endLine;
+              const normalizedEnd = startLine ? Math.max(startLine, endLine) : endLine;
+              for (const hunk of hunks) {
+                let valid = true;
+                for (let line = normalizedStart; line <= normalizedEnd; line += 1) {
+                  if (!hunk.validRightLines.has(line)) {
+                    valid = false;
+                    break;
+                  }
+                }
+
+                if (valid) {
+                  return true;
+                }
+              }
+
+              return false;
+            };
+
+            const severityLabel = {
+              high: "高",
+              medium: "中",
+              low: "低",
+            };
+
+            const findings = Array.isArray(review.findings) ? review.findings : [];
+            const inlineComments = [];
+            let nonInlineFindingsCount = 0;
+            const validCommentLinesByPath = new Map();
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number,
+              per_page: 100,
+            });
+            for (const file of files) {
+              validCommentLinesByPath.set(file.filename, parsePatch(file.patch));
+            }
+            const sections = [
+              "<!-- codex-ai-review -->",
+              "## Codex AIレビュー",
+              "",
+              review.summary.trim(),
+            ];
+
+            if (findings.length > 0) {
+              sections.push("", "### 指摘事項", "");
+              for (const finding of findings) {
+                const hasRange = finding.start_line && finding.line && finding.start_line !== finding.line;
+                const location = finding.line
+                  ? hasRange
+                    ? ` (${finding.file}:${finding.start_line}-${finding.line})`
+                    : ` (${finding.file}:${finding.line})`
+                  : ` (${finding.file})`;
+                sections.push(
+                  `- **[${severityLabel[finding.severity] ?? finding.severity}]** ${finding.title}${location}`,
+                  `  ${finding.body}`
+                );
+
+                if (finding.file && finding.line) {
+                  const fileHunks = validCommentLinesByPath.get(finding.file);
+                  const normalizedStartLine = finding.start_line ? Math.min(finding.start_line, finding.line) : finding.line;
+                  const normalizedEndLine = finding.start_line ? Math.max(finding.start_line, finding.line) : finding.line;
+
+                  if (!isValidCommentRange(fileHunks, normalizedStartLine, normalizedEndLine)) {
+                    nonInlineFindingsCount += 1;
+                    continue;
+                  }
+
+                  const comment = {
+                    path: finding.file,
+                    body: `**[${severityLabel[finding.severity] ?? finding.severity}]** ${finding.title}\n\n${finding.body}`,
+                    line: normalizedEndLine,
+                    side: "RIGHT",
+                  };
+
+                  if (finding.start_line && normalizedStartLine !== normalizedEndLine) {
+                    comment.start_line = normalizedStartLine;
+                    comment.start_side = "RIGHT";
+                  }
+
+                  inlineComments.push(comment);
+                  continue;
+                }
+
+                nonInlineFindingsCount += 1;
+              }
+            } else {
+              sections.push("", "対応が必要な指摘はありませんでした。");
+            }
+
+            if (nonInlineFindingsCount > 0) {
+              sections.push(
+                "",
+                `注: ${nonInlineFindingsCount} 件の指摘は行番号を特定できなかったため、inline comment ではなく本文にのみ記載しています。`
+              );
+              core.warning(
+                `${nonInlineFindingsCount} findings could not be posted as inline comments for PR #${pull_number}.`
+              );
+            }
+
+            const eventMap = {
+              approve: "APPROVE",
+              comment: "COMMENT",
+              request_changes: "REQUEST_CHANGES",
+            };
+
+            const event = eventMap[review.decision] ?? "COMMENT";
+            const reviewBody = sections.join("\n");
+            const logReviewError = (error, contextMessage) => {
+              const responseData = error?.response?.data;
+              core.warning(`${contextMessage}: ${error.message}`);
+              if (responseData) {
+                core.warning(JSON.stringify(responseData));
+              }
+            };
+
+            try {
+              await github.rest.pulls.createReview({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number,
+                event,
+                body: reviewBody,
+                comments: inlineComments,
+              });
+            } catch (error) {
+              if (error.status !== 422 || inlineComments.length === 0) {
+                logReviewError(error, `Failed to submit review for PR #${pull_number}`);
+                throw error;
+              }
+
+              logReviewError(
+                error,
+                `Failed to submit inline review comments for PR #${pull_number}; retrying without inline comments`
+              );
+              core.warning(
+                `${inlineComments.length} inline comments could not be posted for PR #${pull_number}. Posting review body only.`
+              );
+              await github.rest.pulls.createReview({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number,
+                event,
+                body: `${reviewBody}\n\n注: inline comment の投稿に失敗したため、指摘は本文にのみ記載しています。`,
+              });
+            }
+
+            const botLogin = process.env.BOT_LOGIN;
+            if (botLogin) {
+              const reactions = await github.paginate("GET /repos/{owner}/{repo}/issues/{issue_number}/reactions", {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pull_number,
+                per_page: 100,
+                headers: {
+                  accept: "application/vnd.github+json",
+                },
+              });
+
+              for (const reaction of reactions) {
+                if (reaction.content === "eyes" && reaction.user?.login === botLogin) {
+                  await github.request("DELETE /repos/{owner}/{repo}/issues/{issue_number}/reactions/{reaction_id}", {
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: pull_number,
+                    reaction_id: reaction.id,
+                    headers: {
+                      accept: "application/vnd.github+json",
+                    },
+                  });
+                }
+              }
+            }
+
+      - name: Create GitHub App token for secret rotation
+        id: secret_rotation_token
+        continue-on-error: true
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3
+        with:
+          app-id: ${{ secrets.CODEX_REVIEW_APP_ID }}
+          private-key: ${{ secrets.CODEX_REVIEW_APP_PRIVATE_KEY }}
+
+      - name: Persist refreshed Codex auth secret
+        if: ${{ steps.secret_rotation_token.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ steps.secret_rotation_token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          CODEX_AUTH_PATH: ${{ runner.temp }}/codex-home/auth.json
+        run: |
+          set -euo pipefail
+
+          if [[ ! -s "$CODEX_AUTH_PATH" ]]; then
+            echo "Codex auth file not found or empty: $CODEX_AUTH_PATH" >&2
+            exit 1
+          fi
+
+          echo "Checking repository secret write access..."
+          gh api "repos/$GH_REPO/actions/secrets/public-key" >/dev/null
+
+          echo "Updating CODEX_AUTH_JSON..."
+          gh secret set CODEX_AUTH_JSON \
+            --repo "$GH_REPO" \
+            < "$CODEX_AUTH_PATH"
