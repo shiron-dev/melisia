@@ -7,9 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  actions: write
   contents: read
-  id-token: write
 
 jobs:
   discover-terraform-roots:
@@ -28,6 +26,9 @@ jobs:
     name: cancel stale runs
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
     outputs:
       cancelled_run_ids: ${{ steps.cancel-stale.outputs.cancelled_run_ids }}
     steps:
@@ -126,6 +127,9 @@ jobs:
     if: github.ref == 'refs/heads/main' && needs.cancel-stale-runs.outputs.cancelled_run_ids != ''
     needs:
       - cancel-stale-runs
+    permissions:
+      contents: read
+      id-token: write
     env:
       TERRAFORM_PLAN_BUCKET: shiron-dev-terraform
     steps:
@@ -153,6 +157,9 @@ jobs:
     needs:
       - discover-terraform-roots
       - cancel-stale-runs
+    permissions:
+      contents: read
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -323,6 +330,9 @@ jobs:
     needs:
       - discover-terraform-roots
       - collect-plan-results
+    permissions:
+      contents: read
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
