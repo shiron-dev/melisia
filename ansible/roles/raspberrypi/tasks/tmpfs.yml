@@ -7,7 +7,7 @@
     group: root
     mode: "0644"
     backup: true
-  notify: enable init_task
+  notify: Enable init_task
 
 - name: Make init_task dir
   become: true
@@ -17,7 +17,7 @@
     owner: root
     group: root
     mode: "0755"
-  notify: enable init_task
+  notify: Enable init_task
 
 - name: Template startup.sh
   become: true
@@ -28,7 +28,7 @@
     group: root
     mode: "0755"
     backup: true
-  notify: enable init_task
+  notify: Enable init_task
 
 - name: Template shutdown.sh
   become: true
@@ -39,7 +39,7 @@
     group: root
     mode: "0755"
     backup: true
-  notify: enable init_task
+  notify: Enable init_task
 
 - name: Make log.old dir
   become: true
@@ -49,7 +49,7 @@
     owner: root
     group: root
     mode: "0755"
-  notify: enable init_task
+  notify: Enable init_task
 
 - name: Template /etc/fstab
   become: true
@@ -60,4 +60,4 @@
     group: root
     mode: "0644"
     backup: true
-  notify: reboot
+  notify: Reboot

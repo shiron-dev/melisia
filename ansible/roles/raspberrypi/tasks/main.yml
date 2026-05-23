@@ -4,3 +4,23 @@
   ansible.builtin.import_tasks: tmpfs.yml
 - name: Install rsyslog
   ansible.builtin.import_tasks: rsyslog.yml
+- name: Configure Wi-Fi fallback
+  ansible.builtin.import_tasks: wifi.yml
+
+- name: Generate en_US.UTF-8 locale
+  become: true
+  community.general.locale_gen:
+    name: en_US.UTF-8
+    state: present
+
+- name: Set locale
+  become: true
+  ansible.builtin.lineinfile:
+    path: /etc/default/locale
+    regexp: "^{{ item.key }}="
+    line: "{{ item.key }}={{ item.value }}"
+    create: true
+    mode: "0644"
+  loop:
+    - { key: LANG, value: en_US.UTF-8 }
+    - { key: LC_ALL, value: en_US.UTF-8 }

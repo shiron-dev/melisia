@@ -1,0 +1,7 @@
+raspberrypi_wifi_connection_name: home-ep-wifi
+raspberrypi_wifi_interface: wlan0
+raspberrypi_wifi_autoconnect_priority: -999
+raspberrypi_wifi_ipv4_route_metric: 600
+raspberrypi_wifi_ipv6_route_metric: 600
+raspberrypi_boot_partuuid: 5f271453-01
+raspberrypi_root_partuuid: 5f271453-02

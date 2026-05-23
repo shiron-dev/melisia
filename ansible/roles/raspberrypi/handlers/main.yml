@@ -5,7 +5,13 @@
     enabled: true
     state: started
     daemon_reload: true
-  notify: reboot
+  notify: Reboot
+
+- name: Reload NetworkManager connections
+  become: true
+  ansible.builtin.command:
+    cmd: nmcli connection reload
+  changed_when: false
 
 - name: Reboot
   become: true

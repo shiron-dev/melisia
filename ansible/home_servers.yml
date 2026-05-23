@@ -3,6 +3,3 @@
   roles:
     - raspberrypi
     - docker
-    # - bind_dns
-    - home_assistant
-    - prometheus
