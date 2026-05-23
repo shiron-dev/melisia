@@ -196,11 +196,16 @@ jobs:
           if [ ! -s "$slack_file" ]; then
             echo "terraform plan produced no output." > "$slack_file"
           fi
+          plan_sha256=""
+          if [ "$exit_code" = "2" ]; then
+            plan_sha256="$(sha256sum "$plan_file" | awk '{print $1}')"
+          fi
 
           {
             echo "output_file=${output_file}"
             echo "slack_file=${slack_file}"
             echo "plan_file=${plan_file}"
+            echo "plan_sha256=${plan_sha256}"
             echo "exit_code=${exit_code}"
           } >> "$GITHUB_OUTPUT"
       - name: Write plan result
@@ -209,8 +214,9 @@ jobs:
           jq -n -c \
             --arg id "${{ matrix.target.id }}" \
             --arg path "${{ matrix.target.path }}" \
+            --arg plan_sha256 "${{ steps.terraform-plan.outputs.plan_sha256 }}" \
             --arg exit_code "${{ steps.terraform-plan.outputs.exit_code }}" \
-            '{target: {id: $id, path: $path}, exit_code: $exit_code}' \
+            '{target: {id: $id, path: $path, plan_sha256: $plan_sha256}, exit_code: $exit_code}' \
             > "$GITHUB_WORKSPACE/plan-results/${{ matrix.target.id }}.json"
       - name: Upload plan result artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -328,6 +334,10 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/plan-files"
           plan_uri="gs://${TERRAFORM_PLAN_BUCKET}/github-actions/terraform-plans/${GITHUB_RUN_ID}/${{ matrix.target.id }}/tfplan.bin"
           gcloud storage cp "$plan_uri" "$GITHUB_WORKSPACE/plan-files/tfplan_${{ matrix.target.id }}.bin"
+      - name: Verify saved terraform plan
+        run: |
+          plan_file="$GITHUB_WORKSPACE/plan-files/tfplan_${{ matrix.target.id }}.bin"
+          echo "${{ matrix.target.plan_sha256 }}  ${plan_file}" | sha256sum --check
       - name: Terraform Init
         run: cd "${{ matrix.target.path }}" && terraform init
       - name: Run terraform apply
