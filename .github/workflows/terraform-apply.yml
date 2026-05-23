@@ -28,8 +28,11 @@ jobs:
     name: cancel stale runs
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    env:
+      TERRAFORM_PLAN_BUCKET: shiron-dev-terraform
     steps:
       - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        id: cancel-stale
         if: github.event_name == 'push'
         with:
           script: |
@@ -77,6 +80,7 @@ jobs:
             });
 
             let cancelled = 0;
+            const cancelledRunIds = [];
 
             for (const run of candidates) {
               const jobs = await github.paginate(
@@ -108,10 +112,29 @@ jobs:
                 run_id: run.id,
               });
               cancelled += 1;
+              cancelledRunIds.push(String(run.id));
               core.info(`Cancelled stale run ${run.id}.`);
             }
 
+            core.setOutput("cancelled_run_ids", cancelledRunIds.join(" "));
             core.info(`Cancelled ${cancelled} stale run(s).`);
+      - name: Authenticate to Google Cloud
+        if: steps.cancel-stale.outputs.cancelled_run_ids != ''
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.SERVICE_ACCOUNT }}
+      - name: Setup gcloud
+        if: steps.cancel-stale.outputs.cancelled_run_ids != ''
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      - name: Delete saved terraform plans for stale runs
+        if: steps.cancel-stale.outputs.cancelled_run_ids != ''
+        env:
+          CANCELLED_RUN_IDS: ${{ steps.cancel-stale.outputs.cancelled_run_ids }}
+        run: |
+          for run_id in $CANCELLED_RUN_IDS; do
+            gcloud storage rm -r "gs://${TERRAFORM_PLAN_BUCKET}/github-actions/terraform-plans/${run_id}" || true
+          done
 
   plan:
     name: terraform plan (${{ matrix.target.path }})
@@ -247,6 +270,11 @@ jobs:
       - name: Fail when terraform plan failed
         if: steps.terraform-plan.outputs.exit_code == '1'
         run: exit 1
+      - name: Delete saved terraform plan after plan job failure
+        if: failure() && steps.terraform-plan.outputs.exit_code == '2'
+        run: |
+          plan_uri="gs://${TERRAFORM_PLAN_BUCKET}/github-actions/terraform-plans/${GITHUB_RUN_ID}/${{ matrix.target.id }}/tfplan.bin"
+          gcloud storage rm "$plan_uri" || true
 
   collect-plan-results:
     name: collect terraform plan results
@@ -349,3 +377,28 @@ jobs:
         run: |
           plan_uri="gs://${TERRAFORM_PLAN_BUCKET}/github-actions/terraform-plans/${GITHUB_RUN_ID}/${{ matrix.target.id }}/tfplan.bin"
           gcloud storage rm "$plan_uri" || true
+
+  cleanup-saved-plans:
+    name: cleanup saved terraform plans
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: always() && needs.collect-plan-results.outputs.has_diff == 'true'
+    needs:
+      - collect-plan-results
+      - apply
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TERRAFORM_PLAN_BUCKET: shiron-dev-terraform
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.SERVICE_ACCOUNT }}
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      - name: Delete saved terraform plans from GCS
+        run: |
+          gcloud storage rm -r "gs://${TERRAFORM_PLAN_BUCKET}/github-actions/terraform-plans/${GITHUB_RUN_ID}" || true
