@@ -259,7 +259,7 @@ jobs:
       - name: Upload plan result artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: terraform-plan-result-${{ matrix.target.id }}
+          name: terraform-plan-result-${{ github.run_attempt }}-${{ matrix.target.id }}
           path: ${{ github.workspace }}/plan-results/${{ matrix.target.id }}.json
           retention-days: 1
       - name: Upload saved terraform plan to GCS
@@ -304,7 +304,7 @@ jobs:
       - name: Download plan result artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          pattern: terraform-plan-result-*
+          pattern: terraform-plan-result-${{ github.run_attempt }}-*
           path: plan-results
           merge-multiple: true
       - name: Collect targets with changes
