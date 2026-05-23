@@ -2,4 +2,6 @@
   hosts: home_ep
   roles:
     - raspberrypi
+    - cloudflare_mesh
+    - cloudflare_access_infrastructure_ssh
     - docker

@@ -1,0 +1,156 @@
+- name: Create directory for Cloudflare WARP apt key
+  become: true
+  ansible.builtin.file:
+    path: "{{ cloudflare_mesh_apt_key_path | dirname }}"
+    state: directory
+    mode: "0755"
+
+- name: Check Cloudflare WARP GPG key
+  become: true
+  ansible.builtin.stat:
+    path: "{{ cloudflare_mesh_apt_key_path }}"
+  register: cloudflare_mesh_gpg_key
+
+- name: Download Cloudflare WARP GPG key
+  become: true
+  ansible.builtin.get_url:
+    url: "{{ cloudflare_mesh_apt_key_url }}"
+    dest: /tmp/cloudflare-warp-archive-keyring.asc
+    mode: "0644"
+  when: not cloudflare_mesh_gpg_key.stat.exists
+
+- name: Install Cloudflare WARP GPG key
+  become: true
+  ansible.builtin.command:
+    cmd: gpg --yes --dearmor -o {{ cloudflare_mesh_apt_key_path }} /tmp/cloudflare-warp-archive-keyring.asc
+  changed_when: true
+  when: not cloudflare_mesh_gpg_key.stat.exists
+
+- name: Set permissions for Cloudflare WARP GPG key
+  become: true
+  ansible.builtin.file:
+    path: "{{ cloudflare_mesh_apt_key_path }}"
+    mode: "0644"
+
+- name: Add Cloudflare WARP repository
+  become: true
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by={{ cloudflare_mesh_apt_key_path }}] https://pkg.cloudflareclient.com/ {{ ansible_facts['distribution_release'] }} main"
+    filename: cloudflare-client
+    state: present
+    mode: "0644"
+
+- name: Clean apt package cache before installing Cloudflare WARP
+  become: true
+  ansible.builtin.apt:
+    clean: true
+
+- name: Vacuum journald logs before installing Cloudflare WARP
+  become: true
+  ansible.builtin.command:
+    cmd: journalctl --vacuum-size=32M
+  changed_when: false
+  failed_when: false
+
+- name: Check root filesystem free space
+  become: true
+  ansible.builtin.command:
+    cmd: df -Pm /
+  register: cloudflare_mesh_root_free
+  changed_when: false
+
+- name: Check /var/log free space
+  become: true
+  ansible.builtin.command:
+    cmd: df -Pm /var/log
+  register: cloudflare_mesh_var_log_free
+  changed_when: false
+
+- name: Fail when there is not enough space to install Cloudflare WARP
+  ansible.builtin.fail:
+    msg: >-
+      Not enough free space to install cloudflare-warp.
+      Root has {{ cloudflare_mesh_root_free.stdout_lines[1].split()[3] }} MB free
+      (need {{ cloudflare_mesh_min_root_free_mb }} MB), /var/log has
+      {{ cloudflare_mesh_var_log_free.stdout_lines[1].split()[3] }} MB free
+      (need {{ cloudflare_mesh_min_var_log_free_mb }} MB). Reboot home-ep or
+      free disk space, then rerun this playbook.
+  when:
+    - (cloudflare_mesh_root_free.stdout_lines[1].split()[3] | int) < cloudflare_mesh_min_root_free_mb
+      or (cloudflare_mesh_var_log_free.stdout_lines[1].split()[3] | int) < cloudflare_mesh_min_var_log_free_mb
+
+- name: Repair any interrupted package configuration
+  become: true
+  ansible.builtin.command:
+    cmd: dpkg --configure -a
+  register: cloudflare_mesh_dpkg_configure
+  changed_when: cloudflare_mesh_dpkg_configure.stdout | length > 0
+
+- name: Install Cloudflare WARP
+  become: true
+  ansible.builtin.apt:
+    name: cloudflare-warp
+    state: present
+    update_cache: true
+
+- name: Ensure Cloudflare WARP service is running
+  become: true
+  ansible.builtin.systemd:
+    name: warp-svc
+    enabled: true
+    state: started
+
+- name: Wait for Cloudflare WARP service
+  become: true
+  ansible.builtin.command:
+    cmd: warp-cli --accept-tos status
+  register: cloudflare_mesh_warp_status
+  changed_when: false
+  failed_when: false
+  retries: 12
+  delay: 5
+  until: cloudflare_mesh_warp_status.rc == 0
+
+- name: Configure forwarding for Cloudflare Mesh
+  become: true
+  ansible.builtin.copy:
+    dest: "{{ cloudflare_mesh_sysctl_path }}"
+    mode: "0644"
+    content: |
+      net.ipv4.ip_forward = 1
+      net.ipv6.conf.all.forwarding = 1
+      net.ipv6.conf.all.accept_ra = 2
+  notify: Apply Cloudflare Mesh sysctl
+
+- name: Flush handlers before connecting Cloudflare Mesh
+  ansible.builtin.meta: flush_handlers
+
+- name: Check Cloudflare Mesh registration
+  become: true
+  ansible.builtin.command:
+    cmd: warp-cli --accept-tos registration show
+  register: cloudflare_mesh_registration
+  changed_when: false
+  failed_when: false
+
+- name: Register Cloudflare Mesh connector
+  become: true
+  ansible.builtin.command:
+    cmd: warp-cli --accept-tos connector new {{ cloudflare_mesh_connector_token | quote }}
+  when:
+    - cloudflare_mesh_connector_token | length > 0
+    - cloudflare_mesh_registration.rc != 0
+  register: cloudflare_mesh_register
+  changed_when: cloudflare_mesh_register.rc == 0
+  failed_when: cloudflare_mesh_register.rc != 0
+  no_log: true
+
+- name: Connect Cloudflare Mesh
+  become: true
+  ansible.builtin.command:
+    cmd: warp-cli --accept-tos connect
+  register: cloudflare_mesh_connect
+  changed_when: "'Success' in cloudflare_mesh_connect.stdout or 'success' in cloudflare_mesh_connect.stdout"
+  failed_when:
+    - cloudflare_mesh_connect.rc != 0
+    - "'Already connected' not in cloudflare_mesh_connect.stderr"

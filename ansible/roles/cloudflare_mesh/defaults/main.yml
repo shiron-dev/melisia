@@ -1,0 +1,7 @@
+cloudflare_mesh_apt_key_url: https://pkg.cloudflareclient.com/pubkey.gpg
+cloudflare_mesh_apt_key_path: /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+cloudflare_mesh_apt_source_path: /etc/apt/sources.list.d/cloudflare-client.list
+cloudflare_mesh_connector_token: ""
+cloudflare_mesh_sysctl_path: /etc/sysctl.d/99-zzz-cloudflare-warp-connector.conf
+cloudflare_mesh_min_root_free_mb: 300
+cloudflare_mesh_min_var_log_free_mb: 16

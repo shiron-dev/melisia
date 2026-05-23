@@ -1,0 +1,4 @@
+cloudflare_access_infrastructure_ssh_ca_public_key: >-
+  ecdsa-sha2-nistp256
+  AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBGPsQA1oj8aoPSvesem2kkpfkrb6/IxTdNbbXXckmYsojb/CYOdilO2fPkPLMomJxooqkY+RZaNoV3I4am5wwn8=
+  open-ssh-ca@cloudflareaccess.org
