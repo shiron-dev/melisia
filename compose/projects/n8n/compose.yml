@@ -8,6 +8,7 @@ services:
       WEBHOOK_URL: "https://n8n.shiron.dev"
       GENERIC_TIMEZONE: Asia/Tokyo
       N8N_RESTRICT_FILE_ACCESS_TO: /home/node/.n8n-files,/files
+      N8N_PROXY_HOPS: "1"
     volumes:
       - ./n8n_data:/home/node/.n8n
       - ./local-files:/files
@@ -28,7 +29,11 @@ services:
           cpus: '0.5'
           memory: 512M
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5678/healthz"]
+      test:
+        [
+          "CMD-SHELL",
+          "wget --spider --quiet --tries=1 --timeout=3 http://127.0.0.1:5678/healthz",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
