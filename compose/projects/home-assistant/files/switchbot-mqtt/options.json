@@ -1,0 +1,29 @@
+{
+  "LogLevel": "Information",
+  "AutoStartServices": true,
+  "DeviceStatePersistence": true,
+  "Mqtt": {
+    "AutoConfig": false,
+    "Host": "mosquitto",
+    "Port": 1883,
+    "Id": "",
+    "Pw": "",
+    "Tls": false
+  },
+  "SwitchBot": {
+    "ApiBaseUrl": "https://api.switch-bot.com/v1.1/",
+    "ApiKey": "{{ .switchbot_api_key }}",
+    "ApiSecret": "{{ .switchbot_api_secret }}"
+  },
+  "EnforceDeviceTypes": [],
+  "WebhookService": {
+    "UseWebhook": false,
+    "UseNgrok": false,
+    "NgrokAuthToken": "",
+    "HostUrl": ""
+  },
+  "MessageRetain": {
+    "Entity": true,
+    "State": false
+  }
+}

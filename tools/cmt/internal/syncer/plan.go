@@ -32,9 +32,10 @@ type PlanDependencies struct {
 }
 
 var (
-	errNoProjectsFound  = errors.New("no projects found")
-	errNoHostsMatched   = errors.New("no hosts matched filter")
-	errRemotePathNotSet = errors.New("remotePath is not set")
+	errNoProjectsFound       = errors.New("no projects found")
+	errNoHostsMatched        = errors.New("no hosts matched filter")
+	errNoHostProjectsMatched = errors.New("no projects matched host config")
+	errRemotePathNotSet      = errors.New("remotePath is not set")
 )
 
 type LocalCommandRunner interface {
@@ -918,6 +919,13 @@ func buildHostPlan(
 	localRunner LocalCommandRunner,
 	progress planProgress,
 ) (*HostPlan, error) {
+	filteredProjects, err := filterHostProjects(host, hostCfg, projects)
+	if err != nil {
+		return nil, err
+	}
+
+	projects = filteredProjects
+
 	hostPlan := &HostPlan{
 		Host:     host,
 		Projects: make([]ProjectPlan, len(projects)),
@@ -955,6 +963,29 @@ func buildHostPlan(
 	}
 
 	return hostPlan, nil
+}
+
+func filterHostProjects(
+	host config.HostEntry,
+	hostCfg *config.HostConfig,
+	projects []string,
+) ([]string, error) {
+	if hostCfg == nil || len(hostCfg.Projects) == 0 {
+		return projects, nil
+	}
+
+	filtered := make([]string, 0, len(projects))
+	for _, p := range projects {
+		if _, ok := hostCfg.Projects[p]; ok {
+			filtered = append(filtered, p)
+		}
+	}
+
+	if len(projects) > 0 && len(filtered) == 0 {
+		return nil, fmt.Errorf("%w for host %q", errNoHostProjectsMatched, host.Name)
+	}
+
+	return filtered, nil
 }
 
 func buildProjectPlanForHost(
