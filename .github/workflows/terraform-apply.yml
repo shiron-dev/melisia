@@ -331,6 +331,7 @@ jobs:
       - discover-terraform-roots
       - collect-plan-results
     permissions:
+      actions: read
       contents: read
       id-token: write
     strategy:
@@ -344,9 +345,53 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
       TERRAFORM_PLAN_BUCKET: shiron-dev-terraform
     steps:
+      - name: Check run is latest before apply
+        id: stale-check
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const branch = context.ref.replace("refs/heads/", "");
+            const currentRunId = context.runId;
+            const currentRunNumber = context.runNumber;
+            const workflowRef = process.env.GITHUB_WORKFLOW_REF || "";
+            const workflowId = workflowRef
+              .split("@")[0]
+              .replace(`${owner}/${repo}/`, "");
+
+            if (!workflowId) {
+              core.setFailed("Failed to resolve workflow_id from GITHUB_WORKFLOW_REF.");
+              return;
+            }
+
+            const runs = await github.paginate(
+              github.rest.actions.listWorkflowRuns,
+              {
+                owner,
+                repo,
+                workflow_id: workflowId,
+                branch,
+                per_page: 100,
+              },
+            );
+
+            const newerRun = runs.find(
+              (run) => run.id !== currentRunId && run.run_number > currentRunNumber,
+            );
+
+            if (newerRun) {
+              core.warning(`Skip apply for stale run ${currentRunId}: newer run ${newerRun.id} exists.`);
+              core.setOutput("is_latest", "false");
+              return;
+            }
+
+            core.setOutput("is_latest", "true");
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        if: steps.stale-check.outputs.is_latest == 'true'
       - name: Get Terraform version from mise.toml
         id: terraform-version
+        if: steps.stale-check.outputs.is_latest == 'true'
         run: |
           if grep -q 'terraform = "latest"' mise.toml; then
             echo "version=latest" >> "$GITHUB_OUTPUT"
@@ -355,17 +400,21 @@ jobs:
             echo "version=$version" >> "$GITHUB_OUTPUT"
           fi
       - name: Setup Terraform
+        if: steps.stale-check.outputs.is_latest == 'true'
         uses: hashicorp/setup-terraform@5e8dbf3c6d9deaf4193ca7a8fb23f2ac83bb6c85 # v4.0.0
         with:
           terraform_version: ${{ steps.terraform-version.outputs.version }}
       - name: Authenticate to Google Cloud
+        if: steps.stale-check.outputs.is_latest == 'true'
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
           workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.SERVICE_ACCOUNT }}
       - name: Setup gcloud
+        if: steps.stale-check.outputs.is_latest == 'true'
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
       - name: Install SOPS
+        if: steps.stale-check.outputs.is_latest == 'true'
         run: |
           set -euo pipefail
           SOPS_VERSION="v3.9.4"
@@ -374,24 +423,29 @@ jobs:
           sudo mv /tmp/sops /usr/local/bin/sops
           sops --version
       - name: Decrypt secrets
+        if: steps.stale-check.outputs.is_latest == 'true'
         run: make sops-decrypt
       - name: Download saved terraform plan from GCS
+        if: steps.stale-check.outputs.is_latest == 'true'
         run: |
           mkdir -p "$GITHUB_WORKSPACE/plan-files"
           plan_uri="gs://${TERRAFORM_PLAN_BUCKET}/github-actions/terraform-plans/${GITHUB_RUN_ID}/${{ matrix.target.id }}/tfplan.bin"
           gcloud storage cp "$plan_uri" "$GITHUB_WORKSPACE/plan-files/tfplan_${{ matrix.target.id }}.bin"
       - name: Verify saved terraform plan
+        if: steps.stale-check.outputs.is_latest == 'true'
         run: |
           plan_file="$GITHUB_WORKSPACE/plan-files/tfplan_${{ matrix.target.id }}.bin"
           echo "${{ matrix.target.plan_sha256 }}  ${plan_file}" | sha256sum --check
       - name: Terraform Init
+        if: steps.stale-check.outputs.is_latest == 'true'
         run: cd "${{ matrix.target.path }}" && terraform init
       - name: Run terraform apply
+        if: steps.stale-check.outputs.is_latest == 'true'
         run: |
           plan_file="$GITHUB_WORKSPACE/plan-files/tfplan_${{ matrix.target.id }}.bin"
           cd "${{ matrix.target.path }}" && terraform apply "$plan_file"
       - name: Delete saved terraform plan from GCS
-        if: always()
+        if: always() && steps.stale-check.outputs.is_latest == 'true'
         run: |
           plan_uri="gs://${TERRAFORM_PLAN_BUCKET}/github-actions/terraform-plans/${GITHUB_RUN_ID}/${{ matrix.target.id }}/tfplan.bin"
           gcloud storage rm "$plan_uri" || true
