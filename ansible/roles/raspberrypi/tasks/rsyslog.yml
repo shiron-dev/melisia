@@ -1,6 +1,7 @@
 - name: Apt-get update
   become: true
   ansible.builtin.apt:
+    update_cache: true
 
 - name: Install rsyslog
   become: true

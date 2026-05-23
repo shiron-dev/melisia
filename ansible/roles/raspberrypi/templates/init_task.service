@@ -3,6 +3,7 @@ Description=Script for system startup and shutdown
 
 [Service]
 Type=oneshot
+RemainAfterExit=yes
 User=root
 ExecStart=/var/init_task/startup.sh
 ExecStop=/var/init_task/shutdown.sh
