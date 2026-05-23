@@ -149,7 +149,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: production-plan
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     needs:
       - discover-terraform-roots
       - cancel-stale-runs
@@ -319,7 +319,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: production
-    if: needs.collect-plan-results.outputs.has_diff == 'true'
+    if: github.ref == 'refs/heads/main' && needs.collect-plan-results.outputs.has_diff == 'true'
     needs:
       - discover-terraform-roots
       - collect-plan-results
