@@ -123,7 +123,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: production-plan
-    if: needs.cancel-stale-runs.outputs.cancelled_run_ids != ''
+    if: github.ref == 'refs/heads/main' && needs.cancel-stale-runs.outputs.cancelled_run_ids != ''
     needs:
       - cancel-stale-runs
     env:
@@ -391,7 +391,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: production-plan
-    if: always()
+    if: always() && github.ref == 'refs/heads/main'
     needs:
       - apply
     permissions:
