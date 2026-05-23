@@ -1,4 +1,4 @@
-name: Compose CMT CI
+name: CMT Plan CI
 
 on:
   pull_request:
@@ -17,17 +17,23 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     outputs:
-      should_run: ${{ steps.filter.outputs.src }}
+      should_run: ${{ steps.filter.outputs.should_run }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+      - name: Check changed paths
         id: filter
-        with:
-          filters: |
-            src:
-              - "compose/**"
-              - "tools/cmt/**"
-              - ".github/workflows/**"
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          files="$(curl -fsSL "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files?per_page=100")"
+          should_run="$(
+            jq -r '
+              any(.[]; (.filename | startswith("compose/")) or ((.filename | startswith("tools/cmt/")) and .filename != "tools/cmt/.golangci.yml"))
+            ' <<< "$files"
+          )"
+
+          echo "should_run=${should_run}" >> "$GITHUB_OUTPUT"
 
   plan:
     name: cmt plan
@@ -74,15 +80,16 @@ jobs:
       - name: Run cmt plan
         id: cmt-plan
         env:
-          CMT_OPT: "--exit-status"
           CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
           TUNNEL_SERVICE_TOKEN_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           TUNNEL_SERVICE_TOKEN_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
         run: |
+          make cmt-init
+
           set +e
 
-          make cmt-plan > "$GITHUB_WORKSPACE/plan_output.txt" 2>&1
+          tools/cmt/cmt --config compose/config.yml plan --exit-status > "$GITHUB_WORKSPACE/plan_output.txt" 2>&1
           exit_code=$?
 
           summary_line="$(tr -d '\r' < "$GITHUB_WORKSPACE/plan_output.txt" | awk '/^Summary: /{line=$0} END{print line}')"
@@ -127,13 +134,13 @@ jobs:
           comment_file="$GITHUB_WORKSPACE/comment_body.md"
           if [ "$PLAN_EXIT_CODE" = "0" ]; then
             {
-              echo "### \`make cmt-plan\` result"
+              echo "### \`cmt plan\` result"
               echo ""
               echo "No changes."
             } > "$comment_file"
           elif [ "$PLAN_EXIT_CODE" = "2" ]; then
             {
-              echo "### \`make cmt-plan\` result"
+              echo "### \`cmt plan\` result"
               echo ""
               echo "$PLAN_SUMMARY"
               echo ""
@@ -148,7 +155,7 @@ jobs:
             } > "$comment_file"
           else
             {
-              echo "### \`make cmt-plan\` result"
+              echo "### \`cmt plan\` result"
               echo ""
               echo ":x: Plan failed (exit code: $PLAN_EXIT_CODE)."
               if [ -n "$SLACK_URL" ]; then
@@ -167,7 +174,7 @@ jobs:
           header: cmt-plan
           path: ${{ steps.prepare-comment.outputs.path }}
       - name: Fail when cmt plan failed
-        if: steps.cmt-plan.outputs.exit_code == '1'
+        if: steps.cmt-plan.outputs.exit_code != '0' && steps.cmt-plan.outputs.exit_code != '2'
         run: exit 1
 
   cmt-plan-status-check:
@@ -182,8 +189,8 @@ jobs:
       - name: Check cmt-plan-status-check
         run: |
           diff \
-            <(yq '.jobs | del(.cmt-plan-status-check) | keys.[]' .github/workflows/compose-cmt.yml) \
-            <(yq '.jobs.cmt-plan-status-check.needs.[]' .github/workflows/compose-cmt.yml)
+            <(yq '.jobs | del(.cmt-plan-status-check) | keys.[]' .github/workflows/cmt-plan.yml) \
+            <(yq '.jobs.cmt-plan-status-check.needs.[]' .github/workflows/cmt-plan.yml)
       - name: Fail if any needed job failed
         env:
           JOBS: ${{ toJson(needs) }}

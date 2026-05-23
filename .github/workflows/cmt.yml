@@ -48,13 +48,18 @@ jobs:
       - build
     if: ${{ always() }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: Check cmt-status-check
+        working-directory: .
         run: |
+          curl -fsSL \
+            "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/workflows/cmt.yml" \
+            -o cmt.yml
+
           diff \
-            <(yq ".jobs | del(.cmt-status-check) | keys.[]" .github/workflows/cmt.yml) \
-            <(yq ".jobs.cmt-status-check.needs.[]" .github/workflows/cmt.yml)
+            <(yq ".jobs | del(.cmt-status-check) | keys.[]" cmt.yml) \
+            <(yq ".jobs.cmt-status-check.needs.[]" cmt.yml)
       - name: Fail if any needed job failed
+        working-directory: .
         env:
           JOBS: ${{ toJson(needs) }}
         run: |
