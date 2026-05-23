@@ -15,6 +15,21 @@
       "datasourceTemplate": "docker"
     }
   ],
+  "packageRules": [
+    {
+      "description": "Keep n8n PostgreSQL on major version 16",
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchFileNames": [
+        "compose/projects/n8n/compose.yml"
+      ],
+      "matchPackageNames": [
+        "postgres"
+      ],
+      "allowedVersions": "/^16(?:\\D|$)/"
+    }
+  ],
   "github-actions": {
     "extends": [
       "helpers:pinGitHubActionDigests"
