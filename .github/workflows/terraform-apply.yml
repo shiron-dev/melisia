@@ -169,6 +169,9 @@ jobs:
     env:
       GITHUB_TOKEN: ${{ github.token }}
       TERRAFORM_APPLY_SKIP_TARGETS: "terraform/aws"
+      TERRAFORM_PLAN_KMS_KEY: sops-key
+      TERRAFORM_PLAN_KMS_KEYRING: sops
+      TERRAFORM_PLAN_KMS_LOCATION: global
       TERRAFORM_PLAN_BUCKET: shiron-dev-terraform
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -262,12 +265,30 @@ jobs:
           path: ${{ github.workspace }}/plan-results/${{ matrix.target.id }}.json
           retention-days: 1
           overwrite: true
-      - name: Upload terraform plan file artifact
+      - name: Encrypt terraform plan file for artifact fallback
+        if: steps.terraform-plan.outputs.exit_code == '2'
+        run: |
+          key_file="${{ steps.terraform-plan.outputs.plan_file }}.key"
+          openssl rand -base64 32 > "$key_file"
+          openssl enc -aes-256-cbc -salt -pbkdf2 \
+            -in "${{ steps.terraform-plan.outputs.plan_file }}" \
+            -out "${{ steps.terraform-plan.outputs.plan_file }}.enc" \
+            -pass "file:${key_file}"
+          gcloud kms encrypt \
+            --key="$TERRAFORM_PLAN_KMS_KEY" \
+            --keyring="$TERRAFORM_PLAN_KMS_KEYRING" \
+            --location="$TERRAFORM_PLAN_KMS_LOCATION" \
+            --plaintext-file="$key_file" \
+            --ciphertext-file="${key_file}.enc"
+          rm -f "$key_file"
+      - name: Upload encrypted terraform plan file artifact
         if: steps.terraform-plan.outputs.exit_code == '2'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: terraform-plan-file-${{ matrix.target.id }}
-          path: ${{ steps.terraform-plan.outputs.plan_file }}
+          path: |
+            ${{ steps.terraform-plan.outputs.plan_file }}.enc
+            ${{ steps.terraform-plan.outputs.plan_file }}.key.enc
           retention-days: 1
           overwrite: true
       - name: Upload saved terraform plan to GCS
@@ -351,6 +372,9 @@ jobs:
       cancel-in-progress: false
     env:
       GITHUB_TOKEN: ${{ github.token }}
+      TERRAFORM_PLAN_KMS_KEY: sops-key
+      TERRAFORM_PLAN_KMS_KEYRING: sops
+      TERRAFORM_PLAN_KMS_LOCATION: global
       TERRAFORM_PLAN_BUCKET: shiron-dev-terraform
     steps:
       - name: Check run is latest before apply
@@ -441,12 +465,27 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/plan-files"
           plan_uri="gs://${TERRAFORM_PLAN_BUCKET}/github-actions/terraform-plans/${GITHUB_RUN_ID}/${{ matrix.target.id }}/tfplan.bin"
           gcloud storage cp "$plan_uri" "$GITHUB_WORKSPACE/plan-files/tfplan_${{ matrix.target.id }}.bin"
-      - name: Download terraform plan file artifact
+      - name: Download encrypted terraform plan file artifact
         if: steps.stale-check.outputs.is_latest == 'true' && steps.download-saved-plan-gcs.outcome == 'failure'
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: terraform-plan-file-${{ matrix.target.id }}
           path: ${{ github.workspace }}/plan-files
+      - name: Decrypt terraform plan file artifact
+        if: steps.stale-check.outputs.is_latest == 'true' && steps.download-saved-plan-gcs.outcome == 'failure'
+        run: |
+          key_file="$GITHUB_WORKSPACE/plan-files/tfplan_${{ matrix.target.id }}.bin.key"
+          gcloud kms decrypt \
+            --key="$TERRAFORM_PLAN_KMS_KEY" \
+            --keyring="$TERRAFORM_PLAN_KMS_KEYRING" \
+            --location="$TERRAFORM_PLAN_KMS_LOCATION" \
+            --ciphertext-file="${key_file}.enc" \
+            --plaintext-file="$key_file"
+          openssl enc -d -aes-256-cbc -pbkdf2 \
+            -in "$GITHUB_WORKSPACE/plan-files/tfplan_${{ matrix.target.id }}.bin.enc" \
+            -out "$GITHUB_WORKSPACE/plan-files/tfplan_${{ matrix.target.id }}.bin" \
+            -pass "file:${key_file}"
+          rm -f "$key_file"
       - name: Verify saved terraform plan
         if: steps.stale-check.outputs.is_latest == 'true'
         run: |

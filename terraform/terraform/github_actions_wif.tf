@@ -40,6 +40,12 @@ resource "google_kms_crypto_key_iam_member" "github_actions_melisia_kms_decrypte
   member        = "serviceAccount:${google_service_account.github_actions_melisia.email}"
 }
 
+resource "google_kms_crypto_key_iam_member" "github_actions_melisia_kms_encrypter" {
+  crypto_key_id = google_kms_crypto_key.sops_key.id
+  role          = "roles/cloudkms.cryptoKeyEncrypter"
+  member        = "serviceAccount:${google_service_account.github_actions_melisia.email}"
+}
+
 resource "google_storage_bucket_iam_member" "github_actions_melisia_terraform_state" {
   bucket = "shiron-dev-terraform"
   role   = "roles/storage.objectAdmin"
