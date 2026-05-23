@@ -26,6 +26,7 @@ jobs:
           filters: |
             src:
               - "terraform/**"
+              - ".github/actions/discover-terraform-roots/**"
               - ".github/workflows/**"
 
   discover-terraform-roots:
