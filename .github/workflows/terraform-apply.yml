@@ -497,7 +497,7 @@ jobs:
     name: cleanup saved terraform plans
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    if: always() && github.ref == 'refs/heads/main'
+    if: always() && github.ref == 'refs/heads/main' && needs.apply.result != 'skipped'
     needs:
       - apply
     permissions:
