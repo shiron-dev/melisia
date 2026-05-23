@@ -439,8 +439,51 @@ jobs:
       - name: Terraform Init
         if: steps.stale-check.outputs.is_latest == 'true'
         run: cd "${{ matrix.target.path }}" && terraform init
-      - name: Run terraform apply
+      - name: Check run is latest before terraform apply
+        id: pre-apply-stale-check
         if: steps.stale-check.outputs.is_latest == 'true'
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const branch = context.ref.replace("refs/heads/", "");
+            const currentRunId = context.runId;
+            const currentRunNumber = context.runNumber;
+            const workflowRef = process.env.GITHUB_WORKFLOW_REF || "";
+            const workflowId = workflowRef
+              .split("@")[0]
+              .replace(`${owner}/${repo}/`, "");
+
+            if (!workflowId) {
+              core.setFailed("Failed to resolve workflow_id from GITHUB_WORKFLOW_REF.");
+              return;
+            }
+
+            const runs = await github.paginate(
+              github.rest.actions.listWorkflowRuns,
+              {
+                owner,
+                repo,
+                workflow_id: workflowId,
+                branch,
+                per_page: 100,
+              },
+            );
+
+            const newerRun = runs.find(
+              (run) => run.id !== currentRunId && run.run_number > currentRunNumber,
+            );
+
+            if (newerRun) {
+              core.warning(`Skip terraform apply for stale run ${currentRunId}: newer run ${newerRun.id} exists.`);
+              core.setOutput("is_latest", "false");
+              return;
+            }
+
+            core.setOutput("is_latest", "true");
+      - name: Run terraform apply
+        if: steps.stale-check.outputs.is_latest == 'true' && steps.pre-apply-stale-check.outputs.is_latest == 'true'
         run: |
           plan_file="$GITHUB_WORKSPACE/plan-files/tfplan_${{ matrix.target.id }}.bin"
           cd "${{ matrix.target.path }}" && terraform apply "$plan_file"
