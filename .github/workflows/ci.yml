@@ -209,8 +209,6 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: dotenv-linter/action-dotenv-linter@afde61cfda2ecffe7bea35837b6f20b956c88689 # v3.0.0
-        with:
-          dotenv_linter_flags: --skip UnorderedKey
 
   kics:
     runs-on: ubuntu-latest
