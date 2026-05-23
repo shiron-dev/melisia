@@ -1,0 +1,29 @@
+# Review-only Serena configuration for CI.
+# The PR review workflow copies this file over `.serena/project.yml`
+# so the MCP server cannot bypass Codex's read-only sandbox.
+project_name: "melisia"
+languages:
+  - go
+encoding: "utf-8"
+ignore_all_files_in_gitignore: true
+ls_specific_settings: {}
+ignored_paths: []
+read_only: true
+excluded_tools: []
+included_optional_tools: []
+fixed_tools:
+  - search_for_pattern
+  - get_symbols_overview
+  - find_symbol
+  - find_referencing_symbols
+  - read_memory
+  - list_memories
+  - activate_project
+  - get_current_config
+  - check_onboarding_performed
+  - initial_instructions
+base_modes: []
+default_modes: []
+initial_prompt: ""
+read_only_memory_patterns: []
+ignored_memory_patterns: []

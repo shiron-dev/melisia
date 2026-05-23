@@ -9,6 +9,7 @@ linters:
     - ireturn
     - wsl
     - varnamelen
+    - goconst
   exclusions:
     rules:
       - path: (.+)_test\.go
