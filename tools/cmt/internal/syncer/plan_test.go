@@ -807,6 +807,148 @@ func TestBuildPlanWithDeps_UsesInjectedDependencies(t *testing.T) {
 	}
 }
 
+func TestBuildPlanWithDeps_FiltersProjectsByHostConfig(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+
+	for _, project := range []string{"grafana", "home-assistant"} {
+		projectDir := filepath.Join(base, "projects", project)
+
+		err := os.MkdirAll(projectDir, 0o750)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = os.WriteFile(filepath.Join(projectDir, "compose.yml"), []byte("services: {}"), 0o600)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	hostDir := filepath.Join(base, "hosts", "server1")
+
+	err := os.MkdirAll(hostDir, 0o750)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = os.WriteFile(filepath.Join(hostDir, "host.yml"), []byte(`
+projects:
+  home-assistant: {}
+`), 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.CmtConfig{
+		BasePath: base,
+		Defaults: &config.SyncDefaults{RemotePath: "/srv/compose"},
+		Hosts: []config.HostEntry{
+			{Name: "server1", Host: "server1-alias", User: "deploy"},
+		},
+	}
+
+	ctrl := gomock.NewController(t)
+	resolver := config.NewMockSSHConfigResolver(ctrl)
+	factory := remote.NewMockClientFactory(ctrl)
+	client := remote.NewMockRemoteClient(ctrl)
+
+	gomock.InOrder(
+		resolver.EXPECT().
+			Resolve(gomock.Any(), "", hostDir).
+			Return(nil),
+		factory.EXPECT().
+			NewClient(gomock.AssignableToTypeOf(config.HostEntry{})).
+			Return(client, nil),
+	)
+	client.EXPECT().
+		ReadFile("/srv/compose/home-assistant/.cmt-manifest.json").
+		Return(nil, errTestManifestNotFound)
+	client.EXPECT().
+		ReadFile("/srv/compose/home-assistant/compose.yml").
+		Return(nil, errTestRemoteFileMissing)
+	client.EXPECT().
+		RunCommand(
+			"/srv/compose/home-assistant",
+			"docker compose config --services 2>/dev/null",
+		).
+		Return("", errTestNotFound)
+	client.EXPECT().
+		RunCommand(
+			"/srv/compose/home-assistant",
+			"docker compose ps --services --filter status=running 2>/dev/null",
+		).
+		Return("", errTestNotFound)
+	client.EXPECT().Close().Return(nil)
+
+	runner := mockLocalCommandRunner{
+		run: func(name string, args []string, _ string) (string, error) {
+			if name != "docker" {
+				t.Fatalf("name = %q, want docker", name)
+			}
+
+			wantArgs := []string{"compose", "-f", "compose.yml", "config"}
+			if len(args) != len(wantArgs) {
+				t.Fatalf("args len = %d, want %d; args = %v", len(args), len(wantArgs), args)
+			}
+
+			for i := range wantArgs {
+				if args[i] != wantArgs[i] {
+					t.Fatalf("args[%d] = %q, want %q", i, args[i], wantArgs[i])
+				}
+			}
+
+			return "ok", nil
+		},
+	}
+
+	plan, err := BuildPlanWithDeps(cfg, nil, nil, PlanDependencies{
+		ClientFactory: factory,
+		SSHResolver:   resolver,
+		LocalRunner:   runner,
+	})
+	if err != nil {
+		t.Fatalf("BuildPlanWithDeps: %v", err)
+	}
+
+	if len(plan.HostPlans) != 1 {
+		t.Fatalf("host plans = %d, want 1", len(plan.HostPlans))
+	}
+
+	projects := plan.HostPlans[0].Projects
+	if len(projects) != 1 {
+		t.Fatalf("projects = %d, want 1", len(projects))
+	}
+
+	if projects[0].ProjectName != "home-assistant" {
+		t.Fatalf("project = %q, want home-assistant", projects[0].ProjectName)
+	}
+}
+
+func TestBuildHostPlan_ReturnsErrorWhenHostConfigFiltersAllProjects(t *testing.T) {
+	t.Parallel()
+
+	hostCfg := &config.HostConfig{
+		Projects: map[string]*config.ProjectConfig{
+			"home-assistant": {},
+		},
+	}
+
+	_, err := buildHostPlan(
+		&config.CmtConfig{},
+		config.HostEntry{Name: "server1"},
+		hostCfg,
+		[]string{"grafana"},
+		nil,
+		nil,
+		planProgress{},
+	)
+	if !errors.Is(err, errNoHostProjectsMatched) {
+		t.Fatalf("error = %v, want %v", err, errNoHostProjectsMatched)
+	}
+}
+
 func TestBuildPlanWithDeps_ComposeValidationFails(t *testing.T) {
 	t.Parallel()
 

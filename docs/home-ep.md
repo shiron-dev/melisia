@@ -36,3 +36,20 @@ adduser ansible_user
 usermod -aG sudo ansible_user
 echo "ansible_user ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers.d/ansible_user
 ```
+
+## Home Assistant
+
+`compose/hosts/home-ep/host.yml` に `home-assistant` project の同期先ディレクトリを
+定義している。`home-ep` を `compose/config.yml` に登録した後、
+対象 host を指定して同期する。
+
+```sh
+make cmt-plan CMT_OPT=--host=home-ep
+make cmt-apply CMT_OPT=--host=home-ep
+```
+
+初回起動後に HACS を入れる場合は、`homeassistant` container が起動してから実行する。
+
+```sh
+docker exec homeassistant bash -c 'wget -O - https://get.hacs.xyz | bash -'
+```
