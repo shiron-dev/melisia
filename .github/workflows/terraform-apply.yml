@@ -262,6 +262,14 @@ jobs:
           path: ${{ github.workspace }}/plan-results/${{ matrix.target.id }}.json
           retention-days: 1
           overwrite: true
+      - name: Upload terraform plan file artifact
+        if: steps.terraform-plan.outputs.exit_code == '2'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: terraform-plan-file-${{ matrix.target.id }}
+          path: ${{ steps.terraform-plan.outputs.plan_file }}
+          retention-days: 1
+          overwrite: true
       - name: Upload saved terraform plan to GCS
         if: steps.terraform-plan.outputs.exit_code == '2'
         run: |
@@ -426,11 +434,19 @@ jobs:
         if: steps.stale-check.outputs.is_latest == 'true'
         run: make sops-decrypt
       - name: Download saved terraform plan from GCS
+        id: download-saved-plan-gcs
         if: steps.stale-check.outputs.is_latest == 'true'
+        continue-on-error: true
         run: |
           mkdir -p "$GITHUB_WORKSPACE/plan-files"
           plan_uri="gs://${TERRAFORM_PLAN_BUCKET}/github-actions/terraform-plans/${GITHUB_RUN_ID}/${{ matrix.target.id }}/tfplan.bin"
           gcloud storage cp "$plan_uri" "$GITHUB_WORKSPACE/plan-files/tfplan_${{ matrix.target.id }}.bin"
+      - name: Download terraform plan file artifact
+        if: steps.stale-check.outputs.is_latest == 'true' && steps.download-saved-plan-gcs.outcome == 'failure'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: terraform-plan-file-${{ matrix.target.id }}
+          path: ${{ github.workspace }}/plan-files
       - name: Verify saved terraform plan
         if: steps.stale-check.outputs.is_latest == 'true'
         run: |
@@ -497,8 +513,9 @@ jobs:
     name: cleanup saved terraform plans
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    if: always() && github.ref == 'refs/heads/main' && needs.apply.result != 'skipped'
+    if: always() && github.ref == 'refs/heads/main' && (needs.plan.result == 'failure' || needs.apply.result != 'skipped')
     needs:
+      - plan
       - apply
     permissions:
       contents: read
