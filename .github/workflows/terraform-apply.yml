@@ -93,13 +93,12 @@ jobs:
                 },
               );
 
-              const applyJob = jobs.find(
+              const applyJobs = jobs.filter(
                 (job) => job.name.includes("terraform apply") || job.name.includes("terraform plan/apply"),
               );
-              const applyStarted =
-                Boolean(applyJob?.started_at) ||
-                applyJob?.status === "in_progress" ||
-                Boolean(applyJob?.conclusion);
+              const applyStarted = applyJobs.some(
+                (job) => Boolean(job.started_at) || job.status === "in_progress" || Boolean(job.conclusion),
+              );
 
               if (applyStarted) {
                 core.info(`Skip run ${run.id}: apply already started.`);
