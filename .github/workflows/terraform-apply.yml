@@ -129,6 +129,7 @@ jobs:
       cancel-in-progress: false
     env:
       GITHUB_TOKEN: ${{ github.token }}
+      TERRAFORM_APPLY_SKIP_TARGETS: "terraform/aws"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: Get Terraform version from mise.toml
@@ -165,6 +166,12 @@ jobs:
         id: terraform-plan
         run: |
           set +e
+
+          if echo ",${TERRAFORM_APPLY_SKIP_TARGETS}," | grep -Fq ",${{ matrix.target.path }},"; then
+            echo "Skipping terraform plan/apply for ${{ matrix.target.path }}: target is listed in TERRAFORM_APPLY_SKIP_TARGETS."
+            echo "exit_code=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           output_file="$(mktemp)"
           slack_file="$(mktemp --suffix=.txt)"

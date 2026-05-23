@@ -13,6 +13,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+env:
+  REVIEWDOG_GITHUB_API_TOKEN: ${{ github.token }}
+
 jobs:
   all-status-check:
     runs-on: ubuntu-latest
@@ -145,6 +148,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: reviewdog/action-yamllint@f01d8a48fd8d89f89895499fca2cff09f9e9e8c0 # v1.21.0
         with:
+          github_token: ${{ github.token }}
           level: warning
           yamllint_flags: "-c .yamllint ."
 
@@ -179,6 +183,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: reviewdog/action-markdownlint@3667398db9118d7e78f7a63d10e26ce454ba5f58 # v0.26.2
         with:
+          github_token: ${{ github.token }}
           level: warning
 
   shell-lint:
@@ -188,9 +193,11 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: reviewdog/action-shellcheck@4c07458293ac342d477251099501a718ae5ef86e # v1.32.0
         with:
+          github_token: ${{ github.token }}
           level: warning
       - uses: reviewdog/action-shfmt@d8f080930b9be5847b4f97e9f4122b81a82aaeac # v1.0.4
         with:
+          github_token: ${{ github.token }}
           level: warning
 
   action-lint:
@@ -200,6 +207,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: reviewdog/action-actionlint@0d952c597ef8459f634d7145b0b044a9699e5e43 # v1.71.0
         with:
+          github_token: ${{ github.token }}
           level: warning
           fail_level: any
 
@@ -209,6 +217,8 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: dotenv-linter/action-dotenv-linter@afde61cfda2ecffe7bea35837b6f20b956c88689 # v3.0.0
+        with:
+          github_token: ${{ github.token }}
 
   kics:
     runs-on: ubuntu-latest
