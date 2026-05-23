@@ -132,6 +132,7 @@ jobs:
     env:
       GITHUB_TOKEN: ${{ github.token }}
       TERRAFORM_APPLY_SKIP_TARGETS: "terraform/aws"
+      TERRAFORM_PLAN_BUCKET: shiron-dev-terraform
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: Get Terraform version from mise.toml
@@ -152,6 +153,8 @@ jobs:
         with:
           workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.SERVICE_ACCOUNT }}
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
       - name: Install SOPS
         run: |
           set -euo pipefail
@@ -215,13 +218,11 @@ jobs:
           name: terraform-plan-result-${{ matrix.target.id }}
           path: ${{ github.workspace }}/plan-results/${{ matrix.target.id }}.json
           retention-days: 1
-      - name: Upload saved terraform plan artifact
+      - name: Upload saved terraform plan to GCS
         if: steps.terraform-plan.outputs.exit_code == '2'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: terraform-plan-file-${{ matrix.target.id }}
-          path: ${{ steps.terraform-plan.outputs.plan_file }}
-          retention-days: 1
+        run: |
+          plan_uri="gs://${TERRAFORM_PLAN_BUCKET}/github-actions/terraform-plans/${GITHUB_RUN_ID}/${{ matrix.target.id }}/tfplan.bin"
+          gcloud storage cp "${{ steps.terraform-plan.outputs.plan_file }}" "$plan_uri"
       - name: Upload plan result to Slack
         if: steps.terraform-plan.outputs.exit_code == '2'
         uses: slackapi/slack-github-action@af78098f536edbc4de71162a307590698245be95 # v3.0.1
@@ -289,6 +290,7 @@ jobs:
       cancel-in-progress: false
     env:
       GITHUB_TOKEN: ${{ github.token }}
+      TERRAFORM_PLAN_BUCKET: shiron-dev-terraform
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: Get Terraform version from mise.toml
@@ -309,6 +311,8 @@ jobs:
         with:
           workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.SERVICE_ACCOUNT }}
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
       - name: Install SOPS
         run: |
           set -euo pipefail
@@ -319,14 +323,19 @@ jobs:
           sops --version
       - name: Decrypt secrets
         run: make sops-decrypt
-      - name: Download saved terraform plan artifact
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: terraform-plan-file-${{ matrix.target.id }}
-          path: plan-files
+      - name: Download saved terraform plan from GCS
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/plan-files"
+          plan_uri="gs://${TERRAFORM_PLAN_BUCKET}/github-actions/terraform-plans/${GITHUB_RUN_ID}/${{ matrix.target.id }}/tfplan.bin"
+          gcloud storage cp "$plan_uri" "$GITHUB_WORKSPACE/plan-files/tfplan_${{ matrix.target.id }}.bin"
       - name: Terraform Init
         run: cd "${{ matrix.target.path }}" && terraform init
       - name: Run terraform apply
         run: |
           plan_file="$GITHUB_WORKSPACE/plan-files/tfplan_${{ matrix.target.id }}.bin"
           cd "${{ matrix.target.path }}" && terraform apply "$plan_file"
+      - name: Delete saved terraform plan from GCS
+        if: always()
+        run: |
+          plan_uri="gs://${TERRAFORM_PLAN_BUCKET}/github-actions/terraform-plans/${GITHUB_RUN_ID}/${{ matrix.target.id }}/tfplan.bin"
+          gcloud storage rm "$plan_uri" || true
