@@ -28,6 +28,7 @@ jobs:
     name: cancel stale runs
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    environment: production-plan
     env:
       TERRAFORM_PLAN_BUCKET: shiron-dev-terraform
     steps:
@@ -382,9 +383,9 @@ jobs:
     name: cleanup saved terraform plans
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    if: always() && needs.collect-plan-results.outputs.has_diff == 'true'
+    environment: production-plan
+    if: always()
     needs:
-      - collect-plan-results
       - apply
     permissions:
       contents: read
