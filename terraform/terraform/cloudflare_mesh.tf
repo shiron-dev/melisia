@@ -49,14 +49,6 @@ resource "cloudflare_zero_trust_device_default_profile" "mesh" {
   include         = local.cloudflare_mesh_split_tunnel_include_routes
 }
 
-removed {
-  from = cloudflare_zero_trust_tunnel_warp_connector.this
-
-  lifecycle {
-    destroy = false
-  }
-}
-
 data "cloudflare_zero_trust_tunnel_warp_connector" "this" {
   for_each = local.cloudflare_mesh_nodes
 
