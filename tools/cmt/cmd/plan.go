@@ -68,16 +68,26 @@ func newPlanCmd(configPath *string) *cobra.Command {
 		return nil
 	}
 
-	planCommand.Flags().StringSliceVar(&hostFilter, "host", nil, "filter by host name (repeatable)")
-	planCommand.Flags().StringSliceVar(&projectFilter, "project", nil, "filter by project name (repeatable)")
-	planCommand.Flags().BoolVar(&exitCode, "exit-code", false,
-		"exit with 0 when no changes, 1 on error, 2 when changes exist")
-	planCommand.Flags().BoolVar(&exitCode, "exit-status", false,
-		"alias of --exit-code: exit with 0 when no changes, 1 on error, 2 when changes exist")
-	planCommand.Flags().StringVar(&digestFile, "digest-file", "",
-		"write the SHA-256 digest of the normalized plan to this file")
+	bindPlanFlags(planCommand, &hostFilter, &projectFilter, &exitCode, &digestFile)
 
 	return planCommand
+}
+
+func bindPlanFlags(
+	planCommand *cobra.Command,
+	hostFilter *[]string,
+	projectFilter *[]string,
+	exitCode *bool,
+	digestFile *string,
+) {
+	planCommand.Flags().StringSliceVar(hostFilter, "host", nil, "filter by host name (repeatable)")
+	planCommand.Flags().StringSliceVar(projectFilter, "project", nil, "filter by project name (repeatable)")
+	planCommand.Flags().BoolVar(exitCode, "exit-code", false,
+		"exit with 0 when no changes, 1 on error, 2 when changes exist")
+	planCommand.Flags().BoolVar(exitCode, "exit-status", false,
+		"alias of --exit-code: exit with 0 when no changes, 1 on error, 2 when changes exist")
+	planCommand.Flags().StringVar(digestFile, "digest-file", "",
+		"write the SHA-256 digest of the normalized plan to this file")
 }
 
 func writePlanDigestFile(digestFile string, plan *syncer.SyncPlan) error {

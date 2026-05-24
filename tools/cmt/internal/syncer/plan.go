@@ -374,7 +374,7 @@ func (p *SyncPlan) Print(writer io.Writer) {
 }
 
 func PlanDigestSHA256(plan *SyncPlan) string {
-	normalizedPlan, err := json.Marshal(plan)
+	normalizedPlan, err := json.Marshal(newPlanDigest(plan))
 	if err != nil {
 		return ""
 	}
@@ -382,6 +382,164 @@ func PlanDigestSHA256(plan *SyncPlan) string {
 	sum := sha256.Sum256(normalizedPlan)
 
 	return hex.EncodeToString(sum[:])
+}
+
+type planDigest struct {
+	HostPlans []hostPlanDigest `json:"hostPlans"`
+}
+
+type hostPlanDigest struct {
+	Host     hostEntryDigest     `json:"host"`
+	Projects []projectPlanDigest `json:"projects"`
+}
+
+type hostEntryDigest struct {
+	Name string `json:"name"`
+	Host string `json:"host"`
+	Port int    `json:"port"`
+	User string `json:"user"`
+}
+
+type projectPlanDigest struct {
+	ProjectName     string             `json:"projectName"`
+	RemoteDir       string             `json:"remoteDir"`
+	PostSyncCommand string             `json:"postSyncCommand"`
+	ComposeAction   string             `json:"composeAction"`
+	RemoveOrphans   bool               `json:"removeOrphans"`
+	Compose         *composePlanDigest `json:"compose,omitempty"`
+	Dirs            []dirPlanDigest    `json:"dirs"`
+	Files           []filePlanDigest   `json:"files"`
+}
+
+type composePlanDigest struct {
+	DesiredAction string   `json:"desiredAction"`
+	ActionType    int      `json:"actionType"`
+	Services      []string `json:"services"`
+}
+
+type dirPlanDigest struct {
+	RelativePath     string `json:"relativePath"`
+	RemotePath       string `json:"remotePath"`
+	Exists           bool   `json:"exists"`
+	ExistenceUnknown bool   `json:"existenceUnknown"`
+	Action           string `json:"action"`
+	Permission       string `json:"permission"`
+	Owner            string `json:"owner"`
+	Group            string `json:"group"`
+	Become           bool   `json:"become"`
+	BecomeUser       string `json:"becomeUser"`
+	Recursive        bool   `json:"recursive"`
+	ActualPermission string `json:"actualPermission"`
+	ActualOwner      string `json:"actualOwner"`
+	ActualGroup      string `json:"actualGroup"`
+	NeedsPermChange  bool   `json:"needsPermChange"`
+	NeedsOwnerChange bool   `json:"needsOwnerChange"`
+}
+
+type filePlanDigest struct {
+	RelativePath string     `json:"relativePath"`
+	RemotePath   string     `json:"remotePath"`
+	Action       string     `json:"action"`
+	LocalData    []byte     `json:"localData,omitempty"`
+	RemoteData   []byte     `json:"remoteData,omitempty"`
+	MaskHints    []MaskHint `json:"maskHints,omitempty"`
+}
+
+func newPlanDigest(plan *SyncPlan) planDigest {
+	if plan == nil {
+		return planDigest{}
+	}
+
+	hostPlans := make([]hostPlanDigest, 0, len(plan.HostPlans))
+	for _, hostPlan := range plan.HostPlans {
+		hostPlans = append(hostPlans, newHostPlanDigest(hostPlan))
+	}
+
+	return planDigest{HostPlans: hostPlans}
+}
+
+func newHostPlanDigest(hostPlan HostPlan) hostPlanDigest {
+	projects := make([]projectPlanDigest, 0, len(hostPlan.Projects))
+	for _, projectPlan := range hostPlan.Projects {
+		projects = append(projects, newProjectPlanDigest(projectPlan))
+	}
+
+	return hostPlanDigest{
+		Host: hostEntryDigest{
+			Name: hostPlan.Host.Name,
+			Host: hostPlan.Host.Host,
+			Port: hostPlan.Host.Port,
+			User: hostPlan.Host.User,
+		},
+		Projects: projects,
+	}
+}
+
+func newProjectPlanDigest(projectPlan ProjectPlan) projectPlanDigest {
+	dirs := make([]dirPlanDigest, 0, len(projectPlan.Dirs))
+	for _, dirPlan := range projectPlan.Dirs {
+		dirs = append(dirs, newDirPlanDigest(dirPlan))
+	}
+
+	files := make([]filePlanDigest, 0, len(projectPlan.Files))
+	for _, filePlan := range projectPlan.Files {
+		files = append(files, newFilePlanDigest(filePlan))
+	}
+
+	return projectPlanDigest{
+		ProjectName:     projectPlan.ProjectName,
+		RemoteDir:       projectPlan.RemoteDir,
+		PostSyncCommand: projectPlan.PostSyncCommand,
+		ComposeAction:   projectPlan.ComposeAction,
+		RemoveOrphans:   projectPlan.RemoveOrphans,
+		Compose:         newComposePlanDigest(projectPlan.Compose),
+		Dirs:            dirs,
+		Files:           files,
+	}
+}
+
+func newComposePlanDigest(composePlan *ComposePlan) *composePlanDigest {
+	if composePlan == nil {
+		return nil
+	}
+
+	return &composePlanDigest{
+		DesiredAction: composePlan.DesiredAction,
+		ActionType:    int(composePlan.ActionType),
+		Services:      composePlan.Services,
+	}
+}
+
+func newDirPlanDigest(dirPlan DirPlan) dirPlanDigest {
+	return dirPlanDigest{
+		RelativePath:     dirPlan.RelativePath,
+		RemotePath:       dirPlan.RemotePath,
+		Exists:           dirPlan.Exists,
+		ExistenceUnknown: dirPlan.ExistenceUnknown,
+		Action:           dirPlan.Action.String(),
+		Permission:       dirPlan.Permission,
+		Owner:            dirPlan.Owner,
+		Group:            dirPlan.Group,
+		Become:           dirPlan.Become,
+		BecomeUser:       dirPlan.BecomeUser,
+		Recursive:        dirPlan.Recursive,
+		ActualPermission: dirPlan.ActualPermission,
+		ActualOwner:      dirPlan.ActualOwner,
+		ActualGroup:      dirPlan.ActualGroup,
+		NeedsPermChange:  dirPlan.NeedsPermChange,
+		NeedsOwnerChange: dirPlan.NeedsOwnerChange,
+	}
+}
+
+func newFilePlanDigest(filePlan FilePlan) filePlanDigest {
+	return filePlanDigest{
+		RelativePath: filePlan.RelativePath,
+		RemotePath:   filePlan.RemotePath,
+		Action:       filePlan.Action.String(),
+		LocalData:    filePlan.LocalData,
+		RemoteData:   filePlan.RemoteData,
+		MaskHints:    filePlan.MaskHints,
+	}
 }
 
 func printHostPlan(writer io.Writer, style outputStyle, hostPlan HostPlan) {
