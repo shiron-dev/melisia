@@ -406,8 +406,14 @@ jobs:
               event: context.eventName,
               per_page: 100,
             };
-            if (context.eventName === "workflow_dispatch") {
-              request.branch = context.ref.replace("refs/heads/", "");
+            const currentBranch = context.ref.startsWith("refs/heads/")
+              ? context.ref.replace("refs/heads/", "")
+              : "";
+            if (
+              currentBranch
+              && ["workflow_dispatch", "merge_group"].includes(context.eventName)
+            ) {
+              request.branch = currentBranch;
             }
 
             const runs = await github.paginate(
@@ -529,8 +535,14 @@ jobs:
               event: context.eventName,
               per_page: 100,
             };
-            if (context.eventName === "workflow_dispatch") {
-              request.branch = context.ref.replace("refs/heads/", "");
+            const currentBranch = context.ref.startsWith("refs/heads/")
+              ? context.ref.replace("refs/heads/", "")
+              : "";
+            if (
+              currentBranch
+              && ["workflow_dispatch", "merge_group"].includes(context.eventName)
+            ) {
+              request.branch = currentBranch;
             }
 
             const runs = await github.paginate(
