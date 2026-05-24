@@ -1,0 +1,12 @@
+[Unit]
+Description=Prefer LAN route before Cloudflare WARP for {{ cloudflare_mesh_lan_route_guard_cidr }}
+After=network-online.target warp-svc.service
+Wants=network-online.target
+PartOf=warp-svc.service
+
+[Service]
+Type=oneshot
+ExecStart={{ cloudflare_mesh_lan_route_guard_script_path }} apply
+
+[Install]
+WantedBy=multi-user.target warp-svc.service

@@ -5,3 +5,12 @@ cloudflare_mesh_connector_token: ""
 cloudflare_mesh_sysctl_path: /etc/sysctl.d/99-zzz-cloudflare-warp-connector.conf
 cloudflare_mesh_min_root_free_mb: 300
 cloudflare_mesh_min_var_log_free_mb: 16
+cloudflare_mesh_lan_route_guard_enabled: false
+cloudflare_mesh_lan_route_guard_script_path: /usr/local/sbin/cloudflare-mesh-lan-route-guard
+cloudflare_mesh_lan_route_guard_unit_path: /etc/systemd/system/cloudflare-mesh-lan-route-guard.service
+cloudflare_mesh_lan_route_guard_timer_path: /etc/systemd/system/cloudflare-mesh-lan-route-guard.timer
+cloudflare_mesh_lan_route_guard_cidr: ""
+cloudflare_mesh_lan_route_guard_interface: ""
+cloudflare_mesh_lan_route_guard_source: ""
+cloudflare_mesh_lan_route_guard_metric: 10
+cloudflare_mesh_lan_route_guard_priority: 1

@@ -1,0 +1,11 @@
+[Unit]
+Description=Reapply LAN route preference after Cloudflare WARP settles
+
+[Timer]
+OnBootSec=15s
+OnUnitActiveSec=15s
+AccuracySec=5s
+Unit={{ cloudflare_mesh_lan_route_guard_unit_path | basename }}
+
+[Install]
+WantedBy=timers.target

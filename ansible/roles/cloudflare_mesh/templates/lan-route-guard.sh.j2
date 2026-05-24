@@ -1,0 +1,86 @@
+#!/bin/sh
+set -eu
+
+cidr="{{ cloudflare_mesh_lan_route_guard_cidr }}"
+interface="{{ cloudflare_mesh_lan_route_guard_interface }}"
+source_address="{{ cloudflare_mesh_lan_route_guard_source }}"
+metric="{{ cloudflare_mesh_lan_route_guard_metric }}"
+priority="{{ cloudflare_mesh_lan_route_guard_priority }}"
+comment="cloudflare-mesh-lan-route-guard"
+
+remove_ip_rule() {
+  while /usr/sbin/ip rule | grep -q "to $cidr lookup main"; do
+    current_priority=$(
+      /usr/sbin/ip rule |
+        awk -v cidr="$cidr" '$0 ~ "to " cidr " lookup main" { sub(":", "", $1); print $1; exit }'
+    )
+    if [ -z "$current_priority" ]; then
+      return 0
+    fi
+    /usr/sbin/ip rule del priority "$current_priority" to "$cidr" lookup main 2>/dev/null || return 0
+  done
+}
+
+remove_nft_rules() {
+  chain="$1"
+
+  if ! command -v nft >/dev/null 2>&1; then
+    return 0
+  fi
+
+  nft -a list chain inet cloudflare-warp "$chain" 2>/dev/null |
+    awk -v comment="$comment" '$0 ~ "comment \"" comment "\"" { print $NF }' |
+    while read -r handle; do
+      nft delete rule inet cloudflare-warp "$chain" handle "$handle" 2>/dev/null || true
+    done
+}
+
+wait_for_warp_nft_table() {
+  if ! command -v nft >/dev/null 2>&1; then
+    return 1
+  fi
+
+  i=0
+  while [ "$i" -lt 30 ]; do
+    if nft list table inet cloudflare-warp >/dev/null 2>&1; then
+      return 0
+    fi
+    i=$((i + 1))
+    sleep 1
+  done
+
+  return 1
+}
+
+apply_nft_rules() {
+  if ! wait_for_warp_nft_table; then
+    return 0
+  fi
+
+  remove_nft_rules input
+  remove_nft_rules output
+  nft insert rule inet cloudflare-warp input ip saddr "$cidr" accept comment "$comment"
+  nft insert rule inet cloudflare-warp output ip daddr "$cidr" accept comment "$comment"
+}
+
+case "${1:-apply}" in
+  apply)
+    remove_ip_rule
+    /usr/sbin/ip rule add priority "$priority" to "$cidr" lookup main
+    if [ -n "$source_address" ]; then
+      /usr/sbin/ip route replace "$cidr" dev "$interface" src "$source_address" metric "$metric"
+    else
+      /usr/sbin/ip route replace "$cidr" dev "$interface" metric "$metric"
+    fi
+    apply_nft_rules
+    ;;
+  remove)
+    remove_ip_rule
+    remove_nft_rules input
+    remove_nft_rules output
+    ;;
+  *)
+    echo "usage: $0 [apply|remove]" >&2
+    exit 2
+    ;;
+esac
