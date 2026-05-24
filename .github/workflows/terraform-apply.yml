@@ -1,9 +1,9 @@
 name: Terraform Apply CI
 
 on:
-  push:
-    branches:
-      - main
+  merge_group:
+    types:
+      - checks_requested
   workflow_dispatch:
 
 permissions:
@@ -34,7 +34,7 @@ jobs:
     steps:
       - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         id: cancel-stale
-        if: github.event_name == 'push'
+        if: github.event_name == 'workflow_dispatch'
         with:
           script: |
             const owner = context.repo.owner;
@@ -123,7 +123,7 @@ jobs:
     name: cleanup stale saved terraform plans
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    if: github.ref == 'refs/heads/main' && needs.cancel-stale-runs.outputs.cancelled_run_ids != ''
+    if: github.event_name == 'workflow_dispatch' && needs.cancel-stale-runs.outputs.cancelled_run_ids != ''
     needs:
       - cancel-stale-runs
     permissions:
@@ -154,7 +154,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: production-plan
-    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+    if: github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch'
     needs:
       - discover-terraform-roots
       - cancel-stale-runs
@@ -358,7 +358,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: production
-    if: github.ref == 'refs/heads/main' && needs.collect-plan-results.outputs.has_diff == 'true'
+    if: needs.collect-plan-results.outputs.has_diff == 'true'
     needs:
       - discover-terraform-roots
       - collect-plan-results
@@ -371,7 +371,7 @@ jobs:
       matrix:
         target: ${{ fromJson(needs.collect-plan-results.outputs.targets) }}
     concurrency:
-      group: ${{ github.workflow }}-apply-${{ github.ref }}-${{ matrix.target.id }}
+      group: ${{ github.workflow }}-apply-${{ matrix.target.id }}
       cancel-in-progress: false
     env:
       GITHUB_TOKEN: ${{ github.token }}
@@ -387,7 +387,6 @@ jobs:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const branch = context.ref.replace("refs/heads/", "");
             const currentRunId = context.runId;
             const currentRunNumber = context.runNumber;
             const workflowRef = process.env.GITHUB_WORKFLOW_REF || "";
@@ -400,15 +399,20 @@ jobs:
               return;
             }
 
+            const request = {
+              owner,
+              repo,
+              workflow_id: workflowId,
+              event: context.eventName,
+              per_page: 100,
+            };
+            if (context.eventName === "workflow_dispatch") {
+              request.branch = context.ref.replace("refs/heads/", "");
+            }
+
             const runs = await github.paginate(
               github.rest.actions.listWorkflowRuns,
-              {
-                owner,
-                repo,
-                workflow_id: workflowId,
-                branch,
-                per_page: 100,
-              },
+              request,
             );
 
             const newerRun = runs.find(
@@ -416,7 +420,12 @@ jobs:
             );
 
             if (newerRun) {
-              core.warning(`Skip apply for stale run ${currentRunId}: newer run ${newerRun.id} exists.`);
+              const message = `Skip apply for stale run ${currentRunId}: newer ${context.eventName} run ${newerRun.id} exists.`;
+              if (context.eventName === "merge_group") {
+                core.setFailed(message);
+                return;
+              }
+              core.warning(message);
               core.setOutput("is_latest", "false");
               return;
             }
@@ -506,7 +515,6 @@ jobs:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const branch = context.ref.replace("refs/heads/", "");
             const currentRunId = context.runId;
             const currentRunNumber = context.runNumber;
             const workflowRef = process.env.GITHUB_WORKFLOW_REF || "";
@@ -519,15 +527,20 @@ jobs:
               return;
             }
 
+            const request = {
+              owner,
+              repo,
+              workflow_id: workflowId,
+              event: context.eventName,
+              per_page: 100,
+            };
+            if (context.eventName === "workflow_dispatch") {
+              request.branch = context.ref.replace("refs/heads/", "");
+            }
+
             const runs = await github.paginate(
               github.rest.actions.listWorkflowRuns,
-              {
-                owner,
-                repo,
-                workflow_id: workflowId,
-                branch,
-                per_page: 100,
-              },
+              request,
             );
 
             const newerRun = runs.find(
@@ -535,7 +548,12 @@ jobs:
             );
 
             if (newerRun) {
-              core.warning(`Skip terraform apply for stale run ${currentRunId}: newer run ${newerRun.id} exists.`);
+              const message = `Skip terraform apply for stale run ${currentRunId}: newer ${context.eventName} run ${newerRun.id} exists.`;
+              if (context.eventName === "merge_group") {
+                core.setFailed(message);
+                return;
+              }
+              core.warning(message);
               core.setOutput("is_latest", "false");
               return;
             }
@@ -587,7 +605,7 @@ jobs:
     name: cleanup saved terraform plans
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    if: always() && github.ref == 'refs/heads/main' && (needs.plan.result == 'failure' || needs.collect-plan-results.result == 'failure' || needs.apply.result != 'skipped')
+    if: always() && (needs.plan.result == 'failure' || needs.collect-plan-results.result == 'failure' || needs.apply.result != 'skipped')
     needs:
       - plan
       - collect-plan-results
@@ -610,3 +628,26 @@ jobs:
       - name: Delete saved terraform plans from GCS
         run: |
           gcloud storage rm -r "gs://${TERRAFORM_PLAN_BUCKET}/github-actions/terraform-plans/${GITHUB_RUN_ID}" || true
+
+  terraform-apply-status-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: ${{ always() }}
+    needs:
+      - discover-terraform-roots
+      - cancel-stale-runs
+      - cleanup-stale-saved-plans
+      - plan
+      - collect-plan-results
+      - apply
+      - cleanup-saved-plans
+    steps:
+      - name: Fail if any needed job failed
+        env:
+          JOBS: ${{ toJson(needs) }}
+        run: |
+          for result in $(jq -r '.[].result' <<<"$JOBS"); do
+            if [[ ! "$result" =~ ^(success|skipped)$ ]]; then
+              exit 1
+            fi
+          done
