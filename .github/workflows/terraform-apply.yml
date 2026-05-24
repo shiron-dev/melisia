@@ -7,9 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  actions: write
   contents: read
-  id-token: write
 
 jobs:
   discover-terraform-roots:
@@ -28,8 +26,14 @@ jobs:
     name: cancel stale runs
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+    outputs:
+      cancelled_run_ids: ${{ steps.cancel-stale.outputs.cancelled_run_ids }}
     steps:
       - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        id: cancel-stale
         if: github.event_name == 'push'
         with:
           script: |
@@ -77,6 +81,7 @@ jobs:
             });
 
             let cancelled = 0;
+            const cancelledRunIds = [];
 
             for (const run of candidates) {
               const jobs = await github.paginate(
@@ -89,11 +94,12 @@ jobs:
                 },
               );
 
-              const applyJob = jobs.find((job) => job.name.includes("terraform plan/apply"));
-              const applyStarted =
-                Boolean(applyJob?.started_at) ||
-                applyJob?.status === "in_progress" ||
-                Boolean(applyJob?.conclusion);
+              const applyJobs = jobs.filter(
+                (job) => job.name.includes("terraform apply") || job.name.includes("terraform plan/apply"),
+              );
+              const applyStarted = applyJobs.some(
+                (job) => Boolean(job.started_at) || job.status === "in_progress" || Boolean(job.conclusion),
+              );
 
               if (applyStarted) {
                 core.info(`Skip run ${run.id}: apply already started.`);
@@ -106,30 +112,69 @@ jobs:
                 run_id: run.id,
               });
               cancelled += 1;
+              cancelledRunIds.push(String(run.id));
               core.info(`Cancelled stale run ${run.id}.`);
             }
 
+            core.setOutput("cancelled_run_ids", cancelledRunIds.join(" "));
             core.info(`Cancelled ${cancelled} stale run(s).`);
 
-  plan-and-apply:
-    name: terraform plan/apply (${{ matrix.target.path }})
+  cleanup-stale-saved-plans:
+    name: cleanup stale saved terraform plans
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    environment: production
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    timeout-minutes: 5
+    if: github.ref == 'refs/heads/main' && needs.cancel-stale-runs.outputs.cancelled_run_ids != ''
+    needs:
+      - cancel-stale-runs
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_SERVICE_ACCOUNT: github-actions-melisia@shiron-dev.iam.gserviceaccount.com
+      GCP_WORKLOAD_IDENTITY_PROVIDER: projects/25543598735/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider
+      TERRAFORM_PLAN_BUCKET: shiron-dev-terraform
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      - name: Delete saved terraform plans for stale runs
+        env:
+          CANCELLED_RUN_IDS: ${{ needs.cancel-stale-runs.outputs.cancelled_run_ids }}
+        run: |
+          for run_id in $CANCELLED_RUN_IDS; do
+            gcloud storage rm -r "gs://${TERRAFORM_PLAN_BUCKET}/github-actions/terraform-plans/${run_id}" || true
+          done
+
+  plan:
+    name: terraform plan (${{ matrix.target.path }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production-plan
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     needs:
       - discover-terraform-roots
       - cancel-stale-runs
+    permissions:
+      contents: read
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
         target: ${{ fromJson(needs.discover-terraform-roots.outputs.matrix) }}
     concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}-${{ matrix.target.id }}
+      group: ${{ github.workflow }}-plan-${{ github.ref }}-${{ matrix.target.id }}
       cancel-in-progress: false
     env:
       GITHUB_TOKEN: ${{ github.token }}
-      TERRAFORM_APPLY_SKIP_TARGETS: "terraform/aws"
+      TERRAFORM_APPLY_SKIP_TARGETS: "terraform/aws,terraform/github_secrets"
+      TERRAFORM_PLAN_KMS_KEY: sops-key
+      TERRAFORM_PLAN_KMS_KEYRING: sops
+      TERRAFORM_PLAN_KMS_LOCATION: global
+      TERRAFORM_PLAN_BUCKET: shiron-dev-terraform
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: Get Terraform version from mise.toml
@@ -150,6 +195,8 @@ jobs:
         with:
           workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.SERVICE_ACCOUNT }}
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
       - name: Install SOPS
         run: |
           set -euo pipefail
@@ -175,8 +222,9 @@ jobs:
 
           output_file="$(mktemp)"
           slack_file="$(mktemp --suffix=.txt)"
+          plan_file="$GITHUB_WORKSPACE/tfplan_${{ matrix.target.id }}.bin"
           tfvars_path="$GITHUB_WORKSPACE/${{ matrix.target.path }}/terraform.secrets.tfvars"
-          plan_args=("-no-color" "-detailed-exitcode")
+          plan_args=("-no-color" "-detailed-exitcode" "-out=$plan_file")
           if [ -f "$tfvars_path" ]; then
             plan_args+=("-var-file=$tfvars_path")
           fi
@@ -190,12 +238,66 @@ jobs:
           if [ ! -s "$slack_file" ]; then
             echo "terraform plan produced no output." > "$slack_file"
           fi
+          plan_sha256=""
+          if [ "$exit_code" = "2" ]; then
+            plan_sha256="$(sha256sum "$plan_file" | awk '{print $1}')"
+          fi
 
           {
             echo "output_file=${output_file}"
             echo "slack_file=${slack_file}"
+            echo "plan_file=${plan_file}"
+            echo "plan_sha256=${plan_sha256}"
             echo "exit_code=${exit_code}"
           } >> "$GITHUB_OUTPUT"
+      - name: Write plan result
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/plan-results"
+          jq -n -c \
+            --arg id "${{ matrix.target.id }}" \
+            --arg path "${{ matrix.target.path }}" \
+            --arg plan_sha256 "${{ steps.terraform-plan.outputs.plan_sha256 }}" \
+            --arg exit_code "${{ steps.terraform-plan.outputs.exit_code }}" \
+            '{target: {id: $id, path: $path, plan_sha256: $plan_sha256}, exit_code: $exit_code}' \
+            > "$GITHUB_WORKSPACE/plan-results/${{ matrix.target.id }}.json"
+      - name: Upload plan result artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: terraform-plan-result-${{ matrix.target.id }}
+          path: ${{ github.workspace }}/plan-results/${{ matrix.target.id }}.json
+          retention-days: 1
+          overwrite: true
+      - name: Encrypt terraform plan file for artifact fallback
+        if: steps.terraform-plan.outputs.exit_code == '2'
+        run: |
+          key_file="${{ steps.terraform-plan.outputs.plan_file }}.key"
+          openssl rand -base64 32 > "$key_file"
+          openssl enc -aes-256-cbc -salt -pbkdf2 \
+            -in "${{ steps.terraform-plan.outputs.plan_file }}" \
+            -out "${{ steps.terraform-plan.outputs.plan_file }}.enc" \
+            -pass "file:${key_file}"
+          gcloud kms encrypt \
+            --key="$TERRAFORM_PLAN_KMS_KEY" \
+            --keyring="$TERRAFORM_PLAN_KMS_KEYRING" \
+            --location="$TERRAFORM_PLAN_KMS_LOCATION" \
+            --plaintext-file="$key_file" \
+            --ciphertext-file="${key_file}.enc"
+          rm -f "$key_file"
+      - name: Upload encrypted terraform plan file artifact
+        if: steps.terraform-plan.outputs.exit_code == '2'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: terraform-plan-file-${{ matrix.target.id }}
+          path: |
+            ${{ steps.terraform-plan.outputs.plan_file }}.enc
+            ${{ steps.terraform-plan.outputs.plan_file }}.key.enc
+          retention-days: 1
+          overwrite: true
+      - name: Upload saved terraform plan to GCS
+        if: steps.terraform-plan.outputs.exit_code == '2'
+        run: |
+          plan_uri="gs://${TERRAFORM_PLAN_BUCKET}/github-actions/terraform-plans/${GITHUB_RUN_ID}/${{ matrix.target.id }}/tfplan.bin"
+          gcloud storage cp "${{ steps.terraform-plan.outputs.plan_file }}" "$plan_uri"
       - name: Upload plan result to Slack
         if: steps.terraform-plan.outputs.exit_code == '2'
         uses: slackapi/slack-github-action@af78098f536edbc4de71162a307590698245be95 # v3.0.1
@@ -214,13 +316,264 @@ jobs:
       - name: Fail when terraform plan failed
         if: steps.terraform-plan.outputs.exit_code == '1'
         run: exit 1
-      - name: Run terraform apply
-        if: steps.terraform-plan.outputs.exit_code == '2'
+      - name: Delete saved terraform plan after plan job failure
+        if: failure() && steps.terraform-plan.outputs.exit_code == '2'
         run: |
-          tfvars_path="$GITHUB_WORKSPACE/${{ matrix.target.path }}/terraform.secrets.tfvars"
-          apply_args=("-auto-approve")
-          if [ -f "$tfvars_path" ]; then
-            apply_args+=("-var-file=$tfvars_path")
+          plan_uri="gs://${TERRAFORM_PLAN_BUCKET}/github-actions/terraform-plans/${GITHUB_RUN_ID}/${{ matrix.target.id }}/tfplan.bin"
+          gcloud storage rm "$plan_uri" || true
+
+  collect-plan-results:
+    name: collect terraform plan results
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs:
+      - plan
+    outputs:
+      has_diff: ${{ steps.collect.outputs.has_diff }}
+      targets: ${{ steps.collect.outputs.targets }}
+    steps:
+      - name: Download plan result artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: terraform-plan-result-*
+          path: plan-results
+          merge-multiple: true
+      - name: Collect targets with changes
+        id: collect
+        run: |
+          targets="$(jq -s -c '[.[] | select(.exit_code == "2") | .target]' plan-results/*.json)"
+          has_diff=false
+          if [ "$targets" != "[]" ]; then
+            has_diff=true
           fi
 
-          cd "${{ matrix.target.path }}" && terraform apply "${apply_args[@]}"
+          {
+            echo "has_diff=${has_diff}"
+            echo "targets=${targets}"
+          } >> "$GITHUB_OUTPUT"
+
+  apply:
+    name: terraform apply (${{ matrix.target.path }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    if: github.ref == 'refs/heads/main' && needs.collect-plan-results.outputs.has_diff == 'true'
+    needs:
+      - discover-terraform-roots
+      - collect-plan-results
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJson(needs.collect-plan-results.outputs.targets) }}
+    concurrency:
+      group: ${{ github.workflow }}-apply-${{ github.ref }}-${{ matrix.target.id }}
+      cancel-in-progress: false
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      TERRAFORM_PLAN_KMS_KEY: sops-key
+      TERRAFORM_PLAN_KMS_KEYRING: sops
+      TERRAFORM_PLAN_KMS_LOCATION: global
+      TERRAFORM_PLAN_BUCKET: shiron-dev-terraform
+    steps:
+      - name: Check run is latest before apply
+        id: stale-check
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const branch = context.ref.replace("refs/heads/", "");
+            const currentRunId = context.runId;
+            const currentRunNumber = context.runNumber;
+            const workflowRef = process.env.GITHUB_WORKFLOW_REF || "";
+            const workflowId = workflowRef
+              .split("@")[0]
+              .replace(`${owner}/${repo}/`, "");
+
+            if (!workflowId) {
+              core.setFailed("Failed to resolve workflow_id from GITHUB_WORKFLOW_REF.");
+              return;
+            }
+
+            const runs = await github.paginate(
+              github.rest.actions.listWorkflowRuns,
+              {
+                owner,
+                repo,
+                workflow_id: workflowId,
+                branch,
+                per_page: 100,
+              },
+            );
+
+            const newerRun = runs.find(
+              (run) => run.id !== currentRunId && run.run_number > currentRunNumber,
+            );
+
+            if (newerRun) {
+              core.warning(`Skip apply for stale run ${currentRunId}: newer run ${newerRun.id} exists.`);
+              core.setOutput("is_latest", "false");
+              return;
+            }
+
+            core.setOutput("is_latest", "true");
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        if: steps.stale-check.outputs.is_latest == 'true'
+      - name: Get Terraform version from mise.toml
+        id: terraform-version
+        if: steps.stale-check.outputs.is_latest == 'true'
+        run: |
+          if grep -q 'terraform = "latest"' mise.toml; then
+            echo "version=latest" >> "$GITHUB_OUTPUT"
+          else
+            version=$(grep 'terraform = ' mise.toml | sed 's/.*terraform = "\(.*\)".*/\1/')
+            echo "version=$version" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Setup Terraform
+        if: steps.stale-check.outputs.is_latest == 'true'
+        uses: hashicorp/setup-terraform@5e8dbf3c6d9deaf4193ca7a8fb23f2ac83bb6c85 # v4.0.0
+        with:
+          terraform_version: ${{ steps.terraform-version.outputs.version }}
+      - name: Authenticate to Google Cloud
+        if: steps.stale-check.outputs.is_latest == 'true'
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.SERVICE_ACCOUNT }}
+      - name: Setup gcloud
+        if: steps.stale-check.outputs.is_latest == 'true'
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      - name: Install SOPS
+        if: steps.stale-check.outputs.is_latest == 'true'
+        run: |
+          set -euo pipefail
+          SOPS_VERSION="v3.9.4"
+          curl -fsSL -o /tmp/sops "https://github.com/getsops/sops/releases/download/${SOPS_VERSION}/sops-${SOPS_VERSION}.linux.amd64"
+          chmod +x /tmp/sops
+          sudo mv /tmp/sops /usr/local/bin/sops
+          sops --version
+      - name: Decrypt secrets
+        if: steps.stale-check.outputs.is_latest == 'true'
+        run: make sops-decrypt
+      - name: Download saved terraform plan from GCS
+        id: download-saved-plan-gcs
+        if: steps.stale-check.outputs.is_latest == 'true'
+        continue-on-error: true
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/plan-files"
+          plan_uri="gs://${TERRAFORM_PLAN_BUCKET}/github-actions/terraform-plans/${GITHUB_RUN_ID}/${{ matrix.target.id }}/tfplan.bin"
+          gcloud storage cp "$plan_uri" "$GITHUB_WORKSPACE/plan-files/tfplan_${{ matrix.target.id }}.bin"
+      - name: Download encrypted terraform plan file artifact
+        if: steps.stale-check.outputs.is_latest == 'true' && steps.download-saved-plan-gcs.outcome == 'failure'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: terraform-plan-file-${{ matrix.target.id }}
+          path: ${{ github.workspace }}/plan-files
+      - name: Decrypt terraform plan file artifact
+        if: steps.stale-check.outputs.is_latest == 'true' && steps.download-saved-plan-gcs.outcome == 'failure'
+        run: |
+          key_file="$GITHUB_WORKSPACE/plan-files/tfplan_${{ matrix.target.id }}.bin.key"
+          gcloud kms decrypt \
+            --key="$TERRAFORM_PLAN_KMS_KEY" \
+            --keyring="$TERRAFORM_PLAN_KMS_KEYRING" \
+            --location="$TERRAFORM_PLAN_KMS_LOCATION" \
+            --ciphertext-file="${key_file}.enc" \
+            --plaintext-file="$key_file"
+          openssl enc -d -aes-256-cbc -pbkdf2 \
+            -in "$GITHUB_WORKSPACE/plan-files/tfplan_${{ matrix.target.id }}.bin.enc" \
+            -out "$GITHUB_WORKSPACE/plan-files/tfplan_${{ matrix.target.id }}.bin" \
+            -pass "file:${key_file}"
+          rm -f "$key_file"
+      - name: Verify saved terraform plan
+        if: steps.stale-check.outputs.is_latest == 'true'
+        run: |
+          plan_file="$GITHUB_WORKSPACE/plan-files/tfplan_${{ matrix.target.id }}.bin"
+          echo "${{ matrix.target.plan_sha256 }}  ${plan_file}" | sha256sum --check
+      - name: Terraform Init
+        if: steps.stale-check.outputs.is_latest == 'true'
+        run: cd "${{ matrix.target.path }}" && terraform init
+      - name: Check run is latest before terraform apply
+        id: pre-apply-stale-check
+        if: steps.stale-check.outputs.is_latest == 'true'
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const branch = context.ref.replace("refs/heads/", "");
+            const currentRunId = context.runId;
+            const currentRunNumber = context.runNumber;
+            const workflowRef = process.env.GITHUB_WORKFLOW_REF || "";
+            const workflowId = workflowRef
+              .split("@")[0]
+              .replace(`${owner}/${repo}/`, "");
+
+            if (!workflowId) {
+              core.setFailed("Failed to resolve workflow_id from GITHUB_WORKFLOW_REF.");
+              return;
+            }
+
+            const runs = await github.paginate(
+              github.rest.actions.listWorkflowRuns,
+              {
+                owner,
+                repo,
+                workflow_id: workflowId,
+                branch,
+                per_page: 100,
+              },
+            );
+
+            const newerRun = runs.find(
+              (run) => run.id !== currentRunId && run.run_number > currentRunNumber,
+            );
+
+            if (newerRun) {
+              core.warning(`Skip terraform apply for stale run ${currentRunId}: newer run ${newerRun.id} exists.`);
+              core.setOutput("is_latest", "false");
+              return;
+            }
+
+            core.setOutput("is_latest", "true");
+      - name: Run terraform apply
+        if: steps.stale-check.outputs.is_latest == 'true' && steps.pre-apply-stale-check.outputs.is_latest == 'true'
+        run: |
+          plan_file="$GITHUB_WORKSPACE/plan-files/tfplan_${{ matrix.target.id }}.bin"
+          cd "${{ matrix.target.path }}" && terraform apply "$plan_file"
+      - name: Delete saved terraform plan from GCS
+        if: always() && steps.stale-check.outputs.is_latest == 'true'
+        run: |
+          plan_uri="gs://${TERRAFORM_PLAN_BUCKET}/github-actions/terraform-plans/${GITHUB_RUN_ID}/${{ matrix.target.id }}/tfplan.bin"
+          gcloud storage rm "$plan_uri" || true
+
+  cleanup-saved-plans:
+    name: cleanup saved terraform plans
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: always() && github.ref == 'refs/heads/main' && (needs.plan.result == 'failure' || needs.collect-plan-results.result == 'failure' || needs.apply.result != 'skipped')
+    needs:
+      - plan
+      - collect-plan-results
+      - apply
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_SERVICE_ACCOUNT: github-actions-melisia@shiron-dev.iam.gserviceaccount.com
+      GCP_WORKLOAD_IDENTITY_PROVIDER: projects/25543598735/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider
+      TERRAFORM_PLAN_BUCKET: shiron-dev-terraform
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      - name: Delete saved terraform plans from GCS
+        run: |
+          gcloud storage rm -r "gs://${TERRAFORM_PLAN_BUCKET}/github-actions/terraform-plans/${GITHUB_RUN_ID}" || true
