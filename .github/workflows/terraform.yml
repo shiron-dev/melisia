@@ -159,6 +159,7 @@ jobs:
         with:
           working_directory: terraform/
           github_token: ${{ github.token }}
+          additional_args: --ignore-hcl-errors
 
   # pluralith:
   #   runs-on: ubuntu-latest

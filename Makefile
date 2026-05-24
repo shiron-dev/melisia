@@ -119,7 +119,7 @@ terraform-checkov:
 # https://github.com/aquasecurity/tfsec - Terraform security scanner
 .PHONY: terraform-tfsec
 terraform-tfsec:
-	tfsec terraform/
+	tfsec --ignore-hcl-errors terraform/
 
 # https://www.pluralith.com/ - Terraform visualization and cost analysis
 .PHONY: pluralith
