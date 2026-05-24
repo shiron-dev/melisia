@@ -426,7 +426,12 @@ jobs:
             );
 
             if (newerRun) {
-              core.warning(`Skip apply for stale run ${currentRunId}: newer ${context.eventName} run ${newerRun.id} exists.`);
+              const message = `Skip apply for stale run ${currentRunId}: newer ${context.eventName} run ${newerRun.id} exists.`;
+              if (context.eventName === "merge_group") {
+                core.setFailed(message);
+                return;
+              }
+              core.warning(message);
               core.setOutput("is_latest", "false");
               return;
             }
@@ -555,7 +560,12 @@ jobs:
             );
 
             if (newerRun) {
-              core.warning(`Skip terraform apply for stale run ${currentRunId}: newer ${context.eventName} run ${newerRun.id} exists.`);
+              const message = `Skip terraform apply for stale run ${currentRunId}: newer ${context.eventName} run ${newerRun.id} exists.`;
+              if (context.eventName === "merge_group") {
+                core.setFailed(message);
+                return;
+              }
+              core.warning(message);
               core.setOutput("is_latest", "false");
               return;
             }
