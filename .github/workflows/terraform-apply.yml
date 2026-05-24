@@ -301,7 +301,7 @@ jobs:
           gcloud storage cp "${{ steps.terraform-plan.outputs.plan_file }}" "$plan_uri"
       - name: Upload plan result to Slack
         if: steps.terraform-plan.outputs.exit_code == '2'
-        uses: slackapi/slack-github-action@af78098f536edbc4de71162a307590698245be95 # v3.0.1
+        uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c # v3.0.3
         with:
           method: files.uploadV2
           token: ${{ secrets.SLACK_BOT_TOKEN }}
