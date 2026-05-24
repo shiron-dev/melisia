@@ -542,10 +542,41 @@ jobs:
 
             core.setOutput("is_latest", "true");
       - name: Run terraform apply
+        id: terraform-apply
         if: steps.stale-check.outputs.is_latest == 'true' && steps.pre-apply-stale-check.outputs.is_latest == 'true'
         run: |
+          set +e
+
+          output_file="$(mktemp --suffix=.txt)"
           plan_file="$GITHUB_WORKSPACE/plan-files/tfplan_${{ matrix.target.id }}.bin"
-          cd "${{ matrix.target.path }}" && terraform apply "$plan_file"
+          cd "${{ matrix.target.path }}" && terraform apply -no-color "$plan_file" 2>&1 | tee "$output_file"
+          exit_code="${PIPESTATUS[0]}"
+
+          if [ ! -s "$output_file" ]; then
+            echo "terraform apply produced no output." > "$output_file"
+          fi
+
+          {
+            echo "slack_file=${output_file}"
+            echo "exit_code=${exit_code}"
+          } >> "$GITHUB_OUTPUT"
+
+          exit "$exit_code"
+      - name: Upload apply result to Slack
+        if: always() && steps.stale-check.outputs.is_latest == 'true' && steps.pre-apply-stale-check.outputs.is_latest == 'true' && steps.terraform-apply.outputs.slack_file != ''
+        uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c # v3.0.3
+        with:
+          method: files.uploadV2
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          errors: true
+          payload: |
+            channel_id: ${{ secrets.SLACK_CHANNEL_ID }}
+            snippet_type: text
+            title: Terraform Apply Result (${{ github.repository }} / ${{ matrix.target.path }})
+            filename: terraform-apply-${{ matrix.target.id }}-${{ github.run_id }}.txt
+            initial_comment: |
+              Terraform apply result for ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            file: ${{ steps.terraform-apply.outputs.slack_file }}
       - name: Delete saved terraform plan from GCS
         if: always() && steps.stale-check.outputs.is_latest == 'true'
         run: |
