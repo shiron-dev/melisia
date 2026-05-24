@@ -59,9 +59,16 @@ jobs:
             const { owner, repo } = context.repo;
             const allowedAssociations = new Set(["OWNER", "MEMBER", "COLLABORATOR"]);
             const reviewCommandPattern = /(^|\n)\s*\/review(?:\s|$)/;
+            const renovateLogins = new Set(["app/renovate", "renovate[bot]", "renovate-bot"]);
+
+            const isRenovatePullRequest = (pr) => {
+              const authorLogin = pr.user?.login ?? "";
+              return renovateLogins.has(authorLogin);
+            };
 
             const setPullRequestOutputs = (pr, shouldRun, forceRun = false) => {
               const isInternalPr = pr.head.repo.full_name === `${owner}/${repo}`;
+              const isRenovatePr = isRenovatePullRequest(pr);
               core.setOutput("should_run", shouldRun ? "true" : "false");
               core.setOutput("pr_number", String(pr.number));
               core.setOutput("base_sha", pr.base.sha);
@@ -71,6 +78,12 @@ jobs:
               core.setOutput("draft", String(Boolean(pr.draft)));
               core.setOutput("is_internal_pr", String(isInternalPr));
               core.setOutput("force_run", forceRun ? "true" : "false");
+
+              if (isRenovatePr) {
+                core.info(`Skipping Codex AI review for Renovate PR #${pr.number}.`);
+                core.setOutput("should_run", "false");
+                core.setOutput("force_run", "false");
+              }
             };
 
             if (context.eventName === "pull_request") {
