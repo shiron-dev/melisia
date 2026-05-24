@@ -1,0 +1,6 @@
+cloudflare_mesh_lan_route_guard_enabled: true
+cloudflare_mesh_lan_route_guard_cidr: 192.168.1.0/24
+cloudflare_mesh_lan_route_guard_interface: eth0
+cloudflare_mesh_lan_route_guard_source: 192.168.1.61
+cloudflare_mesh_lan_route_guard_metric: 10
+cloudflare_mesh_lan_route_guard_priority: 1

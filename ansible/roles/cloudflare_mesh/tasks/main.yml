@@ -76,8 +76,8 @@
       (need {{ cloudflare_mesh_min_var_log_free_mb }} MB). Reboot home-ep or
       free disk space, then rerun this playbook.
   when:
-    - (cloudflare_mesh_root_free.stdout_lines[1].split()[3] | int) < cloudflare_mesh_min_root_free_mb
-      or (cloudflare_mesh_var_log_free.stdout_lines[1].split()[3] | int) < cloudflare_mesh_min_var_log_free_mb
+    - (cloudflare_mesh_root_free.stdout_lines[1].split()[3] | int) < cloudflare_mesh_min_root_free_mb or
+      (cloudflare_mesh_var_log_free.stdout_lines[1].split()[3] | int) < cloudflare_mesh_min_var_log_free_mb
 
 - name: Repair any interrupted package configuration
   become: true
@@ -99,6 +99,68 @@
     name: warp-svc
     enabled: true
     state: started
+
+- name: Validate Cloudflare Mesh LAN route guard settings
+  ansible.builtin.assert:
+    that:
+      - cloudflare_mesh_lan_route_guard_cidr | length > 0
+      - cloudflare_mesh_lan_route_guard_interface | length > 0
+      - cloudflare_mesh_lan_route_guard_priority | int > 0
+    fail_msg: Cloudflare Mesh LAN route guard requires cidr, interface, and priority.
+  when: cloudflare_mesh_lan_route_guard_enabled
+
+- name: Install Cloudflare Mesh LAN route guard script
+  become: true
+  ansible.builtin.template:
+    src: lan-route-guard.sh.j2
+    dest: "{{ cloudflare_mesh_lan_route_guard_script_path }}"
+    mode: "0755"
+  register: cloudflare_mesh_lan_route_guard_script
+  when: cloudflare_mesh_lan_route_guard_enabled
+
+- name: Install Cloudflare Mesh LAN route guard unit
+  become: true
+  ansible.builtin.template:
+    src: lan-route-guard.service.j2
+    dest: "{{ cloudflare_mesh_lan_route_guard_unit_path }}"
+    mode: "0644"
+  register: cloudflare_mesh_lan_route_guard_unit
+  when: cloudflare_mesh_lan_route_guard_enabled
+
+- name: Install Cloudflare Mesh LAN route guard timer
+  become: true
+  ansible.builtin.template:
+    src: lan-route-guard.timer.j2
+    dest: "{{ cloudflare_mesh_lan_route_guard_timer_path }}"
+    mode: "0644"
+  register: cloudflare_mesh_lan_route_guard_timer
+  when: cloudflare_mesh_lan_route_guard_enabled
+
+- name: Enable Cloudflare Mesh LAN route guard service
+  become: true
+  ansible.builtin.systemd:
+    name: "{{ cloudflare_mesh_lan_route_guard_unit_path | basename }}"
+    enabled: true
+    daemon_reload: true
+  when: cloudflare_mesh_lan_route_guard_enabled
+
+- name: Apply Cloudflare Mesh LAN route guard service
+  become: true
+  ansible.builtin.systemd:
+    name: "{{ cloudflare_mesh_lan_route_guard_unit_path | basename }}"
+    state: >-
+      {{ 'restarted' if cloudflare_mesh_lan_route_guard_script.changed or
+      cloudflare_mesh_lan_route_guard_unit.changed else 'started' }}
+  when: cloudflare_mesh_lan_route_guard_enabled
+
+- name: Enable Cloudflare Mesh LAN route guard timer
+  become: true
+  ansible.builtin.systemd:
+    name: "{{ cloudflare_mesh_lan_route_guard_timer_path | basename }}"
+    enabled: true
+    state: started
+    daemon_reload: "{{ cloudflare_mesh_lan_route_guard_timer.changed }}"
+  when: cloudflare_mesh_lan_route_guard_enabled
 
 - name: Wait for Cloudflare WARP service
   become: true
@@ -154,3 +216,10 @@
   failed_when:
     - cloudflare_mesh_connect.rc != 0
     - "'Already connected' not in cloudflare_mesh_connect.stderr"
+
+- name: Reapply Cloudflare Mesh LAN route guard after connecting WARP
+  become: true
+  ansible.builtin.systemd:
+    name: "{{ cloudflare_mesh_lan_route_guard_unit_path | basename }}"
+    state: restarted
+  when: cloudflare_mesh_lan_route_guard_enabled
