@@ -168,7 +168,7 @@ jobs:
       cancel-in-progress: false
     env:
       GITHUB_TOKEN: ${{ github.token }}
-      TERRAFORM_APPLY_SKIP_TARGETS: "terraform/aws"
+      TERRAFORM_APPLY_SKIP_TARGETS: "terraform/aws,terraform/github_secrets"
       TERRAFORM_PLAN_KMS_KEY: sops-key
       TERRAFORM_PLAN_KMS_KEYRING: sops
       TERRAFORM_PLAN_KMS_LOCATION: global
@@ -552,9 +552,10 @@ jobs:
     name: cleanup saved terraform plans
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    if: always() && github.ref == 'refs/heads/main' && (needs.plan.result == 'failure' || needs.apply.result != 'skipped')
+    if: always() && github.ref == 'refs/heads/main' && (needs.plan.result == 'failure' || needs.collect-plan-results.result == 'failure' || needs.apply.result != 'skipped')
     needs:
       - plan
+      - collect-plan-results
       - apply
     permissions:
       contents: read
