@@ -52,6 +52,10 @@ resource "cloudflare_zero_trust_device_default_profile" "mesh" {
 data "cloudflare_zero_trust_tunnel_warp_connector" "this" {
   for_each = local.cloudflare_mesh_nodes
 
+  # The former cloudflare_zero_trust_tunnel_warp_connector.this resource was
+  # removed from state after apply. If applying from an older state snapshot,
+  # run: terraform state rm 'cloudflare_zero_trust_tunnel_warp_connector.this["home_ep"]'
+  # before planning this change so Terraform does not destroy the connector.
   account_id = local.cloudflare_account_id
   tunnel_id  = each.value.tunnel_id
 }
