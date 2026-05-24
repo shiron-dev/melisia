@@ -14,7 +14,7 @@ terraform {
     }
     local = {
       source  = "hashicorp/local"
-      version = "2.7.0"
+      version = "2.9.0"
     }
     random = {
       source  = "hashicorp/random"
@@ -22,7 +22,7 @@ terraform {
     }
   }
 
-  required_version = ">= 1.14.7"
+  required_version = ">= 1.15.4"
 
   backend "gcs" {
     bucket = "shiron-dev-terraform"
