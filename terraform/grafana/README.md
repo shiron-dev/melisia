@@ -1,0 +1,52 @@
+# Grafana IaC
+
+This Terraform root manages Grafana content that should be reproducible from code:
+
+- folders
+- data sources
+- dashboards under `dashboards/<folder-key>/*.json`
+- alerting contact points
+- alerting notification policy
+- alerting rule groups
+
+Grafana itself, its container, local provisioning files, and runtime storage stay under `compose/projects/grafana` and are deployed by `cmt`.
+
+## Auth
+
+Use a Grafana service account token with enough permissions to manage folders, data sources, dashboards, and alerting resources.
+
+Prefer environment variables for local runs:
+
+```sh
+export GRAFANA_URL="https://grafana.shiron.dev/"
+export GRAFANA_AUTH="glsa_..."
+make terraform-plan TERRAFORM_TARGET=grafana
+```
+
+For CI or shared encrypted config, put `grafana_auth` in `terraform.secrets.tfvars`, then encrypt it with SOPS.
+
+## Alerting
+
+`grafana_notification_policy.root` manages the whole notification policy tree. Keep `notification_policy = null` until the current Grafana policy has been reviewed and either imported or intentionally replaced.
+
+Rule groups are driven by `var.rule_groups` so alert rules can be added in `terraform.secrets.tfvars` or a normal tfvars file without changing the resource shape.
+
+## Existing Resources
+
+The existing VictoriaMetrics-backed Prometheus data source has a deterministic UID in cmt provisioning:
+
+```text
+prometheus-vm-localhost
+```
+
+Import it before the first apply so Terraform adopts it instead of trying to recreate it:
+
+```sh
+terraform -chdir=terraform/grafana import 'grafana_data_source.managed["prometheus_vm_localhost"]' prometheus-vm-localhost
+```
+
+If a dashboard is first drafted in the Grafana UI, export its JSON and place it under the folder key that should own it, for example:
+
+```text
+terraform/grafana/dashboards/observability/my-dashboard.json
+```
