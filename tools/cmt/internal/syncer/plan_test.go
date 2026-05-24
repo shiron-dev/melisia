@@ -690,6 +690,77 @@ func TestSyncPlan_Print_PerHostSummaryTable(t *testing.T) {
 	}
 }
 
+func TestPlanDigestSHA256_IsStable(t *testing.T) {
+	t.Parallel()
+
+	plan := &SyncPlan{
+		HostPlans: []HostPlan{
+			{
+				Host: config.HostEntry{Name: "srv-a", User: "u", Host: "a", Port: 22},
+				Projects: []ProjectPlan{
+					{
+						ProjectName: "proj1",
+						Files:       []FilePlan{{RelativePath: "compose.yml", Action: ActionAdd}},
+					},
+				},
+			},
+		},
+	}
+
+	first := PlanDigestSHA256(plan)
+	second := PlanDigestSHA256(plan)
+
+	if first == "" {
+		t.Fatal("digest should not be empty")
+	}
+
+	if first != second {
+		t.Fatalf("digest changed between calls: %s != %s", first, second)
+	}
+}
+
+func TestPlanDigestSHA256_IncludesFileData(t *testing.T) {
+	t.Parallel()
+
+	firstPlan := &SyncPlan{
+		HostPlans: []HostPlan{
+			{
+				Host: config.HostEntry{Name: "srv-a", User: "u", Host: "a", Port: 22},
+				Projects: []ProjectPlan{
+					{
+						ProjectName: "proj1",
+						Files: []FilePlan{
+							{RelativePath: "secret.env", Action: ActionAdd, LocalData: []byte("TOKEN=aaaa")},
+						},
+					},
+				},
+			},
+		},
+	}
+	secondPlan := &SyncPlan{
+		HostPlans: []HostPlan{
+			{
+				Host: config.HostEntry{Name: "srv-a", User: "u", Host: "a", Port: 22},
+				Projects: []ProjectPlan{
+					{
+						ProjectName: "proj1",
+						Files: []FilePlan{
+							{RelativePath: "secret.env", Action: ActionAdd, LocalData: []byte("TOKEN=bbbb")},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	firstDigest := PlanDigestSHA256(firstPlan)
+	secondDigest := PlanDigestSHA256(secondPlan)
+
+	if firstDigest == secondDigest {
+		t.Fatal("digest should change when file data changes")
+	}
+}
+
 func TestBuildPlanWithDeps_UsesInjectedDependencies(t *testing.T) {
 	t.Parallel()
 
