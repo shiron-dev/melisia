@@ -53,7 +53,6 @@ export default {
           content: body.ip,
           ttl: 1,
           proxied: false,
-          comment: "Cloudflare Mesh IP updated by mesh-dns-updater",
         }),
       },
     );
