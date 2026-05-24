@@ -27,7 +27,7 @@ For CI or shared encrypted config, put `grafana_auth` in `terraform.secrets.tfva
 
 ## Alerting
 
-`grafana_notification_policy.root` manages the whole notification policy tree. Keep `notification_policy = null` until the current Grafana policy has been reviewed and either imported or intentionally replaced.
+`grafana_notification_policy.root` manages the whole notification policy tree. Keep the variable default at `null`; once the current Grafana policy has been reviewed and imported, put the managed root policy in `notification_policy.auto.tfvars.json`.
 
 Rule groups are driven by `var.rule_groups` so alert rules can be added in `terraform.secrets.tfvars` or a normal tfvars file without changing the resource shape.
 

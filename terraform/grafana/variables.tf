@@ -78,13 +78,7 @@ variable "notification_policy" {
     group_interval  = optional(string)
     repeat_interval = optional(string)
   })
-  default = {
-    contact_point = "grafana-default-email"
-    group_by = [
-      "grafana_folder",
-      "alertname",
-    ]
-  }
+  default = null
 }
 
 variable "rule_groups" {
