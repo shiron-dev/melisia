@@ -44,9 +44,11 @@ data "cloudflare_zero_trust_tunnel_cloudflared_virtual_networks" "default" {
 }
 
 resource "cloudflare_zero_trust_device_default_profile" "mesh" {
-  account_id      = local.cloudflare_account_id
-  service_mode_v2 = { mode = "warp" }
-  include         = local.cloudflare_mesh_split_tunnel_include_routes
+  account_id            = local.cloudflare_account_id
+  lan_allow_minutes     = 0
+  lan_allow_subnet_size = 24
+  service_mode_v2       = { mode = "warp" }
+  include               = local.cloudflare_mesh_split_tunnel_include_routes
 }
 
 removed {
