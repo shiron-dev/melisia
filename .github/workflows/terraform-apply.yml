@@ -307,7 +307,7 @@ jobs:
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           errors: true
           payload: |
-            channel_id: ${{ secrets.SLACK_CHANNEL_ID }}
+            channel_id: ${{ vars.SLACK_PR_PLAN_CHANNEL_ID }}
             snippet_type: text
             title: Terraform Plan Result (${{ github.repository }} / ${{ matrix.target.path }})
             filename: terraform-plan-${{ matrix.target.id }}-${{ github.run_id }}.txt
@@ -570,7 +570,7 @@ jobs:
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           errors: true
           payload: |
-            channel_id: ${{ secrets.SLACK_CHANNEL_ID }}
+            channel_id: ${{ vars.SLACK_DEPLOY_CHANNEL_ID }}
             snippet_type: text
             title: Terraform Apply Result (${{ github.repository }} / ${{ matrix.target.path }})
             filename: terraform-apply-${{ matrix.target.id }}-${{ github.run_id }}.txt
