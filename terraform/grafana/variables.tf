@@ -17,12 +17,7 @@ variable "folders" {
     title = string
     uid   = optional(string)
   }))
-  default = {
-    observability = {
-      title = "Observability"
-      uid   = "observability"
-    }
-  }
+  default = {}
 }
 
 variable "datasources" {
@@ -41,10 +36,10 @@ variable "datasources" {
     prometheus_vm_localhost = {
       name              = "Prometheus-vm_localhost"
       type              = "prometheus"
-      uid               = "prometheus-vm-localhost"
+      uid               = "P95B22FBE6FE890D0"
       url               = "http://victoriametrics:8428"
       access_mode       = "proxy"
-      is_default        = true
+      is_default        = false
       json_data_encoded = <<-JSON
         {
           "httpMethod": "POST",
@@ -61,12 +56,17 @@ variable "email_contact_points" {
   description = "Email contact points for Grafana Alerting."
   type = map(object({
     addresses               = list(string)
-    subject                 = optional(string, "{{ template \"default.title\" . }}")
-    message                 = optional(string, "{{ template \"default.message\" . }}")
-    single_email            = optional(bool, true)
+    subject                 = optional(string, "")
+    message                 = optional(string, "")
+    single_email            = optional(bool, false)
     disable_resolve_message = optional(bool, false)
   }))
-  default = {}
+  default = {
+    "email receiver" = {
+      addresses               = ["<example@email.com>"]
+      disable_resolve_message = false
+    }
+  }
 }
 
 variable "notification_policy" {
@@ -74,11 +74,17 @@ variable "notification_policy" {
   type = object({
     contact_point   = string
     group_by        = list(string)
-    group_wait      = optional(string, "30s")
-    group_interval  = optional(string, "5m")
-    repeat_interval = optional(string, "4h")
+    group_wait      = optional(string)
+    group_interval  = optional(string)
+    repeat_interval = optional(string)
   })
-  default = null
+  default = {
+    contact_point = "grafana-default-email"
+    group_by = [
+      "grafana_folder",
+      "alertname",
+    ]
+  }
 }
 
 variable "rule_groups" {

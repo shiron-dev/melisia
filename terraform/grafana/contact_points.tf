@@ -1,7 +1,9 @@
 resource "grafana_contact_point" "email" {
   for_each = var.email_contact_points
 
-  name = each.key
+  name               = each.key
+  org_id             = "0"
+  disable_provenance = true
 
   email {
     addresses               = each.value.addresses

@@ -11,10 +11,6 @@ projects:
         owner: 472
         group: 472
         become: true
-      - grafana_conf/provisioning/datasources:
-        owner: 1000
-        group: 1000
-        become: true
       - influxdb_data:
         owner: 1000
         group: 1000

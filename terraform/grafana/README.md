@@ -4,7 +4,7 @@ This Terraform root manages Grafana content that should be reproducible from cod
 
 - folders
 - data sources
-- dashboards under `dashboards/<folder-key>/*.json`
+- dashboards under `dashboards/*.json` for General, or `dashboards/<folder-key>/*.json` for managed folders
 - alerting contact points
 - alerting notification policy
 - alerting rule groups
@@ -36,14 +36,10 @@ Rule groups are driven by `var.rule_groups` so alert rules can be added in `terr
 The existing VictoriaMetrics-backed Prometheus data source has a deterministic UID in cmt provisioning:
 
 ```text
-prometheus-vm-localhost
+P95B22FBE6FE890D0
 ```
 
-Import it before the first apply so Terraform adopts it instead of trying to recreate it:
-
-```sh
-terraform -chdir=terraform/grafana import 'grafana_data_source.managed["prometheus_vm_localhost"]' prometheus-vm-localhost
-```
+It is owned by Terraform. Keep Grafana datasource provisioning disabled in `compose/projects/grafana` to avoid double management.
 
 If a dashboard is first drafted in the Grafana UI, export its JSON and place it under the folder key that should own it, for example:
 
