@@ -447,7 +447,7 @@ type filePlanDigest struct {
 
 func newPlanDigest(plan *SyncPlan) planDigest {
 	if plan == nil {
-		return planDigest{}
+		return planDigest{HostPlans: nil}
 	}
 
 	hostPlans := make([]hostPlanDigest, 0, len(plan.HostPlans))
