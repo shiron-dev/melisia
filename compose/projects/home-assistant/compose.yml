@@ -145,7 +145,7 @@ services:
 
   zigbee2mqtt:
     container_name: zigbee2mqtt
-    image: koenkk/zigbee2mqtt:2.0.0@sha256:6105a3a01a66bbfb98909a7c309d0707ec7b41728ac15d399747077225231545
+    image: koenkk/zigbee2mqtt:2.10.1@sha256:67c26dcf8346aced02fe1380a6afd1b57268bcef10faae3f6057c13d5d3dfa80
     user: "1000:1000"
     volumes:
       - ./zigbee2mqtt_data:/app/data:rw
