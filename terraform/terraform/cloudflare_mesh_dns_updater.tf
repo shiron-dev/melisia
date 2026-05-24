@@ -88,7 +88,7 @@ resource "cloudflare_workers_script" "mesh_dns_updater" {
   main_module        = "mesh_dns_updater.js"
   content_file       = "${path.module}/workers/mesh_dns_updater.js"
   content_sha256     = filesha256("${path.module}/workers/mesh_dns_updater.js")
-  compatibility_date = "2026-05-25"
+  compatibility_date = "2026-05-24"
 
   bindings = [
     {
