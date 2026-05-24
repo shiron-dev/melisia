@@ -108,7 +108,7 @@ jobs:
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           errors: true
           payload: |
-            channel_id: ${{ secrets.SLACK_PLAN_CHANNEL_ID }}
+            channel_id: ${{ vars.SLACK_PR_PLAN_CHANNEL_ID }}
             snippet_type: text
             title: "CMT Plan (${{ github.repository }}) - PR #${{ github.event.number }}"
             filename: cmt-plan-${{ github.run_id }}.txt
