@@ -108,9 +108,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: production-plan
+    if: github.ref == 'refs/heads/main'
     needs: cancel-stale-runs
     outputs:
       has_diff: ${{ steps.cmt-plan.outputs.exit_code == '2' }}
+      plan_sha256: ${{ steps.cmt-plan.outputs.plan_sha256 }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: ./.github/actions/setup-compose-cmt
@@ -129,10 +131,13 @@ jobs:
           TUNNEL_SERVICE_TOKEN_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           TUNNEL_SERVICE_TOKEN_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
         run: |
+          make cmt-init
+
           set +e
 
           output_file="$(mktemp)"
-          make cmt-plan 2>&1 | tee "$output_file"
+          digest_file="$(mktemp --suffix=.sha256)"
+          tools/cmt/cmt --config compose/config.yml plan --exit-status --digest-file "$digest_file" 2>&1 | tee "$output_file"
           exit_code="${PIPESTATUS[0]}"
           slack_file="$(mktemp --suffix=.txt)"
           sed -E 's/\x1B\[[0-9;]*[[:alpha:]]//g' "$output_file" | iconv -f UTF-8 -t UTF-8 -c > "$slack_file" || cp "$output_file" "$slack_file"
@@ -142,6 +147,7 @@ jobs:
           if [ ! -s "$slack_file" ]; then
             echo "cmt plan produced no output." > "$slack_file"
           fi
+          plan_sha256="$(tr -d '\r\n' < "$digest_file")"
 
           summary_line="$(tr -d '\r' < "$slack_file" | awk '/^Summary: /{line=$0} END{print line}')"
           if [ -z "$summary_line" ]; then
@@ -153,6 +159,7 @@ jobs:
             echo "slack_file=${slack_file}"
             echo "summary=${summary_line}"
             echo "exit_code=${exit_code}"
+            echo "plan_sha256=${plan_sha256}"
           } >> "$GITHUB_OUTPUT"
           {
             echo "output_file=${output_file}"
@@ -175,7 +182,7 @@ jobs:
               ${{ steps.cmt-plan.outputs.summary }}
             file: ${{ steps.cmt-plan.outputs.slack_file }}
       - name: Fail when cmt plan failed
-        if: steps.cmt-plan.outputs.exit_code == '1'
+        if: steps.cmt-plan.outputs.exit_code != '0' && steps.cmt-plan.outputs.exit_code != '2'
         run: exit 1
 
   apply:
@@ -183,24 +190,152 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: production
-    if: needs.plan.outputs.has_diff == 'true'
+    if: github.ref == 'refs/heads/main' && needs.plan.outputs.has_diff == 'true'
     needs: plan
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}-apply
       cancel-in-progress: false
     steps:
+      - name: Check run is latest before apply
+        id: stale-check
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const branch = context.ref.replace("refs/heads/", "");
+            const currentRunId = context.runId;
+            const currentRunNumber = context.runNumber;
+            const workflowRef = process.env.GITHUB_WORKFLOW_REF || "";
+            const workflowId = workflowRef
+              .split("@")[0]
+              .replace(`${owner}/${repo}/`, "");
+
+            if (!workflowId) {
+              core.setFailed("Failed to resolve workflow_id from GITHUB_WORKFLOW_REF.");
+              return;
+            }
+
+            const runs = await github.paginate(
+              github.rest.actions.listWorkflowRuns,
+              {
+                owner,
+                repo,
+                workflow_id: workflowId,
+                branch,
+                per_page: 100,
+              },
+            );
+
+            const newerRun = runs.find(
+              (run) => run.id !== currentRunId && run.run_number > currentRunNumber,
+            );
+
+            if (newerRun) {
+              core.warning(`Skip apply for stale run ${currentRunId}: newer run ${newerRun.id} exists.`);
+              core.setOutput("is_latest", "false");
+              return;
+            }
+
+            core.setOutput("is_latest", "true");
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        if: steps.stale-check.outputs.is_latest == 'true'
       - uses: ./.github/actions/setup-compose-cmt
+        if: steps.stale-check.outputs.is_latest == 'true'
         env:
           WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
           SERVICE_ACCOUNT: ${{ secrets.SERVICE_ACCOUNT }}
           GH_ACTIONS_SSH_PRIVATE_KEY: ${{ secrets.GH_ACTIONS_SSH_PRIVATE_KEY }}
           CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      - name: Check run is latest before cmt apply
+        id: pre-apply-stale-check
+        if: steps.stale-check.outputs.is_latest == 'true'
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const branch = context.ref.replace("refs/heads/", "");
+            const currentRunId = context.runId;
+            const currentRunNumber = context.runNumber;
+            const workflowRef = process.env.GITHUB_WORKFLOW_REF || "";
+            const workflowId = workflowRef
+              .split("@")[0]
+              .replace(`${owner}/${repo}/`, "");
+
+            if (!workflowId) {
+              core.setFailed("Failed to resolve workflow_id from GITHUB_WORKFLOW_REF.");
+              return;
+            }
+
+            const runs = await github.paginate(
+              github.rest.actions.listWorkflowRuns,
+              {
+                owner,
+                repo,
+                workflow_id: workflowId,
+                branch,
+                per_page: 100,
+              },
+            );
+
+            const newerRun = runs.find(
+              (run) => run.id !== currentRunId && run.run_number > currentRunNumber,
+            );
+
+            if (newerRun) {
+              core.warning(`Skip cmt apply for stale run ${currentRunId}: newer run ${newerRun.id} exists.`);
+              core.setOutput("is_latest", "false");
+              return;
+            }
+
+            core.setOutput("is_latest", "true");
+      - name: Verify approved cmt plan
+        id: verify-plan
+        if: steps.stale-check.outputs.is_latest == 'true' && steps.pre-apply-stale-check.outputs.is_latest == 'true'
+        env:
+          APPROVED_PLAN_SHA256: ${{ needs.plan.outputs.plan_sha256 }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+          TUNNEL_SERVICE_TOKEN_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          TUNNEL_SERVICE_TOKEN_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          make cmt-init
+
+          set +e
+
+          output_file="$(mktemp)"
+          digest_file="$(mktemp --suffix=.sha256)"
+          tools/cmt/cmt --config compose/config.yml plan --exit-status --digest-file "$digest_file" > "$output_file" 2>&1
+          exit_code="$?"
+          slack_file="$(mktemp --suffix=.txt)"
+          sed -E 's/\x1B\[[0-9;]*[[:alpha:]]//g' "$output_file" | iconv -f UTF-8 -t UTF-8 -c > "$slack_file" || cp "$output_file" "$slack_file"
+          if [ ! -s "$slack_file" ]; then
+            echo "cmt plan produced no output." > "$slack_file"
+          fi
+          current_plan_sha256="$(tr -d '\r\n' < "$digest_file")"
+
+          if [ "$exit_code" != "2" ]; then
+            echo "Expected cmt plan to still report changes before apply, got exit code ${exit_code}."
+            cat "$slack_file"
+            exit 1
+          fi
+
+          if [ "$current_plan_sha256" != "$APPROVED_PLAN_SHA256" ]; then
+            echo "cmt plan changed after production approval."
+            echo "Approved plan SHA-256: ${APPROVED_PLAN_SHA256}"
+            echo "Current plan SHA-256:  ${current_plan_sha256}"
+            cat "$slack_file"
+            exit 1
+          fi
+
+          echo "matches=true" >> "$GITHUB_OUTPUT"
       - name: Run cmt apply
+        if: steps.stale-check.outputs.is_latest == 'true' && steps.pre-apply-stale-check.outputs.is_latest == 'true' && steps.verify-plan.outputs.matches == 'true'
         env:
           CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
           TUNNEL_SERVICE_TOKEN_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           TUNNEL_SERVICE_TOKEN_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
-        run: make cmt-apply CMT_OPT="--auto-approve"
+        run: make cmt-apply CMT_OPT="--auto-approve --expected-plan-sha256 ${{ needs.plan.outputs.plan_sha256 }}"

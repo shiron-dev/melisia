@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/shiron-dev/melisia/tools/cmt/internal/config"
@@ -12,6 +13,7 @@ import (
 const (
 	exitCodeNoChanges  = 0
 	exitCodeHasChanges = 2
+	planDigestFileMode = 0o600
 )
 
 func newPlanCmd(configPath *string) *cobra.Command {
@@ -20,6 +22,8 @@ func newPlanCmd(configPath *string) *cobra.Command {
 	var projectFilter []string
 
 	var exitCode bool
+
+	var digestFile string
 
 	dependencies := syncer.PlanDependencies{
 		ClientFactory:  nil,
@@ -44,6 +48,11 @@ func newPlanCmd(configPath *string) *cobra.Command {
 
 		plan.Print(os.Stdout)
 
+		err = writePlanDigestFile(digestFile, plan)
+		if err != nil {
+			return err
+		}
+
 		if syncer.PlanHasExistenceUnknown(plan) {
 			return syncer.ErrExistenceCheckFailed
 		}
@@ -65,6 +74,21 @@ func newPlanCmd(configPath *string) *cobra.Command {
 		"exit with 0 when no changes, 1 on error, 2 when changes exist")
 	planCommand.Flags().BoolVar(&exitCode, "exit-status", false,
 		"alias of --exit-code: exit with 0 when no changes, 1 on error, 2 when changes exist")
+	planCommand.Flags().StringVar(&digestFile, "digest-file", "",
+		"write the SHA-256 digest of the normalized plan to this file")
 
 	return planCommand
+}
+
+func writePlanDigestFile(digestFile string, plan *syncer.SyncPlan) error {
+	if digestFile == "" {
+		return nil
+	}
+
+	err := os.WriteFile(digestFile, []byte(syncer.PlanDigestSHA256(plan)+"\n"), planDigestFileMode)
+	if err != nil {
+		return fmt.Errorf("write plan digest: %w", err)
+	}
+
+	return nil
 }

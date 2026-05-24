@@ -3,6 +3,8 @@ package syncer
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -369,6 +371,17 @@ func (p *SyncPlan) Print(writer io.Writer) {
 	}
 
 	_, _ = fmt.Fprintln(writer)
+}
+
+func PlanDigestSHA256(plan *SyncPlan) string {
+	normalizedPlan, err := json.Marshal(plan)
+	if err != nil {
+		return ""
+	}
+
+	sum := sha256.Sum256(normalizedPlan)
+
+	return hex.EncodeToString(sum[:])
 }
 
 func printHostPlan(writer io.Writer, style outputStyle, hostPlan HostPlan) {
