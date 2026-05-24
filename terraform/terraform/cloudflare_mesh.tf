@@ -13,6 +13,7 @@ locals {
   cloudflare_mesh_nodes = {
     home_ep = {
       name            = "home-ep${local.cloudflare_resource_name_suffix}"
+      tunnel_id       = "23c35bdd-2d9d-4540-9639-b25af6338433"
       secret_yaml_dir = "${path.module}/../../ansible/group_vars/home_ep"
       routes = {
         home_lan = {
@@ -48,18 +49,26 @@ resource "cloudflare_zero_trust_device_default_profile" "mesh" {
   include         = local.cloudflare_mesh_split_tunnel_include_routes
 }
 
-resource "cloudflare_zero_trust_tunnel_warp_connector" "this" {
+removed {
+  from = cloudflare_zero_trust_tunnel_warp_connector.this
+
+  lifecycle {
+    destroy = false
+  }
+}
+
+data "cloudflare_zero_trust_tunnel_warp_connector" "this" {
   for_each = local.cloudflare_mesh_nodes
 
   account_id = local.cloudflare_account_id
-  name       = each.value.name
+  tunnel_id  = each.value.tunnel_id
 }
 
 resource "cloudflare_zero_trust_tunnel_cloudflared_route" "mesh" {
   for_each = local.cloudflare_mesh_routes
 
   account_id = local.cloudflare_account_id
-  tunnel_id  = cloudflare_zero_trust_tunnel_warp_connector.this[each.value.node_key].id
+  tunnel_id  = data.cloudflare_zero_trust_tunnel_warp_connector.this[each.value.node_key].id
   network    = each.value.network
   comment    = each.value.comment
 }
@@ -131,7 +140,7 @@ data "cloudflare_zero_trust_tunnel_warp_connector_token" "this" {
   for_each = local.cloudflare_mesh_nodes
 
   account_id = local.cloudflare_account_id
-  tunnel_id  = cloudflare_zero_trust_tunnel_warp_connector.this[each.key].id
+  tunnel_id  = data.cloudflare_zero_trust_tunnel_warp_connector.this[each.key].id
 }
 
 resource "local_sensitive_file" "cloudflare_mesh_secret" {
