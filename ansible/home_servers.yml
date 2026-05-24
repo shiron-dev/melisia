@@ -3,5 +3,6 @@
   roles:
     - raspberrypi
     - cloudflare_mesh
+    - cloudflare_mesh_dns_updater
     - cloudflare_access_infrastructure_ssh
     - docker

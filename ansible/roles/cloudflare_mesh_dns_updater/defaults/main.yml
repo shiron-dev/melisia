@@ -1,0 +1,9 @@
+cloudflare_mesh_dns_updater_endpoint: ""
+cloudflare_mesh_dns_updater_access_client_id: ""
+cloudflare_mesh_dns_updater_access_client_secret: ""
+cloudflare_mesh_dns_updater_mesh_cidr: 100.96.0.0/12
+cloudflare_mesh_dns_updater_script_path: /usr/local/sbin/cloudflare-mesh-dns-update
+cloudflare_mesh_dns_updater_env_path: /etc/cloudflare-mesh-dns-updater.env
+cloudflare_mesh_dns_updater_state_dir: /var/lib/cloudflare-mesh-dns-updater
+cloudflare_mesh_dns_updater_unit_path: /etc/systemd/system/cloudflare-mesh-dns-updater.service
+cloudflare_mesh_dns_updater_timer_path: /etc/systemd/system/cloudflare-mesh-dns-updater.timer

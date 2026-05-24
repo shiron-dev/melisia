@@ -1,0 +1,9 @@
+[Unit]
+Description=Update Cloudflare Mesh DNS record
+After=network-online.target warp-svc.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile={{ cloudflare_mesh_dns_updater_env_path }}
+ExecStart={{ cloudflare_mesh_dns_updater_script_path }}

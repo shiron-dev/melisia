@@ -3,14 +3,3 @@ variable "cloudflare_api_token" {
   type        = string
   sensitive   = true
 }
-
-variable "home_ep_mesh_ip" {
-  description = "Cloudflare Mesh IP assigned to home-ep, for example 100.96.x.y. Leave null until the node is enrolled."
-  type        = string
-  default     = null
-
-  validation {
-    condition     = var.home_ep_mesh_ip == null || can(cidrhost("${var.home_ep_mesh_ip}/32", 0))
-    error_message = "home_ep_mesh_ip must be a valid IPv4 address."
-  }
-}
