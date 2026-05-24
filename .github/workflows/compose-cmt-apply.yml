@@ -1,13 +1,9 @@
 name: Compose CMT Apply CI
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - "compose/**"
-      - "tools/cmt/**"
-      - ".github/workflows/**"
+  merge_group:
+    types:
+      - checks_requested
   workflow_dispatch:
 
 permissions:
@@ -22,7 +18,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
-        if: github.event_name == 'push'
+        if: github.event_name == 'workflow_dispatch'
         with:
           script: |
             const owner = context.repo.owner;
@@ -108,7 +104,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: production-plan
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch'
     needs: cancel-stale-runs
     outputs:
       has_diff: ${{ steps.cmt-plan.outputs.exit_code == '2' }}
@@ -190,54 +186,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: production
-    if: github.ref == 'refs/heads/main' && needs.plan.outputs.has_diff == 'true'
+    if: needs.plan.outputs.has_diff == 'true'
     needs: plan
     concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}-apply
+      group: ${{ github.workflow }}-apply
       cancel-in-progress: false
     steps:
       - name: Check run is latest before apply
         id: stale-check
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
-        with:
-          script: |
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const branch = context.ref.replace("refs/heads/", "");
-            const currentRunId = context.runId;
-            const currentRunNumber = context.runNumber;
-            const workflowRef = process.env.GITHUB_WORKFLOW_REF || "";
-            const workflowId = workflowRef
-              .split("@")[0]
-              .replace(`${owner}/${repo}/`, "");
-
-            if (!workflowId) {
-              core.setFailed("Failed to resolve workflow_id from GITHUB_WORKFLOW_REF.");
-              return;
-            }
-
-            const runs = await github.paginate(
-              github.rest.actions.listWorkflowRuns,
-              {
-                owner,
-                repo,
-                workflow_id: workflowId,
-                branch,
-                per_page: 100,
-              },
-            );
-
-            const newerRun = runs.find(
-              (run) => run.id !== currentRunId && run.run_number > currentRunNumber,
-            );
-
-            if (newerRun) {
-              core.warning(`Skip apply for stale run ${currentRunId}: newer run ${newerRun.id} exists.`);
-              core.setOutput("is_latest", "false");
-              return;
-            }
-
-            core.setOutput("is_latest", "true");
+        run: echo "is_latest=true" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         if: steps.stale-check.outputs.is_latest == 'true'
       - uses: ./.github/actions/setup-compose-cmt
@@ -251,46 +208,7 @@ jobs:
       - name: Check run is latest before cmt apply
         id: pre-apply-stale-check
         if: steps.stale-check.outputs.is_latest == 'true'
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
-        with:
-          script: |
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const branch = context.ref.replace("refs/heads/", "");
-            const currentRunId = context.runId;
-            const currentRunNumber = context.runNumber;
-            const workflowRef = process.env.GITHUB_WORKFLOW_REF || "";
-            const workflowId = workflowRef
-              .split("@")[0]
-              .replace(`${owner}/${repo}/`, "");
-
-            if (!workflowId) {
-              core.setFailed("Failed to resolve workflow_id from GITHUB_WORKFLOW_REF.");
-              return;
-            }
-
-            const runs = await github.paginate(
-              github.rest.actions.listWorkflowRuns,
-              {
-                owner,
-                repo,
-                workflow_id: workflowId,
-                branch,
-                per_page: 100,
-              },
-            );
-
-            const newerRun = runs.find(
-              (run) => run.id !== currentRunId && run.run_number > currentRunNumber,
-            );
-
-            if (newerRun) {
-              core.warning(`Skip cmt apply for stale run ${currentRunId}: newer run ${newerRun.id} exists.`);
-              core.setOutput("is_latest", "false");
-              return;
-            }
-
-            core.setOutput("is_latest", "true");
+        run: echo "is_latest=true" >> "$GITHUB_OUTPUT"
       - name: Verify approved cmt plan
         id: verify-plan
         if: steps.stale-check.outputs.is_latest == 'true' && steps.pre-apply-stale-check.outputs.is_latest == 'true'
@@ -339,3 +257,22 @@ jobs:
           TUNNEL_SERVICE_TOKEN_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           TUNNEL_SERVICE_TOKEN_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
         run: make cmt-apply CMT_OPT="--auto-approve --expected-plan-sha256 ${{ needs.plan.outputs.plan_sha256 }}"
+
+  cmt-apply-status-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: ${{ always() }}
+    needs:
+      - cancel-stale-runs
+      - plan
+      - apply
+    steps:
+      - name: Fail if any needed job failed
+        env:
+          JOBS: ${{ toJson(needs) }}
+        run: |
+          for result in $(jq -r '.[].result' <<<"$JOBS"); do
+            if [[ ! "$result" =~ ^(success|skipped)$ ]]; then
+              exit 1
+            fi
+          done
