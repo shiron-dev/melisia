@@ -61,12 +61,7 @@ variable "email_contact_points" {
     single_email            = optional(bool, false)
     disable_resolve_message = optional(bool, false)
   }))
-  default = {
-    "email receiver" = {
-      addresses               = ["<example@email.com>"]
-      disable_resolve_message = false
-    }
-  }
+  default = {}
 }
 
 variable "notification_policy" {
