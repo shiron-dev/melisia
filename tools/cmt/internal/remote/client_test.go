@@ -164,16 +164,14 @@ func TestBuildCommonOptions_IdentityAgent(t *testing.T) {
 	}
 }
 
-func TestBuildCommonOptions_IdentityAgent_NoneSkipped(t *testing.T) {
+func TestBuildCommonOptions_IdentityAgent_NonePassedThrough(t *testing.T) {
 	t.Parallel()
 
 	entry := config.HostEntry{IdentityAgent: "none"}
 	opts := buildCommonOptions(entry)
 
-	for i, arg := range opts {
-		if arg == "-o" && i+1 < len(opts) && strings.HasPrefix(opts[i+1], "IdentityAgent=") {
-			t.Errorf("opts should not contain IdentityAgent=none, got %v", opts)
-		}
+	if !containsSeq(opts, "-o", "IdentityAgent=none") {
+		t.Errorf("opts should contain IdentityAgent=none, got %v", opts)
 	}
 }
 

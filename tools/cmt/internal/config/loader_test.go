@@ -579,6 +579,77 @@ func TestResolveProjectConfig_RemoveOrphans(t *testing.T) {
 	}
 }
 
+func TestResolveProjectConfig_PreserveRemoteFiles(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		defaults  *SyncDefaults
+		hostCfg   *HostConfig
+		project   string
+		wantFiles []string
+	}{
+		{
+			name:      "defaults to empty",
+			defaults:  &SyncDefaults{RemotePath: "/opt"},
+			hostCfg:   nil,
+			project:   "grafana",
+			wantFiles: nil,
+		},
+		{
+			name: "defaults level sets files",
+			defaults: &SyncDefaults{
+				RemotePath:          "/opt",
+				PreserveRemoteFiles: []string{"config/automations.yaml"},
+			},
+			hostCfg:   nil,
+			project:   "grafana",
+			wantFiles: []string{"config/automations.yaml"},
+		},
+		{
+			name: "host level overrides defaults",
+			defaults: &SyncDefaults{
+				RemotePath:          "/opt",
+				PreserveRemoteFiles: []string{"default.yaml"},
+			},
+			hostCfg: &HostConfig{
+				PreserveRemoteFiles: []string{"host.yaml"},
+			},
+			project:   "grafana",
+			wantFiles: []string{"host.yaml"},
+		},
+		{
+			name:     "project level overrides host",
+			defaults: &SyncDefaults{RemotePath: "/opt"},
+			hostCfg: &HostConfig{
+				PreserveRemoteFiles: []string{"host.yaml"},
+				Projects: map[string]*ProjectConfig{
+					"grafana": {PreserveRemoteFiles: []string{"project.yaml"}},
+				},
+			},
+			project:   "grafana",
+			wantFiles: []string{"project.yaml"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			resolved := ResolveProjectConfig(tt.defaults, tt.hostCfg, tt.project)
+			if len(resolved.PreserveRemoteFiles) != len(tt.wantFiles) {
+				t.Fatalf("PreserveRemoteFiles = %v, want %v", resolved.PreserveRemoteFiles, tt.wantFiles)
+			}
+
+			for i, file := range tt.wantFiles {
+				if resolved.PreserveRemoteFiles[i] != file {
+					t.Errorf("PreserveRemoteFiles[%d] = %q, want %q", i, resolved.PreserveRemoteFiles[i], file)
+				}
+			}
+		})
+	}
+}
+
 func TestLoadHostConfig_ComposeAction(t *testing.T) {
 	t.Parallel()
 

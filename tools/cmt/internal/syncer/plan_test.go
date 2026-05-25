@@ -125,6 +125,31 @@ func TestCollectLocalFiles_MissingProject(t *testing.T) {
 	}
 }
 
+func TestFilterPreservedLocalFiles(t *testing.T) {
+	t.Parallel()
+
+	localFiles := map[string]string{
+		"compose.yml":               "/tmp/compose.yml",
+		"config/automations.yaml":   "/tmp/automations.yaml",
+		"config/configuration.yaml": "/tmp/configuration.yaml",
+	}
+	preserveSet := buildPreserveRemoteFileSet([]string{"./config/automations.yaml"})
+
+	filterPreservedLocalFiles(localFiles, preserveSet)
+
+	if _, ok := localFiles["config/automations.yaml"]; ok {
+		t.Fatal("preserved local file should be filtered")
+	}
+
+	if _, ok := localFiles["compose.yml"]; !ok {
+		t.Fatal("non-preserved compose.yml should remain")
+	}
+
+	if _, ok := localFiles["config/configuration.yaml"]; !ok {
+		t.Fatal("non-preserved configuration.yaml should remain")
+	}
+}
+
 func TestBuildManifest(t *testing.T) {
 	t.Parallel()
 
@@ -2588,7 +2613,7 @@ func TestBuildDeleteFilePlans_NilManifest(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	client := remote.NewMockRemoteClient(ctrl)
 
-	plans := buildDeleteFilePlans(nil, map[string]bool{}, "/srv/grafana", client)
+	plans := buildDeleteFilePlans(nil, map[string]bool{}, "/srv/grafana", client, nil)
 	if len(plans) != 0 {
 		t.Errorf("expected no plans for nil manifest, got %d", len(plans))
 	}
@@ -2608,7 +2633,7 @@ func TestBuildDeleteFilePlans_ManagedFileGone(t *testing.T) {
 
 	client.EXPECT().ReadFile("/srv/grafana/old.txt").Return([]byte("old content"), nil)
 
-	plans := buildDeleteFilePlans(manifest, localSet, "/srv/grafana", client)
+	plans := buildDeleteFilePlans(manifest, localSet, "/srv/grafana", client, nil)
 
 	if len(plans) != 1 {
 		t.Fatalf("expected 1 delete plan, got %d", len(plans))
@@ -2639,9 +2664,27 @@ func TestBuildDeleteFilePlans_ManifestFileExcluded(t *testing.T) {
 		ManagedFiles: []string{manifestFile},
 	}
 
-	plans := buildDeleteFilePlans(manifest, map[string]bool{}, "/srv/grafana", client)
+	plans := buildDeleteFilePlans(manifest, map[string]bool{}, "/srv/grafana", client, nil)
 	if len(plans) != 0 {
 		t.Errorf("manifest file should not appear as delete plan, got %d plans", len(plans))
+	}
+}
+
+func TestBuildDeleteFilePlans_PreservedManagedFile(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client := remote.NewMockRemoteClient(ctrl)
+
+	manifest := &Manifest{
+		ManagedFiles: []string{"config/automations.yaml", "compose.yml"},
+	}
+	localSet := map[string]bool{"compose.yml": true}
+	preserveSet := map[string]bool{"config/automations.yaml": true}
+
+	plans := buildDeleteFilePlans(manifest, localSet, "/srv/grafana", client, preserveSet)
+	if len(plans) != 0 {
+		t.Errorf("preserved file should not appear as delete plan, got %d plans", len(plans))
 	}
 }
 
