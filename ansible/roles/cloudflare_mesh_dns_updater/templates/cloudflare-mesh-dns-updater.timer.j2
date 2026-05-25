@@ -1,0 +1,12 @@
+[Unit]
+Description=Periodically update Cloudflare Mesh DNS record
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Persistent=true
+Unit={{ cloudflare_mesh_dns_updater_unit_path | basename }}
+
+[Install]
+WantedBy=timers.target

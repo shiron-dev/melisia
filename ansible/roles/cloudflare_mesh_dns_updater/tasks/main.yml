@@ -1,0 +1,61 @@
+- name: Validate Cloudflare Mesh DNS updater settings
+  ansible.builtin.assert:
+    that:
+      - cloudflare_mesh_dns_updater_endpoint | length > 0
+      - cloudflare_mesh_dns_updater_access_client_id | length > 0
+      - cloudflare_mesh_dns_updater_access_client_secret | length > 0
+      - cloudflare_mesh_dns_updater_mesh_cidr | length > 0
+    fail_msg: Cloudflare Mesh DNS updater requires endpoint, access service token, and mesh CIDR.
+
+- name: Install Cloudflare Mesh DNS updater script
+  become: true
+  ansible.builtin.template:
+    src: cloudflare-mesh-dns-update.py.j2
+    dest: "{{ cloudflare_mesh_dns_updater_script_path }}"
+    mode: "0755"
+  register: cloudflare_mesh_dns_updater_script
+
+- name: Install Cloudflare Mesh DNS updater environment
+  become: true
+  ansible.builtin.template:
+    src: cloudflare-mesh-dns-updater.env.j2
+    dest: "{{ cloudflare_mesh_dns_updater_env_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+  register: cloudflare_mesh_dns_updater_env
+  no_log: true
+
+- name: Install Cloudflare Mesh DNS updater unit
+  become: true
+  ansible.builtin.template:
+    src: cloudflare-mesh-dns-updater.service.j2
+    dest: "{{ cloudflare_mesh_dns_updater_unit_path }}"
+    mode: "0644"
+  register: cloudflare_mesh_dns_updater_unit
+
+- name: Install Cloudflare Mesh DNS updater timer
+  become: true
+  ansible.builtin.template:
+    src: cloudflare-mesh-dns-updater.timer.j2
+    dest: "{{ cloudflare_mesh_dns_updater_timer_path }}"
+    mode: "0644"
+  register: cloudflare_mesh_dns_updater_timer
+
+- name: Enable Cloudflare Mesh DNS updater timer
+  become: true
+  ansible.builtin.systemd:
+    name: "{{ cloudflare_mesh_dns_updater_timer_path | basename }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Apply Cloudflare Mesh DNS updater after changes
+  become: true
+  ansible.builtin.systemd:
+    name: "{{ cloudflare_mesh_dns_updater_unit_path | basename }}"
+    state: started
+  when:
+    - cloudflare_mesh_dns_updater_script.changed or
+      cloudflare_mesh_dns_updater_env.changed or
+      cloudflare_mesh_dns_updater_unit.changed

@@ -58,13 +58,15 @@ sudo nft list chain inet cloudflare-warp output
 `ip route get` の結果が `dev CloudflareWARP` ではなく `dev eth0` で、nftables に
 `cloudflare-mesh-lan-route-guard` comment の allow rule があればよい。
 
-`home-ep` の Mesh IP が分かったら、`terraform.secrets.tfvars` に以下を追加すると DNS 名でも接続できる。
+`home-ep.network.melisia.net` の unproxied A record は Terraform が初期作成し、
+`home-ep` 上の `cloudflare-mesh-dns-updater.timer` が現在の Mesh IP
+(`100.96.0.0/12`) を Worker に送って更新する。Worker は Cloudflare Access
+service token の `common_name` から更新対象 record を決めるため、`home-ep`
+から任意の DNS record は更新できない。
 
-```hcl
-home_ep_mesh_ip = "100.96.x.y"
-```
+Worker が DNS record を更新するための API token も Terraform が発行する。
+この token は updater 対象 zone の `DNS Write` だけを持つ。
 
-これにより `home-ep.network.melisia.net` の unproxied A record が作られる。
 到達できるのは Cloudflare Mesh / WARP に接続している端末だけ。
 
 SSH 認証は Access for Infrastructure に寄せる。Cloudflare が発行する短命
