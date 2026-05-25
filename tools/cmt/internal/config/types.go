@@ -397,12 +397,11 @@ type HostEntry struct {
 }
 
 type HostConfig struct {
-	SSHConfig       string `json:"sshConfig,omitempty"           yaml:"sshConfig,omitempty"`
-	RemotePath      string `json:"remotePath,omitempty"          yaml:"remotePath,omitempty"`
-	PostSyncCommand string `json:"postSyncCommand,omitempty"     yaml:"postSyncCommand,omitempty"`
-	ComposeAction   string `json:"composeAction,omitempty"       yaml:"composeAction,omitempty"`
-	//nolint:lll
-	TemplateVarSources []string `json:"templateVarSources,omitempty"  yaml:"templateVarSources,omitempty"`
+	SSHConfig          string   `json:"sshConfig,omitempty"          yaml:"sshConfig,omitempty"`
+	RemotePath         string   `json:"remotePath,omitempty"         yaml:"remotePath,omitempty"`
+	PostSyncCommand    string   `json:"postSyncCommand,omitempty"    yaml:"postSyncCommand,omitempty"`
+	ComposeAction      string   `json:"composeAction,omitempty"      yaml:"composeAction,omitempty"`
+	TemplateVarSources []string `json:"templateVarSources,omitempty" yaml:"templateVarSources,omitempty"`
 	//nolint:lll
 	PreserveRemoteFiles []string                  `json:"preserveRemoteFiles,omitempty" yaml:"preserveRemoteFiles,omitempty"`
 	Projects            map[string]*ProjectConfig `json:"projects,omitempty"            yaml:"projects,omitempty"`
