@@ -171,6 +171,25 @@ projects:
       - "env.secrets.yml"
 ```
 
+#### `preserveRemoteFiles` — リモート側で管理するファイルの保護
+
+`preserveRemoteFiles` には、cmt が同期・削除しないリモートファイルを指定します。
+Home Assistant の UI が書き換える `automations.yaml` のように、リポジトリではなく
+リモート側の内容を正としたいファイルに使います。
+
+```yaml
+projects:
+  home-assistant:
+    preserveRemoteFiles:
+      - config/automations.yaml
+      - config/scripts.yaml
+      - config/scenes.yaml
+```
+
+指定したファイルは、`files/` 配下に存在していても同期対象から除外されます。
+また、過去の `.cmt-manifest.json` に含まれていても削除対象にならず、次回 apply 後の
+manifest からは外れます。
+
 #### `composeAction` — Compose 理想状態の管理
 
 `composeAction` でプロジェクトの理想状態（`up` / `down`）を宣言的に管理します。

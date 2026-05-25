@@ -331,7 +331,7 @@ func buildCommonOptions(entry config.HostEntry) []string {
 		commonOpts = append(commonOpts, "-o", "ProxyCommand="+entry.ProxyCommand)
 	}
 
-	if entry.IdentityAgent != "" && entry.IdentityAgent != "none" {
+	if entry.IdentityAgent != "" {
 		commonOpts = append(commonOpts, "-o", "IdentityAgent="+entry.IdentityAgent)
 	}
 

@@ -131,14 +131,15 @@ func (c *ComposePlan) HasChanges() bool {
 }
 
 type ProjectPlan struct {
-	ProjectName     string
-	RemoteDir       string
-	PostSyncCommand string
-	ComposeAction   string
-	RemoveOrphans   bool
-	Compose         *ComposePlan
-	Dirs            []DirPlan
-	Files           []FilePlan
+	ProjectName         string
+	RemoteDir           string
+	PostSyncCommand     string
+	ComposeAction       string
+	RemoveOrphans       bool
+	PreserveRemoteFiles []string
+	Compose             *ComposePlan
+	Dirs                []DirPlan
+	Files               []FilePlan
 }
 
 func (pp *ProjectPlan) HasChanges() bool {
@@ -401,14 +402,15 @@ type hostEntryDigest struct {
 }
 
 type projectPlanDigest struct {
-	ProjectName     string             `json:"projectName"`
-	RemoteDir       string             `json:"remoteDir"`
-	PostSyncCommand string             `json:"postSyncCommand"`
-	ComposeAction   string             `json:"composeAction"`
-	RemoveOrphans   bool               `json:"removeOrphans"`
-	Compose         *composePlanDigest `json:"compose,omitempty"`
-	Dirs            []dirPlanDigest    `json:"dirs"`
-	Files           []filePlanDigest   `json:"files"`
+	ProjectName         string             `json:"projectName"`
+	RemoteDir           string             `json:"remoteDir"`
+	PostSyncCommand     string             `json:"postSyncCommand"`
+	ComposeAction       string             `json:"composeAction"`
+	RemoveOrphans       bool               `json:"removeOrphans"`
+	PreserveRemoteFiles []string           `json:"preserveRemoteFiles,omitempty"`
+	Compose             *composePlanDigest `json:"compose,omitempty"`
+	Dirs                []dirPlanDigest    `json:"dirs"`
+	Files               []filePlanDigest   `json:"files"`
 }
 
 type composePlanDigest struct {
@@ -487,14 +489,15 @@ func newProjectPlanDigest(projectPlan ProjectPlan) projectPlanDigest {
 	}
 
 	return projectPlanDigest{
-		ProjectName:     projectPlan.ProjectName,
-		RemoteDir:       projectPlan.RemoteDir,
-		PostSyncCommand: projectPlan.PostSyncCommand,
-		ComposeAction:   projectPlan.ComposeAction,
-		RemoveOrphans:   projectPlan.RemoveOrphans,
-		Compose:         newComposePlanDigest(projectPlan.Compose),
-		Dirs:            dirs,
-		Files:           files,
+		ProjectName:         projectPlan.ProjectName,
+		RemoteDir:           projectPlan.RemoteDir,
+		PostSyncCommand:     projectPlan.PostSyncCommand,
+		ComposeAction:       projectPlan.ComposeAction,
+		RemoveOrphans:       projectPlan.RemoveOrphans,
+		PreserveRemoteFiles: append([]string(nil), projectPlan.PreserveRemoteFiles...),
+		Compose:             newComposePlanDigest(projectPlan.Compose),
+		Dirs:                dirs,
+		Files:               files,
 	}
 }
 
@@ -1185,9 +1188,12 @@ func buildProjectPlanForHost(
 		return ProjectPlan{}, fmt.Errorf("collecting files for %s/%s: %w", host.Name, project, err)
 	}
 
+	preserveSet := buildPreserveRemoteFileSet(resolved.PreserveRemoteFiles)
+	filterPreservedLocalFiles(localFiles, preserveSet)
+
 	manifest := readManifest(client, remoteDir)
 
-	filePlans, err := buildFilePlans(localFiles, remoteDir, manifest, client, templateVars)
+	filePlans, err := buildFilePlans(localFiles, remoteDir, manifest, client, templateVars, preserveSet)
 	if err != nil {
 		return ProjectPlan{}, fmt.Errorf("building file plan for %s/%s: %w", host.Name, project, err)
 	}
@@ -1201,14 +1207,15 @@ func buildProjectPlanForHost(
 	composePlan := buildComposePlan(resolved.ComposeAction, remoteDir, client, hasFileChanges)
 
 	return ProjectPlan{
-		ProjectName:     project,
-		RemoteDir:       remoteDir,
-		PostSyncCommand: resolved.PostSyncCommand,
-		ComposeAction:   resolved.ComposeAction,
-		RemoveOrphans:   resolved.RemoveOrphans,
-		Compose:         composePlan,
-		Dirs:            dirPlans,
-		Files:           filePlans,
+		ProjectName:         project,
+		RemoteDir:           remoteDir,
+		PostSyncCommand:     resolved.PostSyncCommand,
+		ComposeAction:       resolved.ComposeAction,
+		RemoveOrphans:       resolved.RemoveOrphans,
+		PreserveRemoteFiles: append([]string(nil), resolved.PreserveRemoteFiles...),
+		Compose:             composePlan,
+		Dirs:                dirPlans,
+		Files:               filePlans,
 	}, nil
 }
 
@@ -1523,12 +1530,45 @@ func projectFilesOrDirsChanged(filePlans []FilePlan, dirPlans []DirPlan) bool {
 	return false
 }
 
+func buildPreserveRemoteFileSet(paths []string) map[string]bool {
+	preserveSet := make(map[string]bool, len(paths))
+
+	for _, rawPath := range paths {
+		normalized := normalizePreserveRemoteFilePath(rawPath)
+		if normalized == "" {
+			continue
+		}
+
+		preserveSet[normalized] = true
+	}
+
+	return preserveSet
+}
+
+func normalizePreserveRemoteFilePath(rawPath string) string {
+	normalized := path.Clean(filepath.ToSlash(strings.TrimSpace(rawPath)))
+	if normalized == "." || strings.HasPrefix(normalized, "../") || normalized == ".." {
+		return ""
+	}
+
+	return strings.TrimPrefix(normalized, "/")
+}
+
+func filterPreservedLocalFiles(localFiles map[string]string, preserveSet map[string]bool) {
+	for relPath := range localFiles {
+		if preserveSet[relPath] {
+			delete(localFiles, relPath)
+		}
+	}
+}
+
 func buildFilePlans(
 	localFiles map[string]string,
 	remoteDir string,
 	manifest *Manifest,
 	client remote.RemoteClient,
 	templateVars map[string]any,
+	preserveSet map[string]bool,
 ) ([]FilePlan, error) {
 	plans := make([]FilePlan, 0, len(localFiles))
 	localSet := make(map[string]bool, len(localFiles))
@@ -1551,7 +1591,7 @@ func buildFilePlans(
 		plans = append(plans, filePlan)
 	}
 
-	plans = append(plans, buildDeleteFilePlans(manifest, localSet, remoteDir, client)...)
+	plans = append(plans, buildDeleteFilePlans(manifest, localSet, remoteDir, client, preserveSet)...)
 
 	sort.Slice(plans, func(i, j int) bool {
 		return plans[i].RelativePath < plans[j].RelativePath
@@ -1624,6 +1664,7 @@ func buildDeleteFilePlans(
 	localSet map[string]bool,
 	remoteDir string,
 	client remote.RemoteClient,
+	preserveSet map[string]bool,
 ) []FilePlan {
 	if manifest == nil {
 		return nil
@@ -1632,7 +1673,7 @@ func buildDeleteFilePlans(
 	deletePlans := make([]FilePlan, 0)
 
 	for _, managedFile := range manifest.ManagedFiles {
-		if managedFile == manifestFile || localSet[managedFile] {
+		if managedFile == manifestFile || localSet[managedFile] || preserveSet[managedFile] {
 			continue
 		}
 

@@ -5,6 +5,10 @@ sshConfig: ssh_config
 projects:
   home-assistant:
     postSyncCommand: chmod 0644 mosquitto.conf
+    preserveRemoteFiles:
+      - config/automations.yaml
+      - config/scripts.yaml
+      - config/scenes.yaml
     dirs:
       - config:
         permission: "0777"
