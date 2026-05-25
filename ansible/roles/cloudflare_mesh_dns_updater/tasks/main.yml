@@ -26,15 +26,6 @@
   register: cloudflare_mesh_dns_updater_env
   no_log: true
 
-- name: Create Cloudflare Mesh DNS updater state directory
-  become: true
-  ansible.builtin.file:
-    path: "{{ cloudflare_mesh_dns_updater_state_dir }}"
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
-
 - name: Install Cloudflare Mesh DNS updater unit
   become: true
   ansible.builtin.template:

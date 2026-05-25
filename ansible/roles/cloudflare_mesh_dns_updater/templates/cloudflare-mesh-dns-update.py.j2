@@ -2,15 +2,10 @@
 import ipaddress
 import json
 import os
-import pathlib
 import subprocess
 import sys
 import urllib.error
 import urllib.request
-
-
-STATE_DIR = pathlib.Path("{{ cloudflare_mesh_dns_updater_state_dir }}")
-LAST_IP_PATH = STATE_DIR / "last-ip"
 
 
 def main():
@@ -23,13 +18,7 @@ def main():
     if mesh_ip is None:
         raise RuntimeError(f"no IPv4 address found within {mesh_cidr}")
 
-    if LAST_IP_PATH.exists() and LAST_IP_PATH.read_text(encoding="utf-8").strip() == mesh_ip:
-        print(f"Mesh IP is unchanged: {mesh_ip}")
-        return
-
     update_dns(endpoint, client_id, client_secret, mesh_ip)
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
-    LAST_IP_PATH.write_text(f"{mesh_ip}\n", encoding="utf-8")
     print(f"Updated Mesh DNS to {mesh_ip}")
 
 
