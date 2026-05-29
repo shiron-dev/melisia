@@ -1,0 +1,61 @@
+services:
+  falco:
+    image: falcosecurity/falco:0.43.0@sha256:a9880e16f69f46dc2c1c390faf5584ed2c388e3a16714f224a871621e4706c8f
+    platform: linux/arm64
+    container_name: falco
+    restart: always
+    # kics-scan ignore-line
+    privileged: true
+    volumes:
+      # kics-scan ignore-line
+      - /proc:/host/proc:ro
+      # kics-scan ignore-line
+      - /etc:/host/etc:ro
+      - ./falco.yaml:/etc/falco/falco.yaml
+      - ./falco_rules.local.yaml:/etc/falco/falco_rules.local.yaml
+    environment:
+      - HOST_ROOT=/host
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8765/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # falcosidekick forwards Falco events to external outputs (e.g. Grafana Loki).
+  # To enable: uncomment this service and set http_output.enabled: true in falco.yaml.
+  #
+  # falcosidekick:
+  #   image: falcosecurity/falcosidekick:2.33.0@sha256:d384b6552ad4f76b6bd503e29f3ed26d95380b636c8d976c901da5c1c6eca3d4
+  #   platform: linux/arm64
+  #   container_name: falcosidekick
+  #   restart: always
+  #   environment:
+  #     - LOKI_HOSTPORT=http://<loki-host>:3100
+  #     - LOKI_ENDPOINT=/loki/api/v1/push
+  #   security_opt:
+  #     - no-new-privileges:true
+  #   cap_drop:
+  #     - ALL
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '0.5'
+  #         memory: 256M
+  #       reservations:
+  #         cpus: '0.1'
+  #         memory: 64M
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-sf", "http://localhost:2801/ping"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 40s
