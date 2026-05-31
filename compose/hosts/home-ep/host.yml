@@ -11,6 +11,9 @@ projects:
       sudo chown -R 1883:1883 mosquitto_data mosquitto_log &&
       sudo find mosquitto_data mosquitto_log -type d -exec chmod 0770 {} + &&
       sudo find mosquitto_data mosquitto_log -type f -exec chmod 0660 {} + &&
+      sudo chown -R 1000:1000 zigbee2mqtt_data &&
+      sudo find zigbee2mqtt_data -type d -exec chmod 0770 {} + &&
+      sudo find zigbee2mqtt_data -type f -exec chmod 0660 {} + &&
       sudo chmod 0644 mosquitto.conf
     preserveRemoteFiles:
       - config/automations.yaml
@@ -42,8 +45,10 @@ projects:
         recursive: true
         become: true
       - zigbee2mqtt_data:
+        permission: "0770"
         owner: 1000
         group: 1000
+        recursive: true
         become: true
       - matter_data:
         permission: "0770"
