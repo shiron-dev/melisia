@@ -4,7 +4,7 @@ sshConfig: ssh_config
 
 projects:
   home-assistant:
-    postSyncCommand: chmod 0644 mosquitto.conf
+    postSyncCommand: sudo chmod -R a+rwX config && sudo chmod 0644 mosquitto.conf config/themes/default.yaml
     preserveRemoteFiles:
       - config/automations.yaml
       - config/scripts.yaml
@@ -12,11 +12,13 @@ projects:
     dirs:
       - config:
         permission: "0777"
-        owner: ansible_user
+        owner: shiron
+        recursive: true
         become: true
       - config/custom_components:
         permission: "0777"
-        owner: ansible_user
+        owner: shiron
+        recursive: true
         become: true
       - mosquitto_data:
         owner: 1883

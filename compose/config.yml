@@ -16,4 +16,4 @@ hosts:
     user: ansible_user
   - name: home-ep
     host: home-ep
-    user: ansible_user
+    user: shiron
