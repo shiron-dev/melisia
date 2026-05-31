@@ -4,20 +4,22 @@ sshConfig: ssh_config
 
 projects:
   home-assistant:
-    postSyncCommand: sudo chown -R shiron:shiron config && sudo find config -type d -exec chmod 0700 {} + && sudo find config -type f -exec chmod 0600 {} + && sudo chmod 0644 mosquitto.conf
+    postSyncCommand: sudo chown -R shiron:root config && sudo find config -type d -exec chmod 0750 {} + && sudo find config -type f -exec chmod 0640 {} + && sudo chmod 0644 mosquitto.conf
     preserveRemoteFiles:
       - config/automations.yaml
       - config/scripts.yaml
       - config/scenes.yaml
     dirs:
       - config:
-        permission: "0700"
+        permission: "0750"
         owner: shiron
+        group: root
         recursive: true
         become: true
       - config/custom_components:
-        permission: "0700"
+        permission: "0750"
         owner: shiron
+        group: root
         recursive: true
         become: true
       - mosquitto_data:
@@ -33,14 +35,17 @@ projects:
         group: 1000
         become: true
       - matter_data:
-        permission: "0700"
+        permission: "0770"
         owner: shiron
+        group: root
         become: true
       - switchbot-mqtt:
-        permission: "0700"
+        permission: "0770"
         owner: shiron
+        group: root
         become: true
       - esphome_config:
-        permission: "0700"
+        permission: "0770"
         owner: shiron
+        group: root
         become: true
