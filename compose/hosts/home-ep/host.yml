@@ -4,7 +4,14 @@ sshConfig: ssh_config
 
 projects:
   home-assistant:
-    postSyncCommand: sudo chown -R shiron:root config switchbot-mqtt esphome_config matter_data && sudo find config switchbot-mqtt esphome_config matter_data -type d -exec chmod 0770 {} + && sudo find config switchbot-mqtt esphome_config matter_data -type f -exec chmod 0660 {} + && sudo chmod 0644 mosquitto.conf
+    postSyncCommand: >-
+      sudo chown -R shiron:root config switchbot-mqtt esphome_config matter_data &&
+      sudo find config switchbot-mqtt esphome_config matter_data -type d -exec chmod 0770 {} + &&
+      sudo find config switchbot-mqtt esphome_config matter_data -type f -exec chmod 0660 {} + &&
+      sudo chown -R 1883:1883 mosquitto_data mosquitto_log &&
+      sudo find mosquitto_data mosquitto_log -type d -exec chmod 0770 {} + &&
+      sudo find mosquitto_data mosquitto_log -type f -exec chmod 0660 {} + &&
+      sudo chmod 0644 mosquitto.conf
     preserveRemoteFiles:
       - config/automations.yaml
       - config/scripts.yaml
@@ -23,11 +30,13 @@ projects:
         recursive: true
         become: true
       - mosquitto_data:
+        permission: "0770"
         owner: 1883
         group: 1883
         recursive: true
         become: true
       - mosquitto_log:
+        permission: "0770"
         owner: 1883
         group: 1883
         recursive: true
