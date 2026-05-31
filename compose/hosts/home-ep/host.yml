@@ -25,10 +25,12 @@ projects:
       - mosquitto_data:
         owner: 1883
         group: 1883
+        recursive: true
         become: true
       - mosquitto_log:
         owner: 1883
         group: 1883
+        recursive: true
         become: true
       - zigbee2mqtt_data:
         owner: 1000
