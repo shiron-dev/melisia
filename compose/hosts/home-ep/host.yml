@@ -4,19 +4,19 @@ sshConfig: ssh_config
 
 projects:
   home-assistant:
-    postSyncCommand: sudo chmod -R a+rwX config && sudo chmod 0644 mosquitto.conf config/themes/default.yaml
+    postSyncCommand: sudo chown -R shiron:shiron config && sudo find config -type d -exec chmod 0755 {} + && sudo find config -type f -exec chmod 0644 {} + && sudo chmod 0644 mosquitto.conf config/themes/default.yaml
     preserveRemoteFiles:
       - config/automations.yaml
       - config/scripts.yaml
       - config/scenes.yaml
     dirs:
       - config:
-        permission: "0777"
+        permission: "0755"
         owner: shiron
         recursive: true
         become: true
       - config/custom_components:
-        permission: "0777"
+        permission: "0755"
         owner: shiron
         recursive: true
         become: true
