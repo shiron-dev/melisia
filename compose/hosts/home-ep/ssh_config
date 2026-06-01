@@ -1,3 +1,7 @@
+Include ~/.ssh/config
+
 Host home-ep
-  HostName home-ep.network.melisia.net
-  User ansible_user
+  HostName 192.168.1.61
+  User shiron
+  IdentityFile ~/.ssh/home-ep.pub
+  IdentitiesOnly yes

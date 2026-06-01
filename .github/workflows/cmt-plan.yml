@@ -90,7 +90,7 @@ jobs:
 
           set +e
 
-          tools/cmt/cmt --config compose/config.yml plan --exit-status > "$GITHUB_WORKSPACE/plan_output.txt" 2>&1
+          tools/cmt/cmt --config compose/config.yml plan --host=arm-srv --exit-status > "$GITHUB_WORKSPACE/plan_output.txt" 2>&1
           exit_code=$?
 
           summary_line="$(tr -d '\r' < "$GITHUB_WORKSPACE/plan_output.txt" | awk '/^Summary: /{line=$0} END{print line}')"

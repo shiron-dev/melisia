@@ -332,7 +332,7 @@ func buildCommonOptions(entry config.HostEntry) []string {
 	}
 
 	if entry.IdentityAgent != "" {
-		commonOpts = append(commonOpts, "-o", "IdentityAgent="+entry.IdentityAgent)
+		commonOpts = append(commonOpts, "-o", "IdentityAgent="+escapeSSHOptionValue(entry.IdentityAgent))
 	}
 
 	for _, keyPath := range entry.IdentityFiles {
@@ -348,6 +348,10 @@ func buildCommonOptions(entry config.HostEntry) []string {
 
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
+}
+
+func escapeSSHOptionValue(s string) string {
+	return strings.ReplaceAll(s, " ", `\ `)
 }
 
 type minimalFileInfo struct{ name string }

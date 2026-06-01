@@ -133,7 +133,7 @@ jobs:
 
           output_file="$(mktemp)"
           digest_file="$(mktemp --suffix=.sha256)"
-          tools/cmt/cmt --config compose/config.yml plan --exit-status --digest-file "$digest_file" 2>&1 | tee "$output_file"
+          tools/cmt/cmt --config compose/config.yml plan --host=arm-srv --exit-status --digest-file "$digest_file" 2>&1 | tee "$output_file"
           exit_code="${PIPESTATUS[0]}"
           slack_file="$(mktemp --suffix=.txt)"
           sed -E 's/\x1B\[[0-9;]*[[:alpha:]]//g' "$output_file" | iconv -f UTF-8 -t UTF-8 -c > "$slack_file" || cp "$output_file" "$slack_file"
@@ -321,7 +321,7 @@ jobs:
 
           output_file="$(mktemp)"
           digest_file="$(mktemp --suffix=.sha256)"
-          tools/cmt/cmt --config compose/config.yml plan --exit-status --digest-file "$digest_file" > "$output_file" 2>&1
+          tools/cmt/cmt --config compose/config.yml plan --host=arm-srv --exit-status --digest-file "$digest_file" > "$output_file" 2>&1
           exit_code="$?"
           slack_file="$(mktemp --suffix=.txt)"
           sed -E 's/\x1B\[[0-9;]*[[:alpha:]]//g' "$output_file" | iconv -f UTF-8 -t UTF-8 -c > "$slack_file" || cp "$output_file" "$slack_file"
@@ -352,7 +352,7 @@ jobs:
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
           TUNNEL_SERVICE_TOKEN_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           TUNNEL_SERVICE_TOKEN_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
-        run: make cmt-apply CMT_OPT="--auto-approve --expected-plan-sha256 ${{ needs.plan.outputs.plan_sha256 }}"
+        run: make cmt-apply CMT_OPT="--host=arm-srv --auto-approve --expected-plan-sha256 ${{ needs.plan.outputs.plan_sha256 }}"
 
   cmt-apply-status-check:
     runs-on: ubuntu-latest

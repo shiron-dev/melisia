@@ -5,11 +5,45 @@ networks:
       config:
         - subnet: 172.19.0.0/16
 
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-resource-profiles:
+  homeassistant: &resource-homeassistant
+    cpus: 2.0
+    mem_limit: 2g
+    mem_reservation: 512m
+    memswap_limit: 2g
+  tiny: &resource-tiny
+    cpus: 0.5
+    mem_limit: 256m
+    mem_reservation: 64m
+    memswap_limit: 256m
+  small: &resource-small
+    cpus: 0.5
+    mem_limit: 512m
+    mem_reservation: 128m
+    memswap_limit: 512m
+  medium: &resource-medium
+    cpus: 1.0
+    mem_limit: 512m
+    mem_reservation: 128m
+    memswap_limit: 512m
+  esphome: &resource-esphome
+    cpus: 2.0
+    mem_limit: 1g
+    mem_reservation: 256m
+    memswap_limit: 1g
+
 volumes:
   esphome_build_cache:
 
 services:
   homeassistant:
+    <<: *resource-homeassistant
     container_name: homeassistant
     image: "ghcr.io/home-assistant/home-assistant:2026.4.1@sha256:8848691147f01a6eee7753de2ade21b04d6168fcd2e2a7089f6f84e3b7b86960"
     # kics-scan ignore-line
@@ -22,6 +56,7 @@ services:
       - /run/dbus:/run/dbus:ro
     restart: unless-stopped
     privileged: false
+    logging: *default-logging
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -46,6 +81,7 @@ services:
       start_period: 40s
 
   mosquitto:
+    <<: *resource-tiny
     container_name: mosquitto
     image: eclipse-mosquitto:2.0.22@sha256:914f529386804c8278a4e581526b9be5e1604df44b30daabc70aa97dcefe5268
     user: "1883:1883"
@@ -58,6 +94,7 @@ services:
     networks:
       - home-automation
     restart: unless-stopped
+    logging: *default-logging
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -78,6 +115,7 @@ services:
       start_period: 10s
 
   homeassistant-tunnel:
+    <<: *resource-small
     container_name: homeassistant-tunnel
     image: cloudflare/cloudflared:2026.5.0@sha256:59bab8d3aceec09bf6bdb07d6beca0225ca5cd7ab79436a87ea97978fe1dc4f9
     command: tunnel run
@@ -86,6 +124,7 @@ services:
     extra_hosts:
       - "homeassistant:host-gateway"
     restart: unless-stopped
+    logging: *default-logging
     networks:
       - home-automation
     security_opt:
@@ -111,6 +150,7 @@ services:
       start_period: 40s
 
   esphome:
+    <<: *resource-esphome
     container_name: esphome
     image: ghcr.io/esphome/esphome:2025.3.3@sha256:a87708c9af46f75a5d7e1de148de0cd75d74402439752aec3ab8f38a112718ab
     volumes:
@@ -124,6 +164,7 @@ services:
     ports:
       - "127.0.0.1:6052:6052"
     restart: unless-stopped
+    logging: *default-logging
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -144,6 +185,7 @@ services:
       start_period: 40s
 
   openwakeword:
+    <<: *resource-medium
     container_name: openwakeword
     image: rhasspy/wyoming-openwakeword:latest@sha256:52cb1168731a1849fc28cf339c935fde58746bbabc94226668a40ef6ddf5d42b
     command:
@@ -156,6 +198,7 @@ services:
     ports:
       - "127.0.0.1:10400:10400"
     restart: unless-stopped
+    logging: *default-logging
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -183,6 +226,7 @@ services:
           memory: 128M
 
   zigbee2mqtt:
+    <<: *resource-medium
     container_name: zigbee2mqtt
     image: koenkk/zigbee2mqtt:2.10.1@sha256:67c26dcf8346aced02fe1380a6afd1b57268bcef10faae3f6057c13d5d3dfa80
     user: "1000:1000"
@@ -200,6 +244,7 @@ services:
     ports:
       - "127.0.0.1:8080:8080"
     restart: unless-stopped
+    logging: *default-logging
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -227,6 +272,7 @@ services:
       start_period: 30s
 
   switchbot-mqtt:
+    <<: *resource-medium
     container_name: switchbot-mqtt
     image: ghcr.io/hsakoh/switchbotmqtt-aarch64:latest@sha256:25224ce374e4099cbd15dfe71186503154385a7e74c6857d6ce3b3ac87d965fd
     volumes:
@@ -241,6 +287,7 @@ services:
       - "127.0.0.1:8098:8098"
       - "127.0.0.1:8099:8099"
     restart: unless-stopped
+    logging: *default-logging
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -264,6 +311,7 @@ services:
           memory: 128M
 
   matter-server:
+    <<: *resource-medium
     container_name: matter-server
     image: ghcr.io/home-assistant-libs/python-matter-server:8.1@sha256:3a65f83161516c916566b13e65ce9e20a7a661e0784ab70e062a7423f416875b
     command: --primary-interface eth0 --storage-path /data
@@ -276,6 +324,7 @@ services:
       # kics-scan ignore-line
       - /run/dbus:/run/dbus:ro
     restart: unless-stopped
+    logging: *default-logging
     security_opt:
       - no-new-privileges:true
     cap_drop:

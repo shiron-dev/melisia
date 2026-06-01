@@ -4,41 +4,64 @@ sshConfig: ssh_config
 
 projects:
   home-assistant:
-    postSyncCommand: chmod 0644 mosquitto.conf
+    postSyncCommand: >-
+      sudo chown -R shiron:root config switchbot-mqtt esphome_config matter_data &&
+      sudo find config switchbot-mqtt esphome_config matter_data -type d -exec chmod 0770 {} + &&
+      sudo find config switchbot-mqtt esphome_config matter_data -type f -exec chmod 0660 {} + &&
+      sudo chown -R 1883:1883 mosquitto_data mosquitto_log &&
+      sudo find mosquitto_data mosquitto_log -type d -exec chmod 0770 {} + &&
+      sudo find mosquitto_data mosquitto_log -type f -exec chmod 0660 {} + &&
+      sudo chown -R 1000:1000 zigbee2mqtt_data &&
+      sudo find zigbee2mqtt_data -type d -exec chmod 0770 {} + &&
+      sudo find zigbee2mqtt_data -type f -exec chmod 0660 {} + &&
+      sudo chmod 0644 mosquitto.conf
     preserveRemoteFiles:
       - config/automations.yaml
       - config/scripts.yaml
       - config/scenes.yaml
     dirs:
       - config:
-        permission: "0777"
-        owner: ansible_user
+        permission: "0770"
+        owner: shiron
+        group: root
+        recursive: true
         become: true
       - config/custom_components:
-        permission: "0777"
-        owner: ansible_user
+        permission: "0770"
+        owner: shiron
+        group: root
+        recursive: true
         become: true
       - mosquitto_data:
+        permission: "0770"
         owner: 1883
         group: 1883
+        recursive: true
         become: true
       - mosquitto_log:
+        permission: "0770"
         owner: 1883
         group: 1883
+        recursive: true
         become: true
       - zigbee2mqtt_data:
+        permission: "0770"
         owner: 1000
         group: 1000
+        recursive: true
         become: true
       - matter_data:
-        permission: "0777"
-        owner: ansible_user
+        permission: "0770"
+        owner: shiron
+        group: root
         become: true
       - switchbot-mqtt:
-        permission: "0777"
-        owner: ansible_user
+        permission: "0770"
+        owner: shiron
+        group: root
         become: true
       - esphome_config:
-        permission: "0777"
-        owner: ansible_user
+        permission: "0770"
+        owner: shiron
+        group: root
         become: true

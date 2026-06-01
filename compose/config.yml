@@ -14,3 +14,6 @@ hosts:
   - name: arm-srv
     host: arm-srv.shiron.dev
     user: ansible_user
+  - name: home-ep
+    host: home-ep
+    user: shiron
