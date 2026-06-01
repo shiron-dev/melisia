@@ -45,7 +45,7 @@ services:
   homeassistant:
     <<: *resource-homeassistant
     container_name: homeassistant
-    image: "ghcr.io/home-assistant/home-assistant:2026.4.1@sha256:8848691147f01a6eee7753de2ade21b04d6168fcd2e2a7089f6f84e3b7b86960"
+    image: "ghcr.io/home-assistant/home-assistant:2026.5.4@sha256:ceb1202133a5a036e8b03e20a10eb113186cc2f871968323c6fc6c3fc4205716"
     # kics-scan ignore-line
     network_mode: host
     volumes:
