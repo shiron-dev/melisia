@@ -16,7 +16,7 @@
 - name: Set locale
   become: true
   ansible.builtin.lineinfile:
-    path: /etc/default/locale
+    path: /etc/locale.conf
     regexp: "^{{ item.key }}="
     line: "{{ item.key }}={{ item.value }}"
     create: true

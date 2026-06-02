@@ -56,6 +56,4 @@
     name: "{{ cloudflare_mesh_dns_updater_unit_path | basename }}"
     state: started
   when:
-    - cloudflare_mesh_dns_updater_script.changed or
-      cloudflare_mesh_dns_updater_env.changed or
-      cloudflare_mesh_dns_updater_unit.changed
+    - cloudflare_mesh_dns_updater_script.changed or cloudflare_mesh_dns_updater_env.changed or cloudflare_mesh_dns_updater_unit.changed

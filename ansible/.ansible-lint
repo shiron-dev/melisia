@@ -1,4 +1,5 @@
 exclude_paths:
+  - "**/*.secrets.*"
   - "**/*.secrets.*.sops"
 
 skip_list:

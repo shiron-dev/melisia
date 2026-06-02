@@ -32,6 +32,7 @@
     mode: "0644"
 
 - name: Check architecture
+  check_mode: false
   ansible.builtin.command:
     cmd: dpkg --print-architecture
   register: docker_architecture

@@ -54,6 +54,7 @@
 
 - name: Check root filesystem free space
   become: true
+  check_mode: false
   ansible.builtin.command:
     cmd: df -Pm /
   register: cloudflare_mesh_root_free
@@ -61,6 +62,7 @@
 
 - name: Check /var/log free space
   become: true
+  check_mode: false
   ansible.builtin.command:
     cmd: df -Pm /var/log
   register: cloudflare_mesh_var_log_free
