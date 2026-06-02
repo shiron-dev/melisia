@@ -1,7 +1,8 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "github>shiron-dev/renovate-config"
+    "github>shiron-dev/renovate-config",
+    "helpers:pinGitHubActionDigests"
   ],
   "customManagers": [
     {
@@ -17,6 +18,17 @@
   ],
   "packageRules": [
     {
+      "description": "Group official GitHub Actions updates",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchPackageNames": [
+        "/^actions//"
+      ],
+      "groupName": "official actions",
+      "pinDigests": true
+    },
+    {
       "description": "Keep n8n PostgreSQL on major version 16",
       "matchDatasources": [
         "docker"
@@ -29,19 +41,5 @@
       ],
       "allowedVersions": "/^16(?:\\D|$)/"
     }
-  ],
-  "github-actions": {
-    "extends": [
-      "helpers:pinGitHubActionDigests"
-    ],
-    "packageRules": [
-      {
-        "groupName": "official actions",
-        "matchPackageNames": [
-          "/^actions//"
-        ],
-        "pinDigests": true
-      }
-    ]
-  }
+  ]
 }

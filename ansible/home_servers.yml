@@ -2,7 +2,8 @@
   hosts: home_ep
   roles:
     - raspberrypi
-    - cloudflare_mesh
-    - cloudflare_mesh_dns_updater
-    - cloudflare_access_infrastructure_ssh
+    # TODO: Re-enable Cloudflare roles after the temporary Cloudflare changes are restored.
+    # - cloudflare_mesh
+    # - cloudflare_mesh_dns_updater
+    # - cloudflare_access_infrastructure_ssh
     - docker
