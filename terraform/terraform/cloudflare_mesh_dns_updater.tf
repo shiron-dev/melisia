@@ -49,11 +49,11 @@ resource "cloudflare_api_token" "mesh_dns_updater_worker" {
           id = local.cloudflare_api_token_permission_groups.dns_write
         }
       ]
-      resources = jsonencode({
+      resources = {
         for zone_name, zone_id in local.cloudflare_zone_ids :
         "com.cloudflare.api.account.zone.${zone_id}" => "*"
         if contains(distinct([for record in local.cloudflare_mesh_dns_updater_records : record.zone_name]), zone_name)
-      })
+      }
     }
   ]
 }
