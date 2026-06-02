@@ -16,16 +16,11 @@
 - name: Set locale
   become: true
   ansible.builtin.lineinfile:
-    path: /etc/default/locale
+    path: /etc/locale.conf
     regexp: "^{{ item.key }}="
     line: "{{ item.key }}={{ item.value }}"
     create: true
+    mode: "0644"
   loop:
     - { key: LANG, value: en_US.UTF-8 }
     - { key: LC_ALL, value: en_US.UTF-8 }
-
-- name: Set locale file permissions
-  become: true
-  ansible.builtin.file:
-    path: /etc/locale.conf
-    mode: "0644"
