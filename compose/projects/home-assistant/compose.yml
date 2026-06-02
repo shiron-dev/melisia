@@ -152,7 +152,7 @@ services:
   esphome:
     <<: *resource-esphome
     container_name: esphome
-    image: ghcr.io/esphome/esphome:2025.3.3@sha256:a87708c9af46f75a5d7e1de148de0cd75d74402439752aec3ab8f38a112718ab
+    image: ghcr.io/esphome/esphome:2026.5.1@sha256:7886a4b0f04bd7d5e092e0b0cae277a47e39088d4d9028935df3304655300acd
     volumes:
       - ./esphome_config:/config:rw
       # kics-scan ignore-line
