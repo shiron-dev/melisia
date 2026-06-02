@@ -17,7 +17,7 @@ jobs:
     outputs:
       matrix: ${{ steps.discover.outputs.matrix }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Discover terraform roots
         id: discover
         uses: ./.github/actions/discover-terraform-roots
@@ -32,7 +32,7 @@ jobs:
     outputs:
       cancelled_run_ids: ${{ steps.cancel-stale.outputs.cancelled_run_ids }}
     steps:
-      - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+      - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         id: cancel-stale
         if: github.event_name == 'workflow_dispatch'
         with:
@@ -176,7 +176,7 @@ jobs:
       TERRAFORM_PLAN_KMS_LOCATION: global
       TERRAFORM_PLAN_BUCKET: shiron-dev-terraform
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Get Terraform version from mise.toml
         id: terraform-version
         run: |
@@ -382,7 +382,7 @@ jobs:
     steps:
       - name: Check run is latest before apply
         id: stale-check
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         with:
           script: |
             const owner = context.repo.owner;
@@ -431,7 +431,7 @@ jobs:
             }
 
             core.setOutput("is_latest", "true");
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         if: steps.stale-check.outputs.is_latest == 'true'
       - name: Get Terraform version from mise.toml
         id: terraform-version
@@ -510,7 +510,7 @@ jobs:
       - name: Check run is latest before terraform apply
         id: pre-apply-stale-check
         if: steps.stale-check.outputs.is_latest == 'true'
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         with:
           script: |
             const owner = context.repo.owner;
