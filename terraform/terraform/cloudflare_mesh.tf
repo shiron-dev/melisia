@@ -74,13 +74,6 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_route" "mesh" {
   comment    = each.value.comment
 }
 
-data "cloudflare_zero_trust_tunnel_warp_connector_token" "this" {
-  for_each = local.cloudflare_mesh_nodes
-
-  account_id = local.cloudflare_account_id
-  tunnel_id  = data.cloudflare_zero_trust_tunnel_warp_connector.this[each.key].id
-}
-
 removed {
   from = local_sensitive_file.cloudflare_mesh_secret
 
@@ -90,6 +83,13 @@ removed {
 }
 
 /*
+data "cloudflare_zero_trust_tunnel_warp_connector_token" "this" {
+  for_each = local.cloudflare_mesh_nodes
+
+  account_id = local.cloudflare_account_id
+  tunnel_id  = data.cloudflare_zero_trust_tunnel_warp_connector.this[each.key].id
+}
+
 resource "local_sensitive_file" "cloudflare_mesh_secret" {
   for_each = local.cloudflare_mesh_nodes
 

@@ -46,7 +46,7 @@ auth: init
 
 .PHONY: home-ep-ssh-key
 home-ep-ssh-key: init
-	@set -euo pipefail; \
+	@set -eu; \
 	dir="$$(dirname "$(HOME_EP_SSH_KEY)")"; \
 	install -m 700 -d "$$dir"; \
 	tmp="$$(mktemp "$$dir/home_ep_key.XXXXXX")"; \

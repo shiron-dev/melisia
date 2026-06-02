@@ -142,13 +142,6 @@ resource "cloudflare_dns_record" "tunnel" {
   proxied = true
 }
 
-data "cloudflare_zero_trust_tunnel_cloudflared_token" "this" {
-  for_each = local.cloudflare_tunnels
-
-  account_id = local.cloudflare_account_id
-  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.this[each.key].id
-}
-
 resource "cloudflare_dns_record" "extra_tunnel_ingress" {
   for_each = local.extra_tunnel_ingress_map
 
@@ -219,6 +212,13 @@ removed {
 }
 
 /*
+data "cloudflare_zero_trust_tunnel_cloudflared_token" "this" {
+  for_each = local.cloudflare_tunnels
+
+  account_id = local.cloudflare_account_id
+  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.this[each.key].id
+}
+
 resource "local_sensitive_file" "cloudflare_tunnel_secret" {
   for_each = local.cloudflare_tunnels
 
