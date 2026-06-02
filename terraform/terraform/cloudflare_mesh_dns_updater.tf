@@ -1,4 +1,3 @@
-/*
 locals {
   cloudflare_access_team_domain = "shiron-dev.cloudflareaccess.com"
 
@@ -50,6 +49,7 @@ resource "cloudflare_api_token" "mesh_dns_updater_worker" {
           id = local.cloudflare_api_token_permission_groups.dns_write
         }
       ]
+      # Provider 5.19.1 expects this policy field as a JSON object string.
       resources = jsonencode({
         for zone_name, zone_id in local.cloudflare_zone_ids :
         "com.cloudflare.api.account.zone.${zone_id}" => "*"
@@ -157,4 +157,3 @@ resource "local_sensitive_file" "mesh_dns_updater_secret" {
     cloudflare_mesh_dns_updater_access_client_secret = cloudflare_zero_trust_access_service_token.mesh_dns_updater[each.key].client_secret
   })
 }
-*/
