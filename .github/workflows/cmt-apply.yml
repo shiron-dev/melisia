@@ -115,7 +115,6 @@ jobs:
         env:
           WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
           SERVICE_ACCOUNT: ${{ secrets.SERVICE_ACCOUNT }}
-          GH_ACTIONS_SSH_PRIVATE_KEY: ${{ secrets.GH_ACTIONS_SSH_PRIVATE_KEY }}
           CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
       - name: Run cmt plan
@@ -250,7 +249,6 @@ jobs:
         env:
           WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
           SERVICE_ACCOUNT: ${{ secrets.SERVICE_ACCOUNT }}
-          GH_ACTIONS_SSH_PRIVATE_KEY: ${{ secrets.GH_ACTIONS_SSH_PRIVATE_KEY }}
           CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
       - name: Check run is latest before cmt apply

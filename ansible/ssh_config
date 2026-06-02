@@ -6,5 +6,5 @@ CertificateFile ~/.cloudflared/%h-cf_key-cert.pub
 Host home-ep
   HostName 192.168.1.61
   User ansible_user
-  IdentityFile ../compose/hosts/home-ep/home-ep.pub
+  IdentityFile ../.local/ssh/home_ep_key
   IdentitiesOnly yes

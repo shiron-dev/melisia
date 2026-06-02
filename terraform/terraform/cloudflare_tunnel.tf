@@ -210,6 +210,15 @@ resource "cloudflare_zero_trust_access_application" "home_ep_homeassistant" {
   ]
 }
 
+removed {
+  from = local_sensitive_file.cloudflare_tunnel_secret
+
+  lifecycle {
+    destroy = false
+  }
+}
+
+/*
 resource "local_sensitive_file" "cloudflare_tunnel_secret" {
   for_each = local.cloudflare_tunnels
 
@@ -218,3 +227,4 @@ resource "local_sensitive_file" "cloudflare_tunnel_secret" {
     cf_tunnel_token = data.cloudflare_zero_trust_tunnel_cloudflared_token.this[each.key].token
   })
 }
+*/

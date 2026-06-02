@@ -81,6 +81,15 @@ data "cloudflare_zero_trust_tunnel_warp_connector_token" "this" {
   tunnel_id  = data.cloudflare_zero_trust_tunnel_warp_connector.this[each.key].id
 }
 
+removed {
+  from = local_sensitive_file.cloudflare_mesh_secret
+
+  lifecycle {
+    destroy = false
+  }
+}
+
+/*
 resource "local_sensitive_file" "cloudflare_mesh_secret" {
   for_each = local.cloudflare_mesh_nodes
 
@@ -89,3 +98,4 @@ resource "local_sensitive_file" "cloudflare_mesh_secret" {
     cloudflare_mesh_connector_token = data.cloudflare_zero_trust_tunnel_warp_connector_token.this[each.key].token
   })
 }
+*/

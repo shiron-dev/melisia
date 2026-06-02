@@ -16,7 +16,7 @@ resource "google_iam_workload_identity_pool_provider" "github_actions" {
     "attribute.ref"        = "assertion.ref"
   }
 
-  attribute_condition = "assertion.sub == 'repo:shiron-dev/melisia:ref:refs/heads/main' || assertion.sub == 'repo:shiron-dev/melisia:pull_request' || assertion.sub == 'repo:shiron-dev/melisia:environment:production-plan' || assertion.sub == 'repo:shiron-dev/melisia:environment:production'"
+  attribute_condition = "assertion.sub == 'repo:shiron-dev/melisia:ref:refs/heads/main' || assertion.sub == 'repo:shiron-dev/melisia:environment:production-plan' || assertion.sub == 'repo:shiron-dev/melisia:environment:production'"
 
   oidc {
     issuer_uri = "https://token.actions.githubusercontent.com"
