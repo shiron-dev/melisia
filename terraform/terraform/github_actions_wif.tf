@@ -75,3 +75,9 @@ resource "google_project_iam_member" "github_actions_melisia_cloudkms_viewer" {
   role    = "roles/cloudkms.viewer"
   member  = "serviceAccount:${google_service_account.github_actions_melisia.email}"
 }
+
+resource "google_project_iam_member" "github_actions_melisia_secret_manager_viewer" {
+  project = "shiron-dev"
+  role    = "roles/secretmanager.viewer"
+  member  = "serviceAccount:${google_service_account.github_actions_melisia.email}"
+}
