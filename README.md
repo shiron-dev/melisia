@@ -6,3 +6,4 @@
 ## machine
 
 - [home-ep](docs/home-ep.md)
+- [storage-srv](docs/storage-srv.md)

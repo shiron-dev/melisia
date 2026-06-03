@@ -8,3 +8,9 @@ Host home-ep
   User ansible_user
   IdentityFile ../.local/ssh/home_ep_key
   IdentitiesOnly yes
+
+Host storage-srv
+  HostName storage-srv.network.melisia.net
+  User melisia_ops
+  IdentityFile ../.local/ssh/storage_srv_key
+  IdentitiesOnly yes
