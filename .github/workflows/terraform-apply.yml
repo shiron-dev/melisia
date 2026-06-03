@@ -170,7 +170,7 @@ jobs:
       cancel-in-progress: false
     env:
       GITHUB_TOKEN: ${{ github.token }}
-      TERRAFORM_APPLY_SKIP_TARGETS: "terraform/aws,terraform/github_secrets,terraform/grafana"
+      TERRAFORM_APPLY_SKIP_TARGETS: "terraform/aws,terraform/github_secrets,terraform/grafana,terraform/truenas"
       TERRAFORM_PLAN_KMS_KEY: sops-key
       TERRAFORM_PLAN_KMS_KEYRING: sops
       TERRAFORM_PLAN_KMS_LOCATION: global
