@@ -76,7 +76,7 @@ locals {
 resource "truenas_dataset" "datasets" {
   for_each = local.datasets
 
-  name = "${each.value.pool}/${each.value.name}"
+  name = "${data.truenas_pool.pools[each.value.pool].name}/${each.value.name}"
   type = "FILESYSTEM"
 
   atime         = "ON"
