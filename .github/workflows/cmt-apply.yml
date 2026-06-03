@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+      - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         if: github.event_name == 'workflow_dispatch'
         with:
           script: |
@@ -110,7 +110,7 @@ jobs:
       has_diff: ${{ steps.cmt-plan.outputs.exit_code == '2' }}
       plan_sha256: ${{ steps.cmt-plan.outputs.plan_sha256 }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: ./.github/actions/setup-compose-cmt
         env:
           WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
@@ -193,7 +193,7 @@ jobs:
     steps:
       - name: Check run is latest before apply
         id: stale-check
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         with:
           script: |
             const owner = context.repo.owner;
@@ -242,7 +242,7 @@ jobs:
             }
 
             core.setOutput("is_latest", "true");
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         if: steps.stale-check.outputs.is_latest == 'true'
       - uses: ./.github/actions/setup-compose-cmt
         if: steps.stale-check.outputs.is_latest == 'true'
@@ -254,7 +254,7 @@ jobs:
       - name: Check run is latest before cmt apply
         id: pre-apply-stale-check
         if: steps.stale-check.outputs.is_latest == 'true'
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         with:
           script: |
             const owner = context.repo.owner;
