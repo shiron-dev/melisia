@@ -154,12 +154,11 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - name: Run tfsec
-        uses: aquasecurity/tfsec-action@b466648d6e39e7c75324f25d83891162a721f2d6 # v1.0.3
+      - name: Run tfsec-compatible scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          working_directory: terraform/
-          github_token: ${{ github.token }}
-          additional_args: --ignore-hcl-errors
+          scan-type: 'config'
+          scan-ref: terraform/
 
   # pluralith:
   #   runs-on: ubuntu-latest
