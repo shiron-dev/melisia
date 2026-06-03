@@ -8,6 +8,11 @@ output "service_account" {
   value       = google_service_account.github_actions_melisia.email
 }
 
+output "home_ep_ssh_private_key_secret_id" {
+  description = "Secret Manager secret ID containing the home-ep SSH private key for GitHub Actions"
+  value       = google_secret_manager_secret.github_actions_home_ep_ssh_private_key.secret_id
+}
+
 output "cf_access_client_id" {
   description = "Cloudflare Zero Trust Access Service Token client ID"
   value       = cloudflare_zero_trust_access_service_token.github_actions_arm_srv.client_id

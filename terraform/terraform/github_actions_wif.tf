@@ -16,7 +16,7 @@ resource "google_iam_workload_identity_pool_provider" "github_actions" {
     "attribute.ref"        = "assertion.ref"
   }
 
-  attribute_condition = "assertion.sub == 'repo:shiron-dev/melisia:ref:refs/heads/main' || assertion.sub == 'repo:shiron-dev/melisia:pull_request' || assertion.sub == 'repo:shiron-dev/melisia:environment:production-plan' || assertion.sub == 'repo:shiron-dev/melisia:environment:production'"
+  attribute_condition = "assertion.sub == 'repo:shiron-dev/melisia:ref:refs/heads/main' || assertion.sub == 'repo:shiron-dev/melisia:environment:production-plan' || assertion.sub == 'repo:shiron-dev/melisia:environment:production'"
 
   oidc {
     issuer_uri = "https://token.actions.githubusercontent.com"
@@ -73,5 +73,11 @@ resource "google_project_iam_member" "github_actions_melisia_wif_pool_viewer" {
 resource "google_project_iam_member" "github_actions_melisia_cloudkms_viewer" {
   project = "shiron-dev"
   role    = "roles/cloudkms.viewer"
+  member  = "serviceAccount:${google_service_account.github_actions_melisia.email}"
+}
+
+resource "google_project_iam_member" "github_actions_melisia_secret_manager_viewer" {
+  project = "shiron-dev"
+  role    = "roles/secretmanager.viewer"
   member  = "serviceAccount:${google_service_account.github_actions_melisia.email}"
 }

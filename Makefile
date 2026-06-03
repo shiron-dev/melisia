@@ -2,6 +2,8 @@ ANSIBLE_DEFAULT_OPT ?=
 ANSIBLE_DIR := ansible
 UV_ANSIBLE := uv run --project tools/ansible --
 PROJECT_ID := shiron-dev
+HOME_EP_SSH_PRIVATE_KEY_SECRET := github-actions-home-ep-ssh-private-key
+HOME_EP_SSH_KEY := .local/ssh/home_ep_key
 
 CHECK_SECRETS_SCRIPT := scripts/check-secrets.sh
 KICS_IMAGE ?= checkmarx/kics:v2.1.20
@@ -41,6 +43,17 @@ auth: init
 	$(call check_gcloud_auth)
 	gcloud config set project $(PROJECT_ID)
 	ssh -o BatchMode=yes -o ConnectTimeout=5 -F $(ANSIBLE_DIR)/ssh_config ansible_user@arm-srv.shiron.dev exit
+
+.PHONY: home-ep-ssh-key
+home-ep-ssh-key: init
+	@set -eu; \
+	dir="$$(dirname "$(HOME_EP_SSH_KEY)")"; \
+	install -m 700 -d "$$dir"; \
+	tmp="$$(mktemp "$$dir/home_ep_key.XXXXXX")"; \
+	trap 'rm -f "$$tmp"' EXIT; \
+	gcloud secrets versions access latest --project="$(PROJECT_ID)" --secret="$(HOME_EP_SSH_PRIVATE_KEY_SECRET)" > "$$tmp"; \
+	install -m 600 "$$tmp" "$(HOME_EP_SSH_KEY)"
+	@echo "Wrote $(HOME_EP_SSH_KEY)"
 
 .PHONY: ansible-ci
 ansible-ci: ansible-lint

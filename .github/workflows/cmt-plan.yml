@@ -30,7 +30,7 @@ jobs:
           files="$(curl -fsSL -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "X-GitHub-Api-Version: 2022-11-28" "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files?per_page=100")"
           should_run="$(
             jq -r '
-              any(.[]; (.filename | startswith("compose/")) or ((.filename | startswith("tools/cmt/")) and .filename != "tools/cmt/.golangci.yml"))
+              any(.[]; ((.filename | startswith("compose/")) and (.filename | startswith("compose/hosts/home-ep/") | not)) or ((.filename | startswith("tools/cmt/")) and .filename != "tools/cmt/.golangci.yml"))
             ' <<< "$files"
           )"
 
@@ -53,7 +53,6 @@ jobs:
         env:
           WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
           SERVICE_ACCOUNT: ${{ secrets.SERVICE_ACCOUNT }}
-          GH_ACTIONS_SSH_PRIVATE_KEY: ${{ secrets.GH_ACTIONS_SSH_PRIVATE_KEY }}
           CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
       - name: Verify SSH via Cloudflare Access

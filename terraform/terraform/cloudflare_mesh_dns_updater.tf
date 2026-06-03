@@ -1,3 +1,4 @@
+/*
 locals {
   cloudflare_access_team_domain = "shiron-dev.cloudflareaccess.com"
 
@@ -157,3 +158,4 @@ resource "local_sensitive_file" "mesh_dns_updater_secret" {
     cloudflare_mesh_dns_updater_access_client_secret = cloudflare_zero_trust_access_service_token.mesh_dns_updater[each.key].client_secret
   })
 }
+*/

@@ -3,5 +3,5 @@ Include ~/.ssh/config
 Host home-ep
   HostName 192.168.1.61
   User shiron
-  IdentityFile compose/hosts/home-ep/home-ep.pub
+  IdentityFile .local/ssh/home_ep_key
   IdentitiesOnly yes

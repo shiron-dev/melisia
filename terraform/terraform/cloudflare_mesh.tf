@@ -74,6 +74,15 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_route" "mesh" {
   comment    = each.value.comment
 }
 
+removed {
+  from = local_sensitive_file.cloudflare_mesh_secret
+
+  lifecycle {
+    destroy = false
+  }
+}
+
+/*
 data "cloudflare_zero_trust_tunnel_warp_connector_token" "this" {
   for_each = local.cloudflare_mesh_nodes
 
@@ -89,3 +98,4 @@ resource "local_sensitive_file" "cloudflare_mesh_secret" {
     cloudflare_mesh_connector_token = data.cloudflare_zero_trust_tunnel_warp_connector_token.this[each.key].token
   })
 }
+*/

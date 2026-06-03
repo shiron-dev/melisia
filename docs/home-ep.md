@@ -75,6 +75,18 @@ Infrastructure SSH CA public key を配置し、`TrustedUserCAKeys` で信頼す
 UNIX user は自動作成されないため、`ansible_user` は引き続き `home-ep` 上に
 存在している必要がある。
 
+CI から使う `home-ep` の SSH 秘密鍵は GitHub Actions Secret ではなく GCP
+Secret Manager の `github-actions-home-ep-ssh-private-key` に保存する。
+Secret の中身は Terraform state に残さないため、Secret version は手動で投入する。
+ローカルや CI では `make home-ep-ssh-key` でプロジェクトルート配下の
+`.local/ssh/home_ep_key` に配置する。
+
+```sh
+gcloud secrets versions add github-actions-home-ep-ssh-private-key \
+  --project=shiron-dev \
+  --data-file=.local/ssh/home_ep_key
+```
+
 ### Ansible ユーザーの作成
 
 ※CI/CD の利便性のために NOPASSWD を指定しているので、注入後は直ちにユーザーを削除するか、パスワードを変更すること
