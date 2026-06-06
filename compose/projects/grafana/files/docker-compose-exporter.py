@@ -104,7 +104,7 @@ def collect_metrics() -> str:
 
         lines.append(metric("docker_compose_container_state", {**base_labels, "state": state}, 1))
         lines.append(metric("docker_compose_container_health", {**base_labels, "health": health}, 1))
-        lines.append(metric("docker_compose_container_restart_count", base_labels, state_obj.get("RestartCount", 0)))
+        lines.append(metric("docker_compose_container_restart_count", base_labels, inspect.get("RestartCount", 0)))
         lines.append(metric("docker_compose_container_created_timestamp_seconds", base_labels, container.get("Created", 0)))
 
     lines.append(f"docker_compose_exporter_scrape_timestamp_seconds {now}")
