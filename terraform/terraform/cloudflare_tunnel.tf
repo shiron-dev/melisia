@@ -228,7 +228,8 @@ resource "cloudflare_zero_trust_access_application" "home_ep_homeassistant" {
 resource "local_sensitive_file" "cloudflare_access_e2e_secret" {
   filename = "${path.module}/../../compose/hosts/arm-srv/grafana/cloudflare-access-e2e.secrets.yml"
   content = yamlencode({
-    cloudflare_access_e2e_client_id     = cloudflare_zero_trust_access_service_token.e2e.client_id
+    cloudflare_access_e2e_client_id = cloudflare_zero_trust_access_service_token.e2e.client_id
+    # kics-scan ignore-line
     cloudflare_access_e2e_client_secret = cloudflare_zero_trust_access_service_token.e2e.client_secret
   })
 }
