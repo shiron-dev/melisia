@@ -10,6 +10,23 @@ locals {
     snct_email = "675d41ec-8115-432f-9b87-345beeeb64dc"
   }
 
+  cloudflare_access_groups = {
+    home_login = "09b05356-05d0-4f9e-89db-b163531b01dc"
+  }
+
+  cloudflare_home_login_policy_ref = {
+    name       = "home login"
+    decision   = "allow"
+    precedence = 3
+    include = [
+      {
+        group = {
+          id = local.cloudflare_access_groups.home_login
+        }
+      }
+    ]
+  }
+
   cloudflare_access_policy_refs = {
     n8n = [
       {
@@ -69,7 +86,7 @@ locals {
       zone_name       = "melisia.net"
       service         = "http://homeassistant:8123"
       secret_yaml_dir = "${path.module}/../../compose/hosts/home-ep/home-assistant"
-      policies        = local.cloudflare_access_policy_refs.shiron
+      policies        = concat(local.cloudflare_access_policy_refs.shiron, [local.cloudflare_home_login_policy_ref])
       extra_ingress = [
         {
           hostname  = "zigbee2mqtt.melisia.net"
@@ -364,18 +381,7 @@ resource "cloudflare_zero_trust_access_application" "home_ep_homeassistant" {
 
   policies = [
     local.cloudflare_access_e2e_policy_ref,
-    {
-      name       = "home login"
-      decision   = "allow"
-      precedence = 2
-      include = [
-        {
-          group = {
-            id = "09b05356-05d0-4f9e-89db-b163531b01dc"
-          }
-        }
-      ]
-    }
+    local.cloudflare_home_login_policy_ref,
   ]
 }
 

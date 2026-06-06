@@ -44,11 +44,10 @@ resource "cloudflare_zero_trust_access_application" "arm_srv" {
       include = [
         {
           group = {
-            id = "09b05356-05d0-4f9e-89db-b163531b01dc"
+            id = local.cloudflare_access_groups.home_login
           }
         }
       ]
     },
   ]
 }
-
