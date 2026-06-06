@@ -31,6 +31,47 @@ For CI or shared encrypted config, put `grafana_auth` in `terraform.secrets.tfva
 
 Rule groups are driven by `var.rule_groups` so alert rules can be added in `terraform.secrets.tfvars` or a normal tfvars file without changing the resource shape.
 
+Slack notifications can be enabled by adding a Slack contact point and routing the root notification policy to it. Put webhook URLs, Slack API tokens, and channel IDs in `terraform.secrets.tfvars` and encrypt them with SOPS:
+
+```hcl
+slack_contact_points = {
+  slack-alerts = {
+    url      = "https://hooks.slack.com/services/..."
+    username = "Grafana"
+    title    = "{{ template \"default.title\" . }}"
+    text     = "{{ template \"default.message\" . }}"
+  }
+}
+
+notification_policy = {
+  contact_point   = "slack-alerts"
+  group_by        = ["alertname"]
+  group_wait      = "30s"
+  group_interval  = "5m"
+  repeat_interval = "4h"
+}
+```
+
+If using a Slack bot token instead of an incoming webhook, set `token` and `recipient` instead of `url`.
+
+Grafana Cloud IRM notifications are sent from self-hosted Grafana Alerting through a webhook contact point. Manage the IRM integration endpoint in `terraform/grafana_irm`, then put its sensitive output in this root's `terraform.secrets.tfvars`:
+
+```hcl
+webhook_contact_points = {
+  grafana-cloud-irm = {
+    url = "<terraform/grafana_irm selfhost_grafana_irm_webhook_url>"
+  }
+}
+
+notification_policy = {
+  contact_point = "grafana-cloud-irm"
+  group_by = [
+    "grafana_folder",
+    "alertname",
+  ]
+}
+```
+
 ## Existing Resources
 
 The existing VictoriaMetrics-backed Prometheus data source has a deterministic UID in cmt provisioning:
