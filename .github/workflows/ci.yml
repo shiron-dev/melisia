@@ -241,6 +241,7 @@ jobs:
   renovate-deps-comment:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    continue-on-error: true
     steps:
       - uses: shiron-dev/actions/renovate-deps-comment@0cc65c3143f6a0d119fa8085c8b2ae3dd25e657b # v1.6.3
 
