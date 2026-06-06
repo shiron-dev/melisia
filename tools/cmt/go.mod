@@ -1,6 +1,6 @@
 module github.com/shiron-dev/melisia/tools/cmt
 
-go 1.26.3
+go 1.26.4
 
 require (
 	github.com/invopop/jsonschema v0.13.0
