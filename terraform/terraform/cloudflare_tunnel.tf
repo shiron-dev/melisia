@@ -32,6 +32,28 @@ locals {
   }
 
   cloudflare_tunnels = {
+    "arm-srv-grafana" = {
+      domain          = "grafana.shiron.dev"
+      zone_name       = "shiron.dev"
+      service         = "http://grafana:3000"
+      secret_yaml_dir = "${path.module}/../../compose/hosts/arm-srv/grafana"
+      policies        = []
+      extra_ingress = [
+        {
+          hostname  = "influxdb.shiron.dev"
+          zone_name = "shiron.dev"
+          service   = "http://influxdb:8086"
+          policies  = local.cloudflare_access_policy_refs.shiron
+        }
+      ]
+    }
+    "arm-srv-n8n" = {
+      domain          = "n8n.shiron.dev"
+      zone_name       = "shiron.dev"
+      service         = "http://n8n:5678"
+      secret_yaml_dir = "${path.module}/../../compose/hosts/arm-srv/n8n"
+      policies        = []
+    }
     "arm-srv-snipeit" = {
       domain          = "snipeit.shiron.dev"
       zone_name       = "shiron.dev"
@@ -138,6 +160,10 @@ resource "cloudflare_zero_trust_tunnel_cloudflared" "this" {
   name          = "${each.key}${local.cloudflare_resource_name_suffix}"
   config_src    = "cloudflare"
   tunnel_secret = random_id.cloudflare_tunnel_secret[each.key].b64_std
+
+  lifecycle {
+    ignore_changes = [tunnel_secret]
+  }
 }
 
 resource "cloudflare_zero_trust_tunnel_cloudflared_config" "this" {
@@ -230,6 +256,27 @@ resource "cloudflare_zero_trust_access_application" "n8n" {
   options_preflight_bypass   = false
 
   policies = concat([local.cloudflare_access_e2e_policy_ref], local.cloudflare_access_policy_refs.n8n)
+}
+
+resource "cloudflare_zero_trust_access_application" "n8n_bypass" {
+  account_id                 = local.cloudflare_account_id
+  name                       = "n8n bypass"
+  domain                     = "n8n.shiron.dev/webhook/*"
+  type                       = "self_hosted"
+  session_duration           = "24h"
+  service_auth_401_redirect  = false
+  auto_redirect_to_identity  = false
+  app_launcher_visible       = true
+  enable_binding_cookie      = false
+  http_only_cookie_attribute = false
+  options_preflight_bypass   = false
+
+  policies = [
+    {
+      id         = "f581fde1-d087-4973-ac95-7d7d1cbe8eef"
+      precedence = 1
+    }
+  ]
 }
 
 resource "cloudflare_zero_trust_access_application" "home_ep_homeassistant" {
