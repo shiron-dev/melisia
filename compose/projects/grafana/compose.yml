@@ -143,6 +143,35 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+  blackbox_exporter:
+    container_name: blackbox_exporter
+    image: prom/blackbox-exporter:v0.27.0@sha256:a50c4c0eda297baa1678cd4dc4712a67fdea713b832d43ce7fcc5f9bea05094d
+    user: "1003:1004"
+    ports:
+      - "127.0.0.1:9115:9115"
+    volumes:
+      - "./blackbox.yml:/config/blackbox.yml:ro"
+    command:
+      - "--config.file=/config/blackbox.yml"
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:9115/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
   node_exporter:
     image: quay.io/prometheus/node-exporter:v1.10.2@sha256:337ff1d356b68d39cef853e8c6345de11ce7556bb34cda8bd205bcf2ed30b565
     container_name: node_exporter

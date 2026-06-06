@@ -1,0 +1,10 @@
+modules:
+  cloudflare_tunnel_http_2xx:
+    prober: http
+    timeout: 10s
+    http:
+      method: GET
+      preferred_ip_protocol: ip4
+      headers:
+        CF-Access-Client-Id: "{{ .cloudflare_access_e2e_client_id }}"
+        CF-Access-Client-Secret: "{{ .cloudflare_access_e2e_client_secret }}"
