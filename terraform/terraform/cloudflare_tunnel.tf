@@ -338,6 +338,22 @@ resource "cloudflare_zero_trust_access_application" "home_ep_homeassistant_alexa
   ]
 }
 
+resource "cloudflare_zero_trust_access_application" "home_ep_homeassistant_auth_token_bypass" {
+  account_id                = local.cloudflare_account_id
+  name                      = "home-ep-homeassistant auth token bypass${local.cloudflare_resource_name_suffix}"
+  domain                    = "home.melisia.net/auth/token"
+  type                      = "self_hosted"
+  session_duration          = "24h"
+  service_auth_401_redirect = false
+
+  policies = [
+    {
+      id         = local.cloudflare_access_policies.bypass
+      precedence = 1
+    }
+  ]
+}
+
 resource "cloudflare_zero_trust_access_application" "home_ep_homeassistant" {
   account_id                = local.cloudflare_account_id
   name                      = "home-ep-homeassistant${local.cloudflare_resource_name_suffix}"
