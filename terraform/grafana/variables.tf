@@ -83,7 +83,8 @@ variable "slack_contact_points" {
     url                     = optional(string)
     username                = optional(string)
   }))
-  default = {}
+  sensitive = true
+  default   = {}
 }
 
 variable "webhook_contact_points" {
@@ -93,7 +94,8 @@ variable "webhook_contact_points" {
     disable_resolve_message = optional(bool, false)
     settings                = optional(map(string), {})
   }))
-  default = {}
+  sensitive = true
+  default   = {}
 }
 
 variable "notification_policy" {
