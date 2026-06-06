@@ -64,6 +64,54 @@ variable "email_contact_points" {
   default = {}
 }
 
+variable "slack_contact_points" {
+  description = "Slack contact points for Grafana Alerting. Use url for incoming webhooks, or token plus recipient for Slack API delivery."
+  type = map(object({
+    color                   = optional(string)
+    disable_resolve_message = optional(bool, false)
+    endpoint_url            = optional(string)
+    icon_emoji              = optional(string)
+    icon_url                = optional(string)
+    mention_channel         = optional(string)
+    mention_groups          = optional(string)
+    mention_users           = optional(string)
+    recipient               = optional(string)
+    settings                = optional(map(string), {})
+    text                    = optional(string)
+    title                   = optional(string)
+    token                   = optional(string)
+    url                     = optional(string)
+    username                = optional(string)
+  }))
+  default = {}
+
+  validation {
+    condition = alltrue([
+      for _, contact_point in var.slack_contact_points :
+      contact_point.url != null || contact_point.token != null
+    ])
+    error_message = "Each Slack contact point must set either url or token."
+  }
+
+  validation {
+    condition = alltrue([
+      for _, contact_point in var.slack_contact_points :
+      contact_point.token == null || contact_point.recipient != null
+    ])
+    error_message = "Slack contact points using token must also set recipient."
+  }
+}
+
+variable "webhook_contact_points" {
+  description = "Webhook contact points for Grafana Alerting, including Grafana Cloud IRM integration endpoints."
+  type = map(object({
+    url                     = string
+    disable_resolve_message = optional(bool, false)
+    settings                = optional(map(string), {})
+  }))
+  default = {}
+}
+
 variable "notification_policy" {
   description = "Root Grafana Alerting notification policy. This manages the entire policy tree, so set it only after importing or intentionally replacing the current policy."
   type = object({
