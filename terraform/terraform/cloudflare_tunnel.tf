@@ -43,7 +43,7 @@ locals {
           hostname  = "influxdb.shiron.dev"
           zone_name = "shiron.dev"
           service   = "http://influxdb:8086"
-          policies  = []
+          policies  = local.cloudflare_access_policy_refs.shiron
         }
       ]
     }
