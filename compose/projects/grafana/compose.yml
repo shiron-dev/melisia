@@ -150,6 +150,33 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+  docker_compose_exporter:
+    container_name: docker_compose_exporter
+    image: python:3.13-alpine@sha256:420cd0bf0f3998275875e02ecd5808168cf0843cbb4d3c536432f729247b2acc
+    command: ["python", "/app/docker-compose-exporter.py"]
+    restart: always
+    volumes:
+      - "./docker-compose-exporter.py:/app/docker-compose-exporter.py:ro"
+      # kics-scan ignore-line
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+        reservations:
+          cpus: '0.05'
+          memory: 32M
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:9487/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
   blackbox_exporter:
     container_name: blackbox_exporter
     image: prom/blackbox-exporter:v0.28.0@sha256:e753ff9f3fc458d02cca5eddab5a77e1c175eee484a8925ac7d524f04366c2fc

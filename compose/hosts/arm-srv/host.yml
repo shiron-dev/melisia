@@ -6,6 +6,7 @@ projects:
   grafana:
     remotePath: /var
     composeAction: ignore
+    postSyncCommand: chmod 0644 docker-compose-exporter.py && docker compose up -d --remove-orphans && docker compose restart prometheus
     dirs:
       - grafana_storage:
         owner: 472
