@@ -1,11 +1,26 @@
 locals {
-  cloudflare_resource_name_suffix = " - Melisia Terraform"
-  cloudflare_zone_name            = "shiron.dev"
+  cloudflare_resource_name_suffix                                   = " - Melisia Terraform"
+  cloudflare_zone_name                                              = "shiron.dev"
+  cloudflare_default_dangerously_allow_public_without_access_policy = false
 
   cloudflare_access_policies = {
+    bypass     = cloudflare_zero_trust_access_policy.bypass_any.id
     ca_teamj   = cloudflare_zero_trust_access_policy.ca_teamj.id
     shiron     = cloudflare_zero_trust_access_policy.shiron.id
     snct_email = cloudflare_zero_trust_access_policy.snct_email.id
+  }
+
+  cloudflare_home_login_policy_ref = {
+    name       = "home login"
+    decision   = "allow"
+    precedence = 3
+    include = [
+      {
+        group = {
+          id = cloudflare_zero_trust_access_group.shiron.id
+        }
+      }
+    ]
   }
 
   cloudflare_access_policy_refs = {
@@ -37,7 +52,7 @@ locals {
       zone_name       = "shiron.dev"
       service         = "http://grafana:3000"
       secret_yaml_dir = "${path.module}/../../compose/hosts/arm-srv/grafana"
-      policies        = []
+      policies        = local.cloudflare_access_policy_refs.shiron
       extra_ingress = [
         {
           hostname  = "influxdb.shiron.dev"
@@ -48,11 +63,12 @@ locals {
       ]
     }
     "arm-srv-n8n" = {
-      domain          = "n8n.shiron.dev"
-      zone_name       = "shiron.dev"
-      service         = "http://n8n:5678"
-      secret_yaml_dir = "${path.module}/../../compose/hosts/arm-srv/n8n"
-      policies        = []
+      domain                    = "n8n.shiron.dev"
+      zone_name                 = "shiron.dev"
+      service                   = "http://n8n:5678"
+      secret_yaml_dir           = "${path.module}/../../compose/hosts/arm-srv/n8n"
+      policies                  = local.cloudflare_access_policy_refs.shiron
+      manage_access_application = false
     }
     "arm-srv-snipeit" = {
       domain          = "snipeit.shiron.dev"
@@ -66,7 +82,7 @@ locals {
       zone_name       = "melisia.net"
       service         = "http://homeassistant:8123"
       secret_yaml_dir = "${path.module}/../../compose/hosts/home-ep/home-assistant"
-      policies        = []
+      policies        = concat(local.cloudflare_access_policy_refs.shiron, [local.cloudflare_home_login_policy_ref])
       extra_ingress = [
         {
           hostname  = "zigbee2mqtt.melisia.net"
@@ -229,14 +245,48 @@ locals {
     for item in flatten([
       for tunnel_key, tunnel in local.cloudflare_tunnels : [
         for ingress in lookup(tunnel, "extra_ingress", []) : {
-          tunnel_key = tunnel_key
-          hostname   = ingress.hostname
-          zone_name  = ingress.zone_name
-          service    = ingress.service
-          policies   = lookup(ingress, "policies", [])
+          tunnel_key                = tunnel_key
+          hostname                  = ingress.hostname
+          zone_name                 = ingress.zone_name
+          service                   = ingress.service
+          policies                  = lookup(ingress, "policies", [])
+          manage_access_application = lookup(ingress, "manage_access_application", true)
+          dangerously_allow_public_without_access_policy = lookup(
+            ingress,
+            "dangerously_allow_public_without_access_policy",
+            local.cloudflare_default_dangerously_allow_public_without_access_policy,
+          )
         }
       ]
     ]) : "${item.tunnel_key}-${item.hostname}" => item
+  }
+
+  cloudflare_tunnel_domains_without_access_policy = concat(
+    [
+      for tunnel in local.cloudflare_tunnels : tunnel.domain
+      if length(lookup(tunnel, "policies", [])) == 0
+      && !lookup(
+        tunnel,
+        "dangerously_allow_public_without_access_policy",
+        local.cloudflare_default_dangerously_allow_public_without_access_policy,
+      )
+    ],
+    [
+      for ingress in local.extra_tunnel_ingress_map : ingress.hostname
+      if length(ingress.policies) == 0
+      && !ingress.dangerously_allow_public_without_access_policy
+    ],
+  )
+}
+
+resource "terraform_data" "cloudflare_tunnel_access_policy_guard" {
+  input = local.cloudflare_tunnel_domains_without_access_policy
+
+  lifecycle {
+    precondition {
+      condition     = length(local.cloudflare_tunnel_domains_without_access_policy) == 0
+      error_message = "Cloudflare tunnel ingress without Access policy is dangerous. Add policies or set dangerously_allow_public_without_access_policy = true explicitly for: ${join(", ", local.cloudflare_tunnel_domains_without_access_policy)}"
+    }
   }
 }
 
@@ -329,7 +379,10 @@ resource "cloudflare_dns_record" "extra_tunnel_ingress" {
 }
 
 resource "cloudflare_zero_trust_access_application" "extra_tunnel_ingress" {
-  for_each = { for k, v in local.extra_tunnel_ingress_map : k => v if length(v.policies) > 0 }
+  for_each = {
+    for k, v in local.extra_tunnel_ingress_map : k => v
+    if length(v.policies) > 0 && lookup(v, "manage_access_application", true)
+  }
 
   account_id                = local.cloudflare_account_id
   name                      = "${each.key}${local.cloudflare_resource_name_suffix}"
@@ -342,7 +395,10 @@ resource "cloudflare_zero_trust_access_application" "extra_tunnel_ingress" {
 }
 
 resource "cloudflare_zero_trust_access_application" "this" {
-  for_each = { for k, v in local.cloudflare_tunnels : k => v if length(v.policies) > 0 }
+  for_each = {
+    for k, v in local.cloudflare_tunnels : k => v
+    if length(v.policies) > 0 && lookup(v, "manage_access_application", true)
+  }
 
   account_id                = local.cloudflare_account_id
   name                      = "${each.key}${local.cloudflare_resource_name_suffix}"
@@ -385,7 +441,39 @@ resource "cloudflare_zero_trust_access_application" "n8n_bypass" {
 
   policies = [
     {
-      id         = cloudflare_zero_trust_access_policy.bypass_any.id
+      id         = local.cloudflare_access_policies.bypass
+      precedence = 1
+    }
+  ]
+}
+
+resource "cloudflare_zero_trust_access_application" "home_ep_homeassistant_alexa_bypass" {
+  account_id                = local.cloudflare_account_id
+  name                      = "home-ep-homeassistant alexa bypass${local.cloudflare_resource_name_suffix}"
+  domain                    = "home.melisia.net/api/alexa/smart_home"
+  type                      = "self_hosted"
+  session_duration          = "24h"
+  service_auth_401_redirect = false
+
+  policies = [
+    {
+      id         = local.cloudflare_access_policies.bypass
+      precedence = 1
+    }
+  ]
+}
+
+resource "cloudflare_zero_trust_access_application" "home_ep_homeassistant_auth_token_bypass" {
+  account_id                = local.cloudflare_account_id
+  name                      = "home-ep-homeassistant auth token bypass${local.cloudflare_resource_name_suffix}"
+  domain                    = "home.melisia.net/auth/token"
+  type                      = "self_hosted"
+  session_duration          = "24h"
+  service_auth_401_redirect = false
+
+  policies = [
+    {
+      id         = local.cloudflare_access_policies.bypass
       precedence = 1
     }
   ]
@@ -401,18 +489,7 @@ resource "cloudflare_zero_trust_access_application" "home_ep_homeassistant" {
 
   policies = [
     local.cloudflare_access_e2e_policy_ref,
-    {
-      name       = "home login"
-      decision   = "allow"
-      precedence = 2
-      include = [
-        {
-          group = {
-            id = cloudflare_zero_trust_access_group.shiron.id
-          }
-        }
-      ]
-    }
+    local.cloudflare_home_login_policy_ref,
   ]
 }
 

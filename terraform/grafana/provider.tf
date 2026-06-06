@@ -14,7 +14,19 @@ terraform {
   }
 }
 
+data "terraform_remote_state" "terraform" {
+  backend = "gcs"
+  config = {
+    bucket = "shiron-dev-terraform"
+    prefix = "terraform/state"
+  }
+}
+
 provider "grafana" {
   url  = var.grafana_url
   auth = var.grafana_auth
+  http_headers = {
+    CF-Access-Client-Id     = data.terraform_remote_state.terraform.outputs.cf_access_e2e_client_id
+    CF-Access-Client-Secret = data.terraform_remote_state.terraform.outputs.cf_access_e2e_client_secret
+  }
 }
