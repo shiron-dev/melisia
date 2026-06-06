@@ -4,6 +4,7 @@ locals {
   cloudflare_default_dangerously_allow_public_without_access_policy = false
 
   cloudflare_access_policies = {
+    bypass     = "f581fde1-d087-4973-ac95-7d7d1cbe8eef"
     ca_teamj   = "421669c1-64c3-424c-b7aa-93bd37462218"
     shiron     = "7af17427-a95f-44da-ad13-c0e6e74cef90"
     snct_email = "675d41ec-8115-432f-9b87-345beeeb64dc"
@@ -315,7 +316,23 @@ resource "cloudflare_zero_trust_access_application" "n8n_bypass" {
 
   policies = [
     {
-      id         = "f581fde1-d087-4973-ac95-7d7d1cbe8eef"
+      id         = local.cloudflare_access_policies.bypass
+      precedence = 1
+    }
+  ]
+}
+
+resource "cloudflare_zero_trust_access_application" "home_ep_homeassistant_alexa_bypass" {
+  account_id                = local.cloudflare_account_id
+  name                      = "home-ep-homeassistant alexa bypass${local.cloudflare_resource_name_suffix}"
+  domain                    = "home.melisia.net/api/alexa/smart_home"
+  type                      = "self_hosted"
+  session_duration          = "24h"
+  service_auth_401_redirect = false
+
+  policies = [
+    {
+      id         = local.cloudflare_access_policies.bypass
       precedence = 1
     }
   ]
