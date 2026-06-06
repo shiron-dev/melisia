@@ -476,11 +476,10 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
-      issues: write
-      pull-requests: write
+      pull-requests: read
     steps:
       - name: Check out PR head commit
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           ref: ${{ needs.review-state.outputs.head_sha }}
           fetch-depth: 0
@@ -951,7 +950,7 @@ jobs:
         run: npm install -g @openai/codex@0.124.0
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
           python-version: "3.13"
 
@@ -969,21 +968,51 @@ jobs:
           CODEX_OUTPUT_PATH: ${{ runner.temp }}/codex-pr-review.json
           CODEX_SCHEMA_PATH: ${{ runner.temp }}/trusted-codex-pr-review.schema.json
         run: |
+          # GitHub Actions is the outer sandbox here. Avoid Codex's Linux bubblewrap
+          # sandbox because hosted runners can intermittently reject loopback setup.
           codex exec \
             --cd "$GITHUB_WORKSPACE" \
-            --sandbox read-only \
+            --dangerously-bypass-approvals-and-sandbox \
             --ignore-user-config \
             -c 'mcp_servers.serena.command="serena"' \
             -c 'mcp_servers.serena.args=["start-mcp-server","--project-from-cwd","--context=codex"]' \
             -c 'mcp_servers.serena.startup_timeout_sec=15' \
             -c service_tier=fast \
-            -c 'mcp_servers.serena.command="serena"' \
-            -c 'mcp_servers.serena.args=["start-mcp-server","--project-from-cwd","--context=codex"]' \
-            -c 'mcp_servers.serena.startup_timeout_sec=15' \
             --model gpt-5.5 \
             --output-schema "$CODEX_SCHEMA_PATH" \
             --output-last-message "$CODEX_OUTPUT_PATH" \
             - < "$RUNNER_TEMP/codex-pr-review.md"
+
+      - name: Upload Codex review result
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: codex-pr-review-${{ needs.review-state.outputs.pr_number }}-${{ needs.review-state.outputs.head_sha }}
+          path: ${{ runner.temp }}/codex-pr-review.json
+          if-no-files-found: error
+          retention-days: 1
+
+  submit-codex-review:
+    needs:
+      - review-precheck
+      - review-state
+      - mark-review-start
+      - codex-review
+    if: ${{ needs.codex-review.result == 'success' && needs.review-state.outputs.should_run == 'true' }}
+    concurrency:
+      group: codex-ai-review-${{ needs.review-precheck.outputs.pr_number }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Download Codex review result
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: codex-pr-review-${{ needs.review-state.outputs.pr_number }}-${{ needs.review-state.outputs.head_sha }}
+          path: ${{ runner.temp }}
 
       - name: Create GitHub App token
         id: app_token
@@ -1223,34 +1252,3 @@ jobs:
                 }
               }
             }
-
-      - name: Create GitHub App token for secret rotation
-        id: secret_rotation_token
-        continue-on-error: true
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          app-id: ${{ secrets.CODEX_REVIEW_APP_ID }}
-          private-key: ${{ secrets.CODEX_REVIEW_APP_PRIVATE_KEY }}
-
-      - name: Persist refreshed Codex auth secret
-        if: ${{ steps.secret_rotation_token.outcome == 'success' }}
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ steps.secret_rotation_token.outputs.token }}
-          GH_REPO: ${{ github.repository }}
-          CODEX_AUTH_PATH: ${{ runner.temp }}/codex-home/auth.json
-        run: |
-          set -euo pipefail
-
-          if [[ ! -s "$CODEX_AUTH_PATH" ]]; then
-            echo "Codex auth file not found or empty: $CODEX_AUTH_PATH" >&2
-            exit 1
-          fi
-
-          echo "Checking repository secret write access..."
-          gh api "repos/$GH_REPO/actions/secrets/public-key" >/dev/null
-
-          echo "Updating CODEX_AUTH_JSON..."
-          gh secret set CODEX_AUTH_JSON \
-            --repo "$GH_REPO" \
-            < "$CODEX_AUTH_PATH"
