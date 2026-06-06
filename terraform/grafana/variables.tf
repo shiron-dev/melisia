@@ -84,22 +84,6 @@ variable "slack_contact_points" {
     username                = optional(string)
   }))
   default = {}
-
-  validation {
-    condition = alltrue([
-      for _, contact_point in var.slack_contact_points :
-      contact_point.url != null || contact_point.token != null
-    ])
-    error_message = "Each Slack contact point must set either url or token."
-  }
-
-  validation {
-    condition = alltrue([
-      for _, contact_point in var.slack_contact_points :
-      contact_point.token == null || contact_point.recipient != null
-    ])
-    error_message = "Slack contact points using token must also set recipient."
-  }
 }
 
 variable "webhook_contact_points" {
