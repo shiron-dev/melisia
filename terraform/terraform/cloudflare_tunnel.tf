@@ -3,14 +3,30 @@ locals {
   cloudflare_zone_name            = "shiron.dev"
 
   cloudflare_access_policies = {
-    shiron = "7af17427-a95f-44da-ad13-c0e6e74cef90"
+    ca_teamj   = "421669c1-64c3-424c-b7aa-93bd37462218"
+    shiron     = "7af17427-a95f-44da-ad13-c0e6e74cef90"
+    snct_email = "675d41ec-8115-432f-9b87-345beeeb64dc"
   }
 
   cloudflare_access_policy_refs = {
+    n8n = [
+      {
+        id         = local.cloudflare_access_policies.shiron
+        precedence = 2
+      },
+      {
+        id         = local.cloudflare_access_policies.snct_email
+        precedence = 3
+      },
+      {
+        id         = local.cloudflare_access_policies.ca_teamj
+        precedence = 4
+      }
+    ]
     shiron = [
       {
         id         = local.cloudflare_access_policies.shiron
-        precedence = 1
+        precedence = 2
       }
     ]
   }
@@ -50,6 +66,27 @@ locals {
         }
       ]
     }
+  }
+}
+
+resource "cloudflare_zero_trust_access_service_token" "e2e" {
+  account_id = local.cloudflare_account_id
+  name       = "e2e${local.cloudflare_resource_name_suffix}"
+  duration   = "8760h"
+}
+
+locals {
+  cloudflare_access_e2e_policy_ref = {
+    name       = "Allow E2E Service Token"
+    decision   = "non_identity"
+    precedence = 1
+    include = [
+      {
+        service_token = {
+          token_id = cloudflare_zero_trust_access_service_token.e2e.id
+        }
+      }
+    ]
   }
 }
 
@@ -163,7 +200,7 @@ resource "cloudflare_zero_trust_access_application" "extra_tunnel_ingress" {
   session_duration          = "24h"
   service_auth_401_redirect = false
 
-  policies = each.value.policies
+  policies = concat([local.cloudflare_access_e2e_policy_ref], each.value.policies)
 }
 
 resource "cloudflare_zero_trust_access_application" "this" {
@@ -176,7 +213,23 @@ resource "cloudflare_zero_trust_access_application" "this" {
   session_duration          = "24h"
   service_auth_401_redirect = false
 
-  policies = each.value.policies
+  policies = concat([local.cloudflare_access_e2e_policy_ref], each.value.policies)
+}
+
+resource "cloudflare_zero_trust_access_application" "n8n" {
+  account_id                 = local.cloudflare_account_id
+  name                       = "n8n"
+  domain                     = "n8n.shiron.dev"
+  type                       = "self_hosted"
+  session_duration           = "24h"
+  service_auth_401_redirect  = false
+  auto_redirect_to_identity  = false
+  app_launcher_visible       = true
+  enable_binding_cookie      = false
+  http_only_cookie_attribute = false
+  options_preflight_bypass   = false
+
+  policies = concat([local.cloudflare_access_e2e_policy_ref], local.cloudflare_access_policy_refs.n8n)
 }
 
 resource "cloudflare_zero_trust_access_application" "home_ep_homeassistant" {
@@ -188,10 +241,11 @@ resource "cloudflare_zero_trust_access_application" "home_ep_homeassistant" {
   service_auth_401_redirect = false
 
   policies = [
+    local.cloudflare_access_e2e_policy_ref,
     {
       name       = "home login"
       decision   = "allow"
-      precedence = 1
+      precedence = 2
       include = [
         {
           group = {
@@ -201,6 +255,15 @@ resource "cloudflare_zero_trust_access_application" "home_ep_homeassistant" {
       ]
     }
   ]
+}
+
+resource "local_sensitive_file" "cloudflare_access_e2e_secret" {
+  filename = "${path.module}/../../compose/hosts/arm-srv/grafana/cloudflare-access-e2e.secrets.yml"
+  content = yamlencode({
+    cloudflare_access_e2e_client_id = cloudflare_zero_trust_access_service_token.e2e.client_id
+    # kics-scan ignore-line
+    cloudflare_access_e2e_client_secret = cloudflare_zero_trust_access_service_token.e2e.client_secret
+  })
 }
 
 removed {
