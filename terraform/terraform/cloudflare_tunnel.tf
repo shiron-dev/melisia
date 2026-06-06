@@ -296,7 +296,7 @@ resource "cloudflare_zero_trust_access_application" "n8n" {
   http_only_cookie_attribute = false
   options_preflight_bypass   = false
 
-  policies = concat([local.cloudflare_access_e2e_policy_ref], local.cloudflare_access_policy_refs.shiron)
+  policies = concat([local.cloudflare_access_e2e_policy_ref], local.cloudflare_access_policy_refs.n8n)
 }
 
 resource "cloudflare_zero_trust_access_application" "n8n_bypass" {
