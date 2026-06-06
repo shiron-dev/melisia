@@ -76,7 +76,7 @@ locals {
 resource "truenas_dataset" "datasets" {
   for_each = local.datasets
 
-  name = "${each.value.pool}/${each.value.name}"
+  name = "${data.truenas_pool.pools[each.value.pool].name}/${each.value.name}"
   type = "FILESYSTEM"
 
   atime         = "ON"
@@ -89,5 +89,15 @@ resource "truenas_dataset" "datasets" {
 
   lifecycle {
     prevent_destroy = true
+
+    precondition {
+      condition     = data.truenas_pool.pools[each.value.pool].healthy
+      error_message = "The target TrueNAS storage pool must be healthy before applying dataset changes."
+    }
+
+    precondition {
+      condition     = data.truenas_pool.pools[each.value.pool].path == local.storage_pools[each.value.pool].path
+      error_message = "The target TrueNAS storage pool mount path must match the expected /mnt/<pool> path."
+    }
   }
 }
