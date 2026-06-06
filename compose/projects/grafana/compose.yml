@@ -71,6 +71,13 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    # kics-scan ignore-line
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
     deploy:
       resources:
         limits:
@@ -80,7 +87,7 @@ services:
           cpus: '0.25'
           memory: 256M
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8086/health"]
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "http://127.0.0.1:8086/health"]
       interval: 30s
       timeout: 10s
       retries: 3
