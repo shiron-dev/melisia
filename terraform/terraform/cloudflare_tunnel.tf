@@ -119,11 +119,12 @@ locals {
     for item in flatten([
       for tunnel_key, tunnel in local.cloudflare_tunnels : [
         for ingress in lookup(tunnel, "extra_ingress", []) : {
-          tunnel_key = tunnel_key
-          hostname   = ingress.hostname
-          zone_name  = ingress.zone_name
-          service    = ingress.service
-          policies   = lookup(ingress, "policies", [])
+          tunnel_key                = tunnel_key
+          hostname                  = ingress.hostname
+          zone_name                 = ingress.zone_name
+          service                   = ingress.service
+          policies                  = lookup(ingress, "policies", [])
+          manage_access_application = lookup(ingress, "manage_access_application", true)
           dangerously_allow_public_without_access_policy = lookup(
             ingress,
             "dangerously_allow_public_without_access_policy",
