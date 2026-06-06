@@ -6,10 +6,11 @@ Existing datasets are imported into state first, then reconciled before making
 intentional changes to storage configuration.
 
 The existing `apps` and `tank` pools are tracked with the `truenas_pool` data
-source and checked for health and expected mount paths before dataset changes
-are applied. The pinned provider exposes pools as a data source only, not as a
-managed resource, so ZFS pool creation, disk assignment, and VDEV topology
-cannot currently be imported into Terraform state with this provider.
+source and enforced with dataset lifecycle preconditions for health and expected
+mount paths before dataset changes are applied. The pinned provider exposes
+pools as a data source only, not as a managed resource, so ZFS pool creation,
+disk assignment, and VDEV topology cannot currently be imported into Terraform
+state with this provider.
 
 The provider uses the TrueNAS REST API at `https://storage-srv.network.melisia.net`.
 The pinned `baladithyab/truenas` v0.2.25 provider does not accept a TLS
