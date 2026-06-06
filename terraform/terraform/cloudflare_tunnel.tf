@@ -4,14 +4,10 @@ locals {
   cloudflare_default_dangerously_allow_public_without_access_policy = false
 
   cloudflare_access_policies = {
-    bypass     = "f581fde1-d087-4973-ac95-7d7d1cbe8eef"
-    ca_teamj   = "421669c1-64c3-424c-b7aa-93bd37462218"
-    shiron     = "7af17427-a95f-44da-ad13-c0e6e74cef90"
-    snct_email = "675d41ec-8115-432f-9b87-345beeeb64dc"
-  }
-
-  cloudflare_access_groups = {
-    home_login = "09b05356-05d0-4f9e-89db-b163531b01dc"
+    bypass     = cloudflare_zero_trust_access_policy.bypass_any.id
+    ca_teamj   = cloudflare_zero_trust_access_policy.ca_teamj.id
+    shiron     = cloudflare_zero_trust_access_policy.shiron.id
+    snct_email = cloudflare_zero_trust_access_policy.snct_email.id
   }
 
   cloudflare_home_login_policy_ref = {
@@ -21,7 +17,7 @@ locals {
     include = [
       {
         group = {
-          id = local.cloudflare_access_groups.home_login
+          id = cloudflare_zero_trust_access_group.shiron.id
         }
       }
     ]
@@ -115,6 +111,118 @@ resource "cloudflare_zero_trust_access_service_token" "e2e" {
   account_id = local.cloudflare_account_id
   name       = "e2e${local.cloudflare_resource_name_suffix}"
   duration   = "8760h"
+}
+
+import {
+  to = cloudflare_zero_trust_access_policy.ca_teamj
+  id = "edc628145468437b85dc0e6d48bff3e3/421669c1-64c3-424c-b7aa-93bd37462218"
+}
+
+resource "cloudflare_zero_trust_access_policy" "ca_teamj" {
+  account_id       = local.cloudflare_account_id
+  name             = "ca teamj"
+  decision         = "allow"
+  session_duration = "24h"
+
+  connection_rules = {
+    rdp = {}
+  }
+
+  include = [
+    {
+      email = {
+        email = "endo_taichi@cyberagent.co.jp"
+      }
+    }
+  ]
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+import {
+  to = cloudflare_zero_trust_access_policy.shiron
+  id = "edc628145468437b85dc0e6d48bff3e3/7af17427-a95f-44da-ad13-c0e6e74cef90"
+}
+
+resource "cloudflare_zero_trust_access_policy" "shiron" {
+  account_id       = local.cloudflare_account_id
+  name             = "shiron"
+  decision         = "allow"
+  session_duration = "24h"
+
+  include = [
+    {
+      login_method = {
+        id = "f74ed3ac-be7e-43db-81a6-c84909c669b3"
+      }
+    }
+  ]
+
+  require = [
+    {
+      group = {
+        id = cloudflare_zero_trust_access_group.shiron.id
+      }
+    }
+  ]
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+import {
+  to = cloudflare_zero_trust_access_policy.snct_email
+  id = "edc628145468437b85dc0e6d48bff3e3/675d41ec-8115-432f-9b87-345beeeb64dc"
+}
+
+resource "cloudflare_zero_trust_access_policy" "snct_email" {
+  account_id       = local.cloudflare_account_id
+  name             = "snct-email"
+  decision         = "allow"
+  session_duration = "24h"
+
+  include = [
+    {
+      group = {
+        id = cloudflare_zero_trust_access_group.snct_email.id
+      }
+    }
+  ]
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+import {
+  to = cloudflare_zero_trust_access_policy.bypass_any
+  id = "edc628145468437b85dc0e6d48bff3e3/f581fde1-d087-4973-ac95-7d7d1cbe8eef"
+}
+
+resource "cloudflare_zero_trust_access_policy" "bypass_any" {
+  account_id       = local.cloudflare_account_id
+  name             = "bypass any"
+  decision         = "bypass"
+  session_duration = "24h"
+
+  include = [
+    {
+      everyone = {}
+    }
+  ]
+
+  require = [
+    {
+      everyone = {}
+    }
+  ]
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 locals {

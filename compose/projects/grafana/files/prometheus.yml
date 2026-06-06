@@ -19,6 +19,11 @@ scrape_configs:
     scrape_timeout: 10s
     static_configs:
       - targets: ['cadvisor:8080']
+  - job_name: 'docker_compose'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    static_configs:
+      - targets: ['docker_compose_exporter:9487']
   - job_name: 'server_cloudflare'
     scrape_interval: 30s
     scrape_timeout: 15s

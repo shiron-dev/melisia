@@ -2,6 +2,42 @@ locals {
   cloudflare_account_id = "edc628145468437b85dc0e6d48bff3e3"
 }
 
+import {
+  to = cloudflare_zero_trust_access_group.shiron
+  id = "accounts/edc628145468437b85dc0e6d48bff3e3/09b05356-05d0-4f9e-89db-b163531b01dc"
+}
+
+import {
+  to = cloudflare_zero_trust_access_group.snct_email
+  id = "accounts/edc628145468437b85dc0e6d48bff3e3/4bf6790b-1710-49e8-bfec-4287af381a7b"
+}
+
+resource "cloudflare_zero_trust_access_group" "shiron" {
+  account_id = local.cloudflare_account_id
+  name       = "shiron"
+
+  include = [
+    {
+      email = {
+        email = "shiron4710@gmail.com"
+      }
+    }
+  ]
+}
+
+resource "cloudflare_zero_trust_access_group" "snct_email" {
+  account_id = local.cloudflare_account_id
+  name       = "snct email"
+
+  include = [
+    {
+      email_domain = {
+        domain = "ed.cc.suzuka-ct.ac.jp"
+      }
+    }
+  ]
+}
+
 resource "cloudflare_zero_trust_tunnel_cloudflared" "arm_srv" {
   account_id = local.cloudflare_account_id
   name       = "oci-arm"
@@ -44,7 +80,7 @@ resource "cloudflare_zero_trust_access_application" "arm_srv" {
       include = [
         {
           group = {
-            id = local.cloudflare_access_groups.home_login
+            id = cloudflare_zero_trust_access_group.shiron.id
           }
         }
       ]
