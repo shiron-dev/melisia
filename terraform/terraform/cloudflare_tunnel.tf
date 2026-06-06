@@ -53,14 +53,6 @@ locals {
       service         = "http://n8n:5678"
       secret_yaml_dir = "${path.module}/../../compose/hosts/arm-srv/n8n"
       policies        = []
-      extra_ingress = [
-        {
-          hostname  = "n8n-pgadmin.shiron.dev"
-          zone_name = "shiron.dev"
-          service   = "http://pgadmin:80"
-          policies  = []
-        }
-      ]
     }
     "arm-srv-snipeit" = {
       domain          = "snipeit.shiron.dev"
