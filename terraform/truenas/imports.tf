@@ -1,4 +1,9 @@
 import {
+  to = truenas_dataset.datasets["apps"]
+  id = "apps"
+}
+
+import {
   to = truenas_dataset.datasets["apps_apps"]
   id = "apps/apps"
 }
@@ -26,6 +31,11 @@ import {
 import {
   to = truenas_dataset.datasets["apps_apps_nextcloud_userdata"]
   id = "apps/apps/nextcloud/userdata"
+}
+
+import {
+  to = truenas_dataset.datasets["tank"]
+  id = "tank"
 }
 
 import {
