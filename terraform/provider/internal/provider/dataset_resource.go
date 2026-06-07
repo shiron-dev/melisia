@@ -23,16 +23,20 @@ type datasetResource struct {
 }
 
 type datasetResourceModel struct {
-	ID            types.String `tfsdk:"id"`
-	Name          types.String `tfsdk:"name"`
-	Type          types.String `tfsdk:"type"`
-	Atime         types.String `tfsdk:"atime"`
-	Compression   types.String `tfsdk:"compression"`
-	Deduplication types.String `tfsdk:"deduplication"`
-	Exec          types.String `tfsdk:"exec"`
-	Readonly      types.String `tfsdk:"readonly"`
-	Recordsize    types.String `tfsdk:"recordsize"`
-	Sync          types.String `tfsdk:"sync"`
+	ID               types.String `tfsdk:"id"`
+	Name             types.String `tfsdk:"name"`
+	Type             types.String `tfsdk:"type"`
+	Atime            types.String `tfsdk:"atime"`
+	Compression      types.String `tfsdk:"compression"`
+	Copies           types.Int64  `tfsdk:"copies"`
+	Deduplication    types.String `tfsdk:"deduplication"`
+	Exec             types.String `tfsdk:"exec"`
+	ForceDestroy     types.Bool   `tfsdk:"force_destroy"`
+	Readonly         types.String `tfsdk:"readonly"`
+	Recordsize       types.String `tfsdk:"recordsize"`
+	Snapdir          types.String `tfsdk:"snapdir"`
+	Sync             types.String `tfsdk:"sync"`
+	RecursiveDestroy types.Bool   `tfsdk:"recursive_destroy"`
 }
 
 func NewDatasetResource() resource.Resource {
@@ -76,6 +80,10 @@ func (r *datasetResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Required:    true,
 				Description: "Dataset compression property.",
 			},
+			"copies": schema.Int64Attribute{
+				Required:    true,
+				Description: "Dataset copies property.",
+			},
 			"deduplication": schema.StringAttribute{
 				Required:    true,
 				Description: "Dataset deduplication property.",
@@ -83,6 +91,10 @@ func (r *datasetResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			"exec": schema.StringAttribute{
 				Required:    true,
 				Description: "Dataset exec property.",
+			},
+			"force_destroy": schema.BoolAttribute{
+				Required:    true,
+				Description: "Whether Terraform may force dataset deletion.",
 			},
 			"readonly": schema.StringAttribute{
 				Required:    true,
@@ -92,9 +104,17 @@ func (r *datasetResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Required:    true,
 				Description: "Dataset recordsize property.",
 			},
+			"snapdir": schema.StringAttribute{
+				Required:    true,
+				Description: "Dataset snapdir property.",
+			},
 			"sync": schema.StringAttribute{
 				Required:    true,
 				Description: "Dataset sync property.",
+			},
+			"recursive_destroy": schema.BoolAttribute{
+				Required:    true,
+				Description: "Whether Terraform may recursively delete child datasets.",
 			},
 		},
 	}
@@ -190,26 +210,37 @@ func modelToDataset(model datasetResourceModel) client.Dataset {
 		Type:          model.Type.ValueString(),
 		Atime:         model.Atime.ValueString(),
 		Compression:   model.Compression.ValueString(),
+		Copies:        model.Copies.ValueInt64(),
 		Deduplication: model.Deduplication.ValueString(),
 		Exec:          model.Exec.ValueString(),
 		Readonly:      model.Readonly.ValueString(),
 		Recordsize:    model.Recordsize.ValueString(),
+		Snapdir:       model.Snapdir.ValueString(),
 		Sync:          model.Sync.ValueString(),
 	}
 }
 
 func datasetToModel(dataset client.Dataset, fallback datasetResourceModel) datasetResourceModel {
+	copies := dataset.Copies
+	if copies == 0 {
+		copies = fallback.Copies.ValueInt64()
+	}
+
 	return datasetResourceModel{
-		ID:            types.StringValue(firstNonEmpty(dataset.ID, dataset.Name, fallback.ID.ValueString(), fallback.Name.ValueString())),
-		Name:          types.StringValue(firstNonEmpty(dataset.Name, fallback.Name.ValueString())),
-		Type:          types.StringValue(firstNonEmpty(dataset.Type, fallback.Type.ValueString())),
-		Atime:         types.StringValue(firstNonEmpty(dataset.Atime, fallback.Atime.ValueString())),
-		Compression:   types.StringValue(firstNonEmpty(dataset.Compression, fallback.Compression.ValueString())),
-		Deduplication: types.StringValue(firstNonEmpty(dataset.Deduplication, fallback.Deduplication.ValueString())),
-		Exec:          types.StringValue(firstNonEmpty(dataset.Exec, fallback.Exec.ValueString())),
-		Readonly:      types.StringValue(firstNonEmpty(dataset.Readonly, fallback.Readonly.ValueString())),
-		Recordsize:    types.StringValue(firstNonEmpty(dataset.Recordsize, fallback.Recordsize.ValueString())),
-		Sync:          types.StringValue(firstNonEmpty(dataset.Sync, fallback.Sync.ValueString())),
+		ID:               types.StringValue(firstNonEmpty(dataset.ID, dataset.Name, fallback.ID.ValueString(), fallback.Name.ValueString())),
+		Name:             types.StringValue(firstNonEmpty(dataset.Name, fallback.Name.ValueString())),
+		Type:             types.StringValue(firstNonEmpty(dataset.Type, fallback.Type.ValueString())),
+		Atime:            types.StringValue(firstNonEmpty(dataset.Atime, fallback.Atime.ValueString())),
+		Compression:      types.StringValue(firstNonEmpty(dataset.Compression, fallback.Compression.ValueString())),
+		Copies:           types.Int64Value(copies),
+		Deduplication:    types.StringValue(firstNonEmpty(dataset.Deduplication, fallback.Deduplication.ValueString())),
+		Exec:             types.StringValue(firstNonEmpty(dataset.Exec, fallback.Exec.ValueString())),
+		ForceDestroy:     types.BoolValue(fallback.ForceDestroy.ValueBool()),
+		Readonly:         types.StringValue(firstNonEmpty(dataset.Readonly, fallback.Readonly.ValueString())),
+		Recordsize:       types.StringValue(firstNonEmpty(dataset.Recordsize, fallback.Recordsize.ValueString())),
+		Snapdir:          types.StringValue(firstNonEmpty(dataset.Snapdir, fallback.Snapdir.ValueString())),
+		Sync:             types.StringValue(firstNonEmpty(dataset.Sync, fallback.Sync.ValueString())),
+		RecursiveDestroy: types.BoolValue(fallback.RecursiveDestroy.ValueBool()),
 	}
 }
 

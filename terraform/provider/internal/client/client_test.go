@@ -224,10 +224,12 @@ func TestGetDatasetEscapesIDAndNormalizesProperties(t *testing.T) {
 		Type:          "FILESYSTEM",
 		Atime:         "ON",
 		Compression:   "LZ4",
+		Copies:        1,
 		Deduplication: "OFF",
 		Exec:          "ON",
 		Readonly:      "OFF",
 		Recordsize:    "128K",
+		Snapdir:       "HIDDEN",
 		Sync:          "STANDARD",
 	}
 	if got != want {
@@ -239,7 +241,7 @@ func TestCreateDatasetSendsExpectedBody(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requireMethodPath(t, r, http.MethodPost, "/api/v2.0/pool/dataset")
 
-		var body map[string]string
+		var body map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Fatal(err)
 		}
@@ -247,10 +249,12 @@ func TestCreateDatasetSendsExpectedBody(t *testing.T) {
 		assertBodyValue(t, body, "type", "FILESYSTEM")
 		assertBodyValue(t, body, "atime", "ON")
 		assertBodyValue(t, body, "compression", "LZ4")
+		assertBodyValue(t, body, "copies", float64(1))
 		assertBodyValue(t, body, "deduplication", "OFF")
 		assertBodyValue(t, body, "exec", "ON")
 		assertBodyValue(t, body, "readonly", "OFF")
 		assertBodyValue(t, body, "recordsize", "128K")
+		assertBodyValue(t, body, "snapdir", "HIDDEN")
 		assertBodyValue(t, body, "sync", "STANDARD")
 
 		w.Header().Set("Content-Type", "application/json")
@@ -407,7 +411,7 @@ func TestUpdateDatasetSendsOnlyMutablePropertiesAndFallsBackToRead(t *testing.T)
 		switch requests {
 		case 1:
 			requireMethodPath(t, r, http.MethodPut, "/api/v2.0/pool/dataset/id/apps/apps")
-			var body map[string]string
+			var body map[string]any
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatal(err)
 			}
@@ -418,6 +422,8 @@ func TestUpdateDatasetSendsOnlyMutablePropertiesAndFallsBackToRead(t *testing.T)
 				t.Fatal("update body must not include type")
 			}
 			assertBodyValue(t, body, "compression", "LZ4")
+			assertBodyValue(t, body, "copies", float64(1))
+			assertBodyValue(t, body, "snapdir", "HIDDEN")
 			w.WriteHeader(http.StatusNoContent)
 		case 2:
 			requireMethodPath(t, r, http.MethodGet, "/api/v2.0/pool/dataset/id/apps/apps")
@@ -501,6 +507,7 @@ func TestDatasetFromAPIFallsBackToID(t *testing.T) {
 	dataset := datasetFromAPI(map[string]any{
 		"id":         "tank/users",
 		"recordsize": map[string]any{"parsed": "131072"},
+		"copies":     map[string]any{"parsed": float64(1)},
 	})
 
 	if dataset.ID != "tank/users" {
@@ -511,6 +518,9 @@ func TestDatasetFromAPIFallsBackToID(t *testing.T) {
 	}
 	if dataset.Recordsize != "128K" {
 		t.Fatalf("got recordsize %q, want 128K", dataset.Recordsize)
+	}
+	if dataset.Copies != 1 {
+		t.Fatalf("got copies %d, want 1", dataset.Copies)
 	}
 }
 
@@ -621,7 +631,7 @@ func requireMethodPath(t *testing.T, r *http.Request, method, path string) {
 	}
 }
 
-func assertBodyValue(t *testing.T, body map[string]string, key, want string) {
+func assertBodyValue(t *testing.T, body map[string]any, key string, want any) {
 	t.Helper()
 
 	if got := body[key]; got != want {
@@ -636,10 +646,12 @@ func testDataset(name string) Dataset {
 		Type:          "FILESYSTEM",
 		Atime:         "ON",
 		Compression:   "LZ4",
+		Copies:        1,
 		Deduplication: "OFF",
 		Exec:          "ON",
 		Readonly:      "OFF",
 		Recordsize:    "128K",
+		Snapdir:       "HIDDEN",
 		Sync:          "STANDARD",
 	}
 }
@@ -650,10 +662,12 @@ func datasetJSON(name string) string {
 		"type":{"parsed":"filesystem"},
 		"atime":{"parsed":"on"},
 		"compression":{"parsed":"lz4"},
+		"copies":{"parsed":1},
 		"deduplication":{"parsed":"off"},
 		"exec":{"parsed":"on"},
 		"readonly":{"parsed":"off"},
 		"recordsize":{"parsed":"131072"},
+		"snapdir":{"parsed":"hidden"},
 		"sync":{"parsed":"standard"}
 	}`
 }

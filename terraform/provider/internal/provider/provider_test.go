@@ -84,11 +84,15 @@ func TestDatasetResourceMetadataAndSchema(t *testing.T) {
 		"type",
 		"atime",
 		"compression",
+		"copies",
 		"deduplication",
 		"exec",
+		"force_destroy",
 		"readonly",
 		"recordsize",
+		"snapdir",
 		"sync",
+		"recursive_destroy",
 	}
 	for _, name := range required {
 		attr, ok := schemaResp.Schema.Attributes[name]
@@ -223,15 +227,19 @@ func TestPoolDataSourceConfigure(t *testing.T) {
 
 func TestModelToDatasetUsesNameAsIDFallback(t *testing.T) {
 	got := modelToDataset(datasetResourceModel{
-		Name:          types.StringValue("apps/apps"),
-		Type:          types.StringValue("FILESYSTEM"),
-		Atime:         types.StringValue("ON"),
-		Compression:   types.StringValue("LZ4"),
-		Deduplication: types.StringValue("OFF"),
-		Exec:          types.StringValue("ON"),
-		Readonly:      types.StringValue("OFF"),
-		Recordsize:    types.StringValue("128K"),
-		Sync:          types.StringValue("STANDARD"),
+		Name:             types.StringValue("apps/apps"),
+		Type:             types.StringValue("FILESYSTEM"),
+		Atime:            types.StringValue("ON"),
+		Compression:      types.StringValue("LZ4"),
+		Copies:           types.Int64Value(1),
+		Deduplication:    types.StringValue("OFF"),
+		Exec:             types.StringValue("ON"),
+		ForceDestroy:     types.BoolValue(false),
+		Readonly:         types.StringValue("OFF"),
+		Recordsize:       types.StringValue("128K"),
+		Snapdir:          types.StringValue("HIDDEN"),
+		Sync:             types.StringValue("STANDARD"),
+		RecursiveDestroy: types.BoolValue(false),
 	})
 
 	want := client.Dataset{
@@ -240,10 +248,12 @@ func TestModelToDatasetUsesNameAsIDFallback(t *testing.T) {
 		Type:          "FILESYSTEM",
 		Atime:         "ON",
 		Compression:   "LZ4",
+		Copies:        1,
 		Deduplication: "OFF",
 		Exec:          "ON",
 		Readonly:      "OFF",
 		Recordsize:    "128K",
+		Snapdir:       "HIDDEN",
 		Sync:          "STANDARD",
 	}
 	if got != want {
@@ -264,16 +274,20 @@ func TestModelToDatasetKeepsExplicitID(t *testing.T) {
 
 func TestDatasetToModelUsesAPIFactsBeforeFallback(t *testing.T) {
 	fallback := datasetResourceModel{
-		ID:            types.StringValue("fallback-id"),
-		Name:          types.StringValue("fallback-name"),
-		Type:          types.StringValue("FILESYSTEM"),
-		Atime:         types.StringValue("OFF"),
-		Compression:   types.StringValue("GZIP"),
-		Deduplication: types.StringValue("ON"),
-		Exec:          types.StringValue("OFF"),
-		Readonly:      types.StringValue("ON"),
-		Recordsize:    types.StringValue("64K"),
-		Sync:          types.StringValue("ALWAYS"),
+		ID:               types.StringValue("fallback-id"),
+		Name:             types.StringValue("fallback-name"),
+		Type:             types.StringValue("FILESYSTEM"),
+		Atime:            types.StringValue("OFF"),
+		Compression:      types.StringValue("GZIP"),
+		Copies:           types.Int64Value(2),
+		Deduplication:    types.StringValue("ON"),
+		Exec:             types.StringValue("OFF"),
+		ForceDestroy:     types.BoolValue(true),
+		Readonly:         types.StringValue("ON"),
+		Recordsize:       types.StringValue("64K"),
+		Snapdir:          types.StringValue("VISIBLE"),
+		Sync:             types.StringValue("ALWAYS"),
+		RecursiveDestroy: types.BoolValue(true),
 	}
 
 	got := datasetToModel(client.Dataset{
@@ -282,10 +296,12 @@ func TestDatasetToModelUsesAPIFactsBeforeFallback(t *testing.T) {
 		Type:          "FILESYSTEM",
 		Atime:         "ON",
 		Compression:   "LZ4",
+		Copies:        1,
 		Deduplication: "OFF",
 		Exec:          "ON",
 		Readonly:      "OFF",
 		Recordsize:    "128K",
+		Snapdir:       "HIDDEN",
 		Sync:          "STANDARD",
 	}, fallback)
 
@@ -298,20 +314,36 @@ func TestDatasetToModelUsesAPIFactsBeforeFallback(t *testing.T) {
 	if got.Recordsize.ValueString() != "128K" {
 		t.Fatalf("got recordsize %q, want 128K", got.Recordsize.ValueString())
 	}
+	if got.Copies.ValueInt64() != 1 {
+		t.Fatalf("got copies %d, want 1", got.Copies.ValueInt64())
+	}
+	if got.Snapdir.ValueString() != "HIDDEN" {
+		t.Fatalf("got snapdir %q, want HIDDEN", got.Snapdir.ValueString())
+	}
+	if !got.ForceDestroy.ValueBool() {
+		t.Fatal("force_destroy should be preserved from fallback")
+	}
+	if !got.RecursiveDestroy.ValueBool() {
+		t.Fatal("recursive_destroy should be preserved from fallback")
+	}
 }
 
 func TestDatasetToModelUsesFallbackWhenAPILeavesFieldsEmpty(t *testing.T) {
 	got := datasetToModel(client.Dataset{}, datasetResourceModel{
-		ID:            types.StringValue("fallback-id"),
-		Name:          types.StringValue("fallback-name"),
-		Type:          types.StringValue("FILESYSTEM"),
-		Atime:         types.StringValue("ON"),
-		Compression:   types.StringValue("LZ4"),
-		Deduplication: types.StringValue("OFF"),
-		Exec:          types.StringValue("ON"),
-		Readonly:      types.StringValue("OFF"),
-		Recordsize:    types.StringValue("128K"),
-		Sync:          types.StringValue("STANDARD"),
+		ID:               types.StringValue("fallback-id"),
+		Name:             types.StringValue("fallback-name"),
+		Type:             types.StringValue("FILESYSTEM"),
+		Atime:            types.StringValue("ON"),
+		Compression:      types.StringValue("LZ4"),
+		Copies:           types.Int64Value(1),
+		Deduplication:    types.StringValue("OFF"),
+		Exec:             types.StringValue("ON"),
+		ForceDestroy:     types.BoolValue(false),
+		Readonly:         types.StringValue("OFF"),
+		Recordsize:       types.StringValue("128K"),
+		Snapdir:          types.StringValue("HIDDEN"),
+		Sync:             types.StringValue("STANDARD"),
+		RecursiveDestroy: types.BoolValue(false),
 	})
 
 	if got.ID.ValueString() != "fallback-id" {
@@ -322,6 +354,12 @@ func TestDatasetToModelUsesFallbackWhenAPILeavesFieldsEmpty(t *testing.T) {
 	}
 	if got.Sync.ValueString() != "STANDARD" {
 		t.Fatalf("got sync %q, want STANDARD", got.Sync.ValueString())
+	}
+	if got.Copies.ValueInt64() != 1 {
+		t.Fatalf("got copies %d, want 1", got.Copies.ValueInt64())
+	}
+	if got.Snapdir.ValueString() != "HIDDEN" {
+		t.Fatalf("got snapdir %q, want HIDDEN", got.Snapdir.ValueString())
 	}
 }
 

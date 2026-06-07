@@ -35,10 +35,12 @@ type Dataset struct {
 	Type          string
 	Atime         string
 	Compression   string
+	Copies        int64
 	Deduplication string
 	Exec          string
 	Readonly      string
 	Recordsize    string
+	Snapdir       string
 	Sync          string
 }
 
@@ -127,10 +129,12 @@ func (c *Client) CreateDataset(ctx context.Context, dataset Dataset) (Dataset, e
 		"type":          dataset.Type,
 		"atime":         dataset.Atime,
 		"compression":   dataset.Compression,
+		"copies":        dataset.Copies,
 		"deduplication": dataset.Deduplication,
 		"exec":          dataset.Exec,
 		"readonly":      dataset.Readonly,
 		"recordsize":    dataset.Recordsize,
+		"snapdir":       dataset.Snapdir,
 		"sync":          dataset.Sync,
 	}
 
@@ -165,10 +169,12 @@ func (c *Client) UpdateDataset(ctx context.Context, dataset Dataset) (Dataset, e
 	body := map[string]any{
 		"atime":         dataset.Atime,
 		"compression":   dataset.Compression,
+		"copies":        dataset.Copies,
 		"deduplication": dataset.Deduplication,
 		"exec":          dataset.Exec,
 		"readonly":      dataset.Readonly,
 		"recordsize":    dataset.Recordsize,
+		"snapdir":       dataset.Snapdir,
 		"sync":          dataset.Sync,
 	}
 
@@ -266,10 +272,12 @@ func datasetFromAPI(raw map[string]any) Dataset {
 		Type:          propertyString(raw["type"]),
 		Atime:         propertyString(raw["atime"]),
 		Compression:   propertyString(raw["compression"]),
+		Copies:        propertyInt64(raw["copies"]),
 		Deduplication: propertyString(raw["deduplication"]),
 		Exec:          propertyString(raw["exec"]),
 		Readonly:      propertyString(raw["readonly"]),
 		Recordsize:    recordsizeString(raw["recordsize"]),
+		Snapdir:       propertyString(raw["snapdir"]),
 		Sync:          propertyString(raw["sync"]),
 	}
 }
@@ -308,6 +316,22 @@ func propertyString(value any) string {
 	}
 
 	return strings.ToUpper(stringValue(value))
+}
+
+func propertyInt64(value any) int64 {
+	if property, ok := value.(map[string]any); ok {
+		if parsed := int64Value(property["parsed"]); parsed != 0 {
+			return parsed
+		}
+		if raw := int64Value(property["rawvalue"]); raw != 0 {
+			return raw
+		}
+		if value := int64Value(property["value"]); value != 0 {
+			return value
+		}
+	}
+
+	return int64Value(value)
 }
 
 func recordsizeString(value any) string {
