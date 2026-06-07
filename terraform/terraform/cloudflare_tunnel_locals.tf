@@ -55,6 +55,18 @@ locals {
           zone_name = "melisia.net"
           service   = "http://esphome:6052"
           policies  = local.cloudflare_access_policy_refs.shiron
+        },
+        {
+          hostname  = "home-ep-blackbox.melisia.net"
+          zone_name = "melisia.net"
+          service   = "http://home_ep_blackbox_exporter:9115"
+          policies  = local.cloudflare_access_policy_refs.shiron
+        },
+        {
+          hostname  = "home-ep-speedtest.melisia.net"
+          zone_name = "melisia.net"
+          service   = "http://home_ep_speedtest_exporter:9798"
+          policies  = local.cloudflare_access_policy_refs.shiron
         }
       ]
     }
