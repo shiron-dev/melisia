@@ -21,8 +21,13 @@ certificate trusted by the machine running manual refresh, plan, or apply.
 
 Imported storage resources:
 
-- ZFS datasets under `apps/apps` and `tank/{users,apps}` are declared in
+- ZFS datasets under `apps/apps` and `tank/users` are declared in
   `datasets.tf` and imported through `imports.tf`.
+
+Removed storage resources:
+
+- `tank/apps` and its former Nextcloud child datasets were deleted from TrueNAS
+  and removed from Terraform state on 2026-06-07.
 
 Tracked but not imported:
 

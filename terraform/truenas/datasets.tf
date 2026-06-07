@@ -40,36 +40,6 @@ locals {
       name        = "users/shiron"
       compression = "LZ4"
     }
-    tank_apps = {
-      pool        = "tank"
-      name        = "apps"
-      compression = "LZ4"
-    }
-    tank_apps_nextcloud = {
-      pool        = "tank"
-      name        = "apps/nextcloud"
-      compression = "LZ4"
-    }
-    tank_apps_nextcloud_config = {
-      pool        = "tank"
-      name        = "apps/nextcloud/config"
-      compression = "LZ4"
-    }
-    tank_apps_nextcloud_userdata = {
-      pool        = "tank"
-      name        = "apps/nextcloud/userdata"
-      compression = "LZ4"
-    }
-    tank_apps_nextcloud_appdata = {
-      pool        = "tank"
-      name        = "apps/nextcloud/appdata"
-      compression = "LZ4"
-    }
-    tank_apps_nextcloud_pgdata = {
-      pool        = "tank"
-      name        = "apps/nextcloud/pgdata"
-      compression = "LZ4"
-    }
   }
 }
 
