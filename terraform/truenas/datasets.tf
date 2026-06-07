@@ -1,43 +1,53 @@
 locals {
   datasets = {
+    apps = {
+      pool        = "apps"
+      full_name   = "apps"
+      compression = "LZ4"
+    }
     apps_apps = {
       pool        = "apps"
-      name        = "apps"
+      full_name   = "apps/apps"
       compression = "LZ4"
     }
     apps_apps_nextcloud = {
       pool        = "apps"
-      name        = "apps/nextcloud"
+      full_name   = "apps/apps/nextcloud"
       compression = "LZ4"
     }
     apps_apps_nextcloud_pgdata = {
       pool        = "apps"
-      name        = "apps/nextcloud/pgdata"
+      full_name   = "apps/apps/nextcloud/pgdata"
       compression = "LZ4"
     }
     apps_apps_nextcloud_appdata = {
       pool        = "apps"
-      name        = "apps/nextcloud/appdata"
+      full_name   = "apps/apps/nextcloud/appdata"
       compression = "LZ4"
     }
     apps_apps_nextcloud_config = {
       pool        = "apps"
-      name        = "apps/nextcloud/config"
+      full_name   = "apps/apps/nextcloud/config"
       compression = "LZ4"
     }
     apps_apps_nextcloud_userdata = {
       pool        = "apps"
-      name        = "apps/nextcloud/userdata"
+      full_name   = "apps/apps/nextcloud/userdata"
+      compression = "LZ4"
+    }
+    tank = {
+      pool        = "tank"
+      full_name   = "tank"
       compression = "LZ4"
     }
     tank_users = {
       pool        = "tank"
-      name        = "users"
+      full_name   = "tank/users"
       compression = "LZ4"
     }
     tank_users_shiron = {
       pool        = "tank"
-      name        = "users/shiron"
+      full_name   = "tank/users/shiron"
       compression = "LZ4"
     }
   }
@@ -46,7 +56,7 @@ locals {
 resource "truenas_dataset" "datasets" {
   for_each = local.datasets
 
-  name = "${data.truenas_pool.pools[each.value.pool].name}/${each.value.name}"
+  name = each.value.full_name
   type = "FILESYSTEM"
 
   atime         = "ON"
