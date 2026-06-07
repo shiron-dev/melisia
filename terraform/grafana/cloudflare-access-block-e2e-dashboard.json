@@ -92,7 +92,7 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "min(max_over_time(probe_success{job=\"cloudflare_access_block_e2e\",edge_auth=\"cloudflare_access_block\"}[2h]))",
+          "expr": "min(last_over_time(probe_success{job=\"cloudflare_access_block_e2e\",edge_auth=\"cloudflare_access_block\"}[2h]))",
           "instant": true,
           "legendFormat": "all domains",
           "range": false,
@@ -159,7 +159,7 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "count(max_over_time(probe_success{job=\"cloudflare_access_block_e2e\",edge_auth=\"cloudflare_access_block\"}[2h]) == 0) or vector(0)",
+          "expr": "count(last_over_time(probe_success{job=\"cloudflare_access_block_e2e\",edge_auth=\"cloudflare_access_block\"}[2h]) == 0) or vector(0)",
           "instant": true,
           "legendFormat": "not blocked",
           "range": false,
@@ -338,7 +338,7 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "max_over_time(probe_success{job=\"cloudflare_access_block_e2e\",edge_auth=\"cloudflare_access_block\"}[2h])",
+          "expr": "last_over_time(probe_success{job=\"cloudflare_access_block_e2e\",edge_auth=\"cloudflare_access_block\"}[2h])",
           "legendFormat": "{{ target_server }} {{ host }}",
           "range": true,
           "refId": "A"
@@ -422,7 +422,7 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "max_over_time(probe_success{job=\"cloudflare_access_block_e2e\",edge_auth=\"cloudflare_access_block\"}[2h])",
+          "expr": "last_over_time(probe_success{job=\"cloudflare_access_block_e2e\",edge_auth=\"cloudflare_access_block\"}[2h])",
           "format": "table",
           "instant": true,
           "legendFormat": "{{ host }}",
