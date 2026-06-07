@@ -214,31 +214,37 @@ infracost-breakdown: terraform-plan
 sops-encrypt:
 	@echo "Encrypting with SOPS..."; \
 	if [ -n "$(FILE)" ]; then \
-		if [ -f "$(FILE)" ] && [ "$${FILE##*.}" != "sops" ]; then FILES="$(FILE)"; \
+		if [ -f "$(FILE)" ] && [ "$${FILE##*.}" != "sops" ] && [ "$${FILE#*.sops.}" = "$(FILE)" ]; then FILES="$(FILE)"; \
 		elif [ -f "$(FILE)" ] && [ "$${FILE##*.}" = "sops" ]; then base="$${FILE%.sops}"; if [ -f "$$base" ]; then FILES="$$base"; else echo "Error: plaintext $$base not found for $(FILE)" >&2; exit 1; fi; \
+		elif [ -f "$(FILE)" ] && [ "$${FILE#*.sops.}" != "$(FILE)" ]; then base="$$(printf '%s\n' "$(FILE)" | sed 's/\.sops\././')"; if [ -f "$$base" ]; then FILES="$$base"; else echo "Error: plaintext $$base not found for $(FILE)" >&2; exit 1; fi; \
 		elif [ -f "$(FILE).sops" ]; then base="$(FILE)"; if [ -f "$$base" ]; then FILES="$$base"; else echo "Error: plaintext $$base not found (got $(FILE).sops)" >&2; exit 1; fi; \
 		else echo "Error: $(FILE) not found" >&2; exit 1; fi; \
 	else \
-		FILES="$$(find . -name "*.secrets.*" -type f ! -name "*.sops")"; \
+		FILES="$$(find . -name "*.secrets.*" -type f ! -name "*.sops" ! -name "*.sops.*")"; \
 	fi; \
 	for file in $$FILES; do \
+		target="$$file.sops"; \
+		ext="$${file##*.}"; \
+		stem="$${file%.*}"; \
+		if [ -f "$$stem.sops.$$ext" ]; then target="$$stem.sops.$$ext"; fi; \
 		echo "Encrypting $$file..."; \
-		sops --output-type json --encrypt "$$file" > "$$file.sops"; \
+		sops --output-type json --encrypt "$$file" > "$$target"; \
 	done
 
 .PHONY: sops-decrypt
 sops-decrypt:
 	@echo "Decrypting with SOPS..."; \
 	if [ -n "$(FILE)" ]; then \
-		if [ -f "$(FILE)" ]; then FILES="$(FILE)"; \
-		elif [ -f "$(FILE).sops" ]; then FILES="$(FILE).sops"; \
-		else echo "Error: $(FILE) or $(FILE).sops not found" >&2; exit 1; fi; \
+		file_arg="$(FILE)"; \
+		if [ -f "$$file_arg" ]; then FILES="$$file_arg"; \
+		elif [ -f "$$file_arg.sops" ]; then FILES="$$file_arg.sops"; \
+		else ext="$${file_arg##*.}"; stem="$${file_arg%.*}"; if [ -f "$$stem.sops.$$ext" ]; then FILES="$$stem.sops.$$ext"; else echo "Error: $$file_arg, $$file_arg.sops, or $$stem.sops.$$ext not found" >&2; exit 1; fi; fi; \
 	else \
-		FILES="$$(find . -name "*.secrets.*.sops" -type f)"; \
+		FILES="$$(find . \( -name "*.secrets.*.sops" -o -name "*.secrets.sops.*" \) -type f)"; \
 	fi; \
 	for file in $$FILES; do \
 		echo "Decrypting $$file..."; \
-		base="$${file%.sops}"; \
+		if [ "$${file##*.}" = "sops" ]; then base="$${file%.sops}"; else base="$$(printf '%s\n' "$$file" | sed 's/\.sops\././')"; fi; \
 		ext="$${base##*.}"; \
 		case "$$ext" in \
 		  yaml|yml) output_type="yaml" ;; \
@@ -253,6 +259,7 @@ sops-edit:
 	if [ -n "$(FILE)" ]; then \
 		base="$(FILE)"; \
 		[ "$${base%.sops}" != "$$base" ] && base="$${base%.sops}"; \
+		[ "$${base#*.sops.}" != "$$base" ] && base="$$(printf '%s\n' "$$base" | sed 's/\.sops\././')"; \
 		echo "Edit the decrypted file(s). Press Enter when done to re-encrypt."; \
 		code --wait "$$base"; \
 		$(MAKE) sops-encrypt FILE="$$base"; \
@@ -265,7 +272,7 @@ sops-edit:
 .PHONY: sops-ci
 sops-ci:
 	@echo "Checking for unencrypted secrets tracked by git..."; \
-	FILES="$$(find . -name '*.secrets.*' ! -name '*.secrets.*.sops' -type f)"; \
+	FILES="$$(find . -name '*.secrets.*' ! -name '*.secrets.*.sops' ! -name '*.secrets.sops.*' -type f)"; \
 	EXIT=0; \
 	for file in $$FILES; do \
 		if git ls-files --error-unmatch "$$file" >/dev/null 2>&1; then \

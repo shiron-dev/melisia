@@ -35,8 +35,8 @@ export default {
       return jsonResponse({ error: "invalid json" }, 400);
     }
 
-    if (!isMeshIpv4(body.ip)) {
-      return jsonResponse({ error: "ip must be within 100.96.0.0/12" }, 400);
+    if (!isAllowedPrivateIpv4(body.ip)) {
+      return jsonResponse({ error: "ip must be within an allowed private IPv4 range" }, 400);
     }
 
     const update = await fetch(
@@ -148,14 +148,28 @@ async function findAccessJwk(teamDomain, kid) {
   return jwk;
 }
 
-function isMeshIpv4(value) {
+function isAllowedPrivateIpv4(value) {
   if (typeof value !== "string") {
     return false;
   }
 
+  const octets = parseIpv4(value);
+  if (!octets) {
+    return false;
+  }
+
+  return (
+    octets[0] === 10 ||
+    (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) ||
+    (octets[0] === 192 && octets[1] === 168) ||
+    (octets[0] === 100 && octets[1] >= 96 && octets[1] <= 111)
+  );
+}
+
+function parseIpv4(value) {
   const parts = value.split(".");
   if (parts.length !== 4) {
-    return false;
+    return null;
   }
 
   const octets = parts.map((part) => {
@@ -166,10 +180,10 @@ function isMeshIpv4(value) {
   });
 
   if (octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) {
-    return false;
+    return null;
   }
 
-  return octets[0] === 100 && octets[1] >= 96 && octets[1] <= 111;
+  return octets;
 }
 
 function base64UrlDecodeToString(value) {

@@ -1,4 +1,5 @@
 *.secrets.*
 !*.secrets.*.sops
+!*.secrets.sops.yml
 .local/
 terraform/truenas/.terraform.lock.hcl
