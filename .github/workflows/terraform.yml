@@ -142,7 +142,9 @@ jobs:
         run: |
           cd "${{ matrix.target.path }}"
           if [[ "${{ matrix.target.path }}" == "terraform/truenas" ]]; then
-            mv .terraform.lock.hcl .terraform.lock.hcl.ci-disabled
+            if [[ -f .terraform.lock.hcl ]]; then
+              mv .terraform.lock.hcl .terraform.lock.hcl.ci-disabled
+            fi
             TF_CLI_CONFIG_FILE="${GITHUB_WORKSPACE}/.local/terraform-provider-truenas.tfrc" terraform init -backend=false
           else
             terraform init -backend=false

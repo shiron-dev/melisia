@@ -7,7 +7,6 @@ on:
     paths:
       - ".github/workflows/truenas-provider.yml"
       - "terraform/provider/**"
-      - "terraform/truenas/.terraform.lock.hcl"
       - "terraform/truenas/provider.tf"
       - "terraform/truenas/variables.tf"
   workflow_dispatch:
