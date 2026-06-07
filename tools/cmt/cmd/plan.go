@@ -81,7 +81,7 @@ func bindPlanFlags(
 	digestFile *string,
 ) {
 	planCommand.Flags().StringSliceVar(hostFilter, "host", nil, "filter by host name (repeatable)")
-	planCommand.Flags().StringSliceVar(projectFilter, "project", nil, "filter by project name (repeatable)")
+	bindProjectFilterFlags(planCommand, projectFilter)
 	planCommand.Flags().BoolVar(exitCode, "exit-code", false,
 		"exit with 0 when no changes, 1 on error, 2 when changes exist")
 	planCommand.Flags().BoolVar(exitCode, "exit-status", false,

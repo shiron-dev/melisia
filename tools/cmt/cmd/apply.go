@@ -77,7 +77,7 @@ func bindApplyFlags(
 	expectedPlanSHA256 *string,
 ) {
 	applyCommand.Flags().StringSliceVar(hostFilter, "host", nil, "filter by host name (repeatable)")
-	applyCommand.Flags().StringSliceVar(projectFilter, "project", nil, "filter by project name (repeatable)")
+	bindProjectFilterFlags(applyCommand, projectFilter)
 	applyCommand.Flags().BoolVar(autoApprove, "auto-approve", false, "skip confirmation prompt")
 	applyCommand.Flags().BoolVar(
 		refreshManifestOnNoop,
