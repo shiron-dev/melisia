@@ -74,7 +74,6 @@ scrape_configs:
           edge_auth: cloudflare_access_block
           target_server: arm-srv
       - targets:
-          - https://home.melisia.net/
           - https://zigbee2mqtt.melisia.net/
           - https://switchbot-mqtt.melisia.net/
           - https://esphome.melisia.net/
@@ -92,6 +91,47 @@ scrape_configs:
         replacement: '$1'
       - target_label: __address__
         replacement: blackbox_exporter:9115
+  - job_name: 'home_ep_icmp'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    scheme: https
+    metrics_path: /probe
+    http_headers:
+      CF-Access-Client-Id:
+        secrets: ["{{ .cloudflare_access_e2e_client_id }}"]
+      CF-Access-Client-Secret:
+        secrets: ["{{ .cloudflare_access_e2e_client_secret }}"]
+    params:
+      module: [icmp_8_8_8_8]
+    static_configs:
+      - targets:
+          - 8.8.8.8
+        labels:
+          probe_server: home-ep
+          target_server: google-public-dns
+          check: icmp
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: home-ep-blackbox.melisia.net
+  - job_name: 'home_ep_speedtest'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    scheme: https
+    http_headers:
+      CF-Access-Client-Id:
+        secrets: ["{{ .cloudflare_access_e2e_client_id }}"]
+      CF-Access-Client-Secret:
+        secrets: ["{{ .cloudflare_access_e2e_client_secret }}"]
+    static_configs:
+      - targets:
+          - home-ep-speedtest.melisia.net
+        labels:
+          probe_server: home-ep
+          target_server: speed.cloudflare.com
 
 remote_write:
   - url: "http://victoriametrics:8428/api/v1/write"
