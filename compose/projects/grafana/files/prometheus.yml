@@ -24,28 +24,6 @@ scrape_configs:
     scrape_timeout: 10s
     static_configs:
       - targets: ['docker_compose_exporter:9487']
-  - job_name: 'server_cloudflare'
-    scrape_interval: 30s
-    scrape_timeout: 15s
-    metrics_path: /probe
-    params:
-      module: [cloudflare_tunnel_http_2xx]
-    static_configs:
-      - targets:
-          - https://home.melisia.net/
-        labels:
-          check: http
-          edge_auth: passthrough
-          host: home.melisia.net
-          route: cloudflare
-          target_server: home-ep
-    relabel_configs:
-      - source_labels: [__address__]
-        target_label: __param_target
-      - source_labels: [__param_target]
-        target_label: instance
-      - target_label: __address__
-        replacement: blackbox_exporter:9115
   - job_name: 'cloudflare_tunnel_e2e'
     scrape_interval: 30s
     scrape_timeout: 15s
