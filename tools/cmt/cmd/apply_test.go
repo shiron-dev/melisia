@@ -2,11 +2,14 @@ package cmd
 
 import (
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/shiron-dev/melisia/tools/cmt/internal/config"
 	"github.com/shiron-dev/melisia/tools/cmt/internal/syncer"
+
+	"github.com/spf13/cobra"
 )
 
 func TestVerifyExpectedPlanSHA256(t *testing.T) {
@@ -80,5 +83,93 @@ func TestVerifyExpectedPlanSHA256(t *testing.T) {
 				t.Fatalf("verifyExpectedPlanSHA256() returned error: %v", err)
 			}
 		})
+	}
+}
+
+func TestPlanTargetFlagFiltersProjects(t *testing.T) {
+	t.Parallel()
+
+	var hostFilter []string
+
+	var projectFilter []string
+
+	var exitCode bool
+
+	var digestFile string
+
+	command := new(cobra.Command)
+	bindPlanFlags(command, &hostFilter, &projectFilter, &exitCode, &digestFile)
+
+	err := command.ParseFlags([]string{
+		"--target", "grafana",
+		"--project", "home-assistant",
+		"--target=n8n",
+	})
+	if err != nil {
+		t.Fatalf("ParseFlags() returned error: %v", err)
+	}
+
+	wantProjects := []string{"grafana", "home-assistant", "n8n"}
+	if !reflect.DeepEqual(projectFilter, wantProjects) {
+		t.Fatalf("projectFilter = %v, want %v", projectFilter, wantProjects)
+	}
+}
+
+func TestApplyTargetFlagFiltersProjects(t *testing.T) {
+	t.Parallel()
+
+	var hostFilter []string
+
+	var projectFilter []string
+
+	var autoApprove bool
+
+	var refreshManifestOnNoop bool
+
+	var expectedPlanSHA256 string
+
+	command := new(cobra.Command)
+	bindApplyFlags(
+		command,
+		&hostFilter,
+		&projectFilter,
+		&autoApprove,
+		&refreshManifestOnNoop,
+		&expectedPlanSHA256,
+	)
+
+	err := command.ParseFlags([]string{"--target", "grafana", "--target=home-assistant"})
+	if err != nil {
+		t.Fatalf("ParseFlags() returned error: %v", err)
+	}
+
+	wantProjects := []string{"grafana", "home-assistant"}
+	if !reflect.DeepEqual(projectFilter, wantProjects) {
+		t.Fatalf("projectFilter = %v, want %v", projectFilter, wantProjects)
+	}
+}
+
+func TestNormalizeTerraformTargetArgs(t *testing.T) {
+	t.Parallel()
+
+	args := normalizeTerraformTargetArgs([]string{
+		"plan",
+		"-target=grafana",
+		"-target",
+		"home-assistant",
+		"--target",
+		"n8n",
+	})
+
+	want := []string{
+		"plan",
+		"--target=grafana",
+		"--target",
+		"home-assistant",
+		"--target",
+		"n8n",
+	}
+	if !reflect.DeepEqual(args, want) {
+		t.Fatalf("normalized args = %v, want %v", args, want)
 	}
 }
