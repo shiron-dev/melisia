@@ -159,7 +159,7 @@ resource "grafana_rule_group" "cloudflare_access_block_e2e" {
           uid  = "P95B22FBE6FE890D0"
         }
         editorMode    = "code"
-        expr          = "max_over_time(probe_success{job=\"cloudflare_access_block_e2e\",edge_auth=\"cloudflare_access_block\"}[2h])"
+        expr          = "last_over_time(probe_success{job=\"cloudflare_access_block_e2e\",edge_auth=\"cloudflare_access_block\"}[2h])"
         instant       = true
         intervalMs    = 1000
         legendFormat  = "{{ instance }}"

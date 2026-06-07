@@ -94,7 +94,7 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "max_over_time(probe_success{job=\"cloudflare_access_block_e2e\",edge_auth=\"cloudflare_access_block\"}[2h])",
+          "expr": "last_over_time(probe_success{job=\"cloudflare_access_block_e2e\",edge_auth=\"cloudflare_access_block\"}[2h])",
           "instant": true,
           "legendFormat": "{{ host }}",
           "range": false,
@@ -265,7 +265,7 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "max_over_time(probe_success{job=\"cloudflare_access_block_e2e\",edge_auth=\"cloudflare_access_block\"}[2h])",
+          "expr": "last_over_time(probe_success{job=\"cloudflare_access_block_e2e\",edge_auth=\"cloudflare_access_block\"}[2h])",
           "legendFormat": "{{ probe_server }} {{ target_server }} {{ host }}",
           "range": true,
           "refId": "A"
@@ -349,7 +349,7 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "max_over_time(probe_success{job=\"cloudflare_access_block_e2e\",edge_auth=\"cloudflare_access_block\"}[2h])",
+          "expr": "last_over_time(probe_success{job=\"cloudflare_access_block_e2e\",edge_auth=\"cloudflare_access_block\"}[2h])",
           "format": "table",
           "instant": true,
           "legendFormat": "__auto",
