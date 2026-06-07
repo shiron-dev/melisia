@@ -61,11 +61,16 @@ resource "truenas_dataset" "datasets" {
 
   atime         = "ON"
   compression   = each.value.compression
+  copies        = 1
   deduplication = "OFF"
   exec          = "ON"
+  force_destroy = false
   readonly      = "OFF"
   recordsize    = "128K"
+  snapdir       = "HIDDEN"
   sync          = "STANDARD"
+
+  recursive_destroy = false
 
   lifecycle {
     prevent_destroy = true
