@@ -22,7 +22,10 @@ func bindProjectFilterFlags(command *cobra.Command, projectFilter *[]string) {
 func newSharedStringSliceValue(defaultValue []string, target *[]string) *sharedStringSliceValue {
 	*target = defaultValue
 
-	return &sharedStringSliceValue{value: target}
+	return &sharedStringSliceValue{
+		value:   target,
+		changed: false,
+	}
 }
 
 func (v *sharedStringSliceValue) Set(raw string) error {
