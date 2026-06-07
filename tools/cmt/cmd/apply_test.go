@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"errors"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -171,5 +172,53 @@ func TestNormalizeTerraformTargetArgs(t *testing.T) {
 	}
 	if !reflect.DeepEqual(args, want) {
 		t.Fatalf("normalized args = %v, want %v", args, want)
+	}
+}
+
+func TestSharedStringSliceValueAccessors(t *testing.T) {
+	t.Parallel()
+
+	var values []string
+	flagValue := newSharedStringSliceValue([]string{"default"}, &values)
+
+	if flagValue.Type() != "stringSlice" {
+		t.Fatalf("Type() = %q, want stringSlice", flagValue.Type())
+	}
+
+	if flagValue.String() != "[default]" {
+		t.Fatalf("String() = %q, want [default]", flagValue.String())
+	}
+
+	err := flagValue.Set("grafana,home-assistant")
+	if err != nil {
+		t.Fatalf("Set() returned error: %v", err)
+	}
+
+	err = flagValue.Set("")
+	if err != nil {
+		t.Fatalf("Set() with empty value returned error: %v", err)
+	}
+
+	wantValues := []string{"grafana", "home-assistant"}
+	if !reflect.DeepEqual(values, wantValues) {
+		t.Fatalf("values = %v, want %v", values, wantValues)
+	}
+
+	if flagValue.String() != "[grafana,home-assistant]" {
+		t.Fatalf("String() = %q, want [grafana,home-assistant]", flagValue.String())
+	}
+}
+
+func TestExecuteNormalizesTerraformTargetArg(t *testing.T) {
+	originalArgs := os.Args
+	t.Cleanup(func() {
+		os.Args = originalArgs
+	})
+
+	os.Args = []string{"cmt", "plan", "-target=grafana", "--help"}
+
+	err := Execute()
+	if err != nil {
+		t.Fatalf("Execute() returned error: %v", err)
 	}
 }
