@@ -2,8 +2,9 @@
 
 This Terraform root manages TrueNAS SCALE resources on `storage-srv`.
 
-Existing datasets are imported into state first, then reconciled before making
-intentional changes to storage configuration.
+Existing datasets are now tracked as normal Terraform resources. The remote
+state was aligned from the running TrueNAS instance first, and the resource
+configuration keeps those observed values explicit so routine plans stay clean.
 
 The existing `apps` and `tank` pools are tracked with the `truenas_pool` data
 source and enforced with dataset lifecycle preconditions for health and expected
@@ -17,13 +18,12 @@ The pinned `baladithyab/truenas` v0.2.25 provider does not accept a TLS
 verification override in Terraform configuration, so `storage-srv` must serve a
 certificate trusted by the machine running manual refresh, plan, or apply.
 
-## Import coverage
+## Resource coverage
 
-Imported storage resources:
+Managed storage resources:
 
 - ZFS datasets for the `apps` and `tank` pool roots, plus datasets under
-  `apps/apps` and `tank/users`, are declared in `datasets.tf` and imported
-  through `imports.tf`.
+  `apps/apps` and `tank/users`, are declared in `datasets.tf`.
 
 Removed storage resources:
 
