@@ -13,10 +13,13 @@ def main():
     client_id = require_env("CF_ACCESS_CLIENT_ID")
     client_secret = require_env("CF_ACCESS_CLIENT_SECRET")
     mesh_cidr = ipaddress.ip_network(require_env("CLOUDFLARE_MESH_DNS_UPDATER_MESH_CIDR"))
+    mesh_ip_override = os.environ.get("CLOUDFLARE_MESH_DNS_UPDATER_MESH_IP", "").strip()
 
-    mesh_ip = find_mesh_ip(mesh_cidr)
+    mesh_ip = mesh_ip_override or find_mesh_ip(mesh_cidr)
     if mesh_ip is None:
         raise RuntimeError(f"no IPv4 address found within {mesh_cidr}")
+    if ipaddress.ip_address(mesh_ip) not in mesh_cidr:
+        raise RuntimeError(f"{mesh_ip} is not within {mesh_cidr}")
 
     update_dns(endpoint, client_id, client_secret, mesh_ip)
     print(f"Updated Mesh DNS to {mesh_ip}")
@@ -47,6 +50,7 @@ def update_dns(endpoint, client_id, client_secret, mesh_ip):
         method="POST",
         headers={
             "Content-Type": "application/json",
+            "User-Agent": "melisia-cloudflare-mesh-dns-updater/1.0",
             "CF-Access-Client-Id": client_id,
             "CF-Access-Client-Secret": client_secret,
         },

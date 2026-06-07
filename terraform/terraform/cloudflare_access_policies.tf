@@ -6,19 +6,6 @@ locals {
     snct_email = cloudflare_zero_trust_access_policy.snct_email.id
   }
 
-  cloudflare_home_login_policy_ref = {
-    name       = "home login"
-    decision   = "allow"
-    precedence = 3
-    include = [
-      {
-        group = {
-          id = cloudflare_zero_trust_access_group.shiron.id
-        }
-      }
-    ]
-  }
-
   cloudflare_access_policy_refs = {
     n8n = [
       {

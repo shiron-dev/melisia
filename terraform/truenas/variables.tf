@@ -10,3 +10,9 @@ variable "truenas_api_key" {
   sensitive   = true
   default     = null
 }
+
+variable "truenas_tls_insecure_skip_verify" {
+  description = "Whether to skip TLS certificate verification for the TrueNAS API."
+  type        = bool
+  default     = true
+}

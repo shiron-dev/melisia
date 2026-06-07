@@ -3,6 +3,9 @@
 sshConfig: ssh_config
 
 projects:
+  network-monitor:
+    postSyncCommand: chmod 0644 blackbox.yml speedtest-exporter.py
+
   home-assistant:
     postSyncCommand: >-
       sudo chown -R shiron:root config switchbot-mqtt esphome_config matter_data &&

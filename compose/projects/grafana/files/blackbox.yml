@@ -17,5 +17,6 @@ modules:
       follow_redirects: false
       valid_status_codes: [302]
       fail_if_header_not_matches:
+        # Cloudflare Access redirects unauthenticated requests to the Access login host.
         - header: Location
           regexp: '^https://[^/]+\.cloudflareaccess\.com/'

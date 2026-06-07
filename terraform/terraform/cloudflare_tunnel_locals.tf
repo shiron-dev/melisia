@@ -31,11 +31,12 @@ locals {
       policies        = local.cloudflare_access_policy_refs.shiron
     }
     "home-ep-homeassistant" = {
-      domain          = "home.melisia.net"
-      zone_name       = "melisia.net"
-      service         = "http://homeassistant:8123"
-      secret_yaml_dir = "${path.module}/../../compose/hosts/home-ep/home-assistant"
-      policies        = concat(local.cloudflare_access_policy_refs.shiron, [local.cloudflare_home_login_policy_ref])
+      domain                                         = "home.melisia.net"
+      zone_name                                      = "melisia.net"
+      service                                        = "http://homeassistant:8123"
+      secret_yaml_dir                                = "${path.module}/../../compose/hosts/home-ep/home-assistant"
+      policies                                       = []
+      dangerously_allow_public_without_access_policy = true
       extra_ingress = [
         {
           hostname  = "zigbee2mqtt.melisia.net"
@@ -53,6 +54,18 @@ locals {
           hostname  = "esphome.melisia.net"
           zone_name = "melisia.net"
           service   = "http://esphome:6052"
+          policies  = local.cloudflare_access_policy_refs.shiron
+        },
+        {
+          hostname  = "home-ep-blackbox.melisia.net"
+          zone_name = "melisia.net"
+          service   = "http://home_ep_blackbox_exporter:9115"
+          policies  = local.cloudflare_access_policy_refs.shiron
+        },
+        {
+          hostname  = "home-ep-speedtest.melisia.net"
+          zone_name = "melisia.net"
+          service   = "http://home_ep_speedtest_exporter:9798"
           policies  = local.cloudflare_access_policy_refs.shiron
         }
       ]

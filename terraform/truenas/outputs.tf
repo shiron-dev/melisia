@@ -7,7 +7,6 @@ output "storage_pools" {
       status      = pool.status
       healthy     = pool.healthy
       size        = pool.size
-      available   = pool.available
       description = local.storage_pools[name].description
     }
   }

@@ -68,13 +68,11 @@
         "x": 0,
         "y": 0
       },
-      "id": 1,
       "options": {
         "colorMode": "background",
         "graphOrientation": "auto",
         "justifyMode": "auto",
         "orientation": "auto",
-        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -94,14 +92,14 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "last_over_time(probe_success{job=\"cloudflare_access_block_e2e\",edge_auth=\"cloudflare_access_block\"}[2h])",
+          "expr": "min(last_over_time(probe_success{job=\"cloudflare_access_block_e2e\",edge_auth=\"cloudflare_access_block\"}[2h]))",
           "instant": true,
-          "legendFormat": "{{ host }}",
+          "legendFormat": "all domains",
           "range": false,
           "refId": "A"
         }
       ],
-      "title": "Cloudflare Access Block",
+      "title": "All Domains Blocked",
       "type": "stat"
     },
     {
@@ -114,7 +112,73 @@
           "color": {
             "mode": "thresholds"
           },
-          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 0
+      },
+      "options": {
+        "colorMode": "background",
+        "graphOrientation": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "13.0.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P95B22FBE6FE890D0"
+          },
+          "editorMode": "code",
+          "expr": "count(last_over_time(probe_success{job=\"cloudflare_access_block_e2e\",edge_auth=\"cloudflare_access_block\"}[2h]) == 0) or vector(0)",
+          "instant": true,
+          "legendFormat": "not blocked",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Not Blocked",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P95B22FBE6FE890D0"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -135,16 +199,14 @@
       "gridPos": {
         "h": 8,
         "w": 8,
-        "x": 8,
+        "x": 16,
         "y": 0
       },
-      "id": 2,
       "options": {
         "colorMode": "value",
         "graphOrientation": "auto",
         "justifyMode": "auto",
         "orientation": "auto",
-        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -188,10 +250,8 @@
             "axisBorderShow": false,
             "axisCenteredZero": false,
             "axisColorMode": "text",
-            "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
-            "barWidthFactor": 0.6,
             "drawStyle": "line",
             "fillOpacity": 10,
             "gradientMode": "none",
@@ -217,7 +277,21 @@
               "mode": "off"
             }
           },
-          "mappings": [],
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "red",
+                  "text": "Not blocked"
+                },
+                "1": {
+                  "color": "green",
+                  "text": "Blocked"
+                }
+              },
+              "type": "value"
+            }
+          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -241,7 +315,6 @@
         "x": 0,
         "y": 8
       },
-      "id": 3,
       "options": {
         "legend": {
           "calcs": [
@@ -266,7 +339,7 @@
           },
           "editorMode": "code",
           "expr": "last_over_time(probe_success{job=\"cloudflare_access_block_e2e\",edge_auth=\"cloudflare_access_block\"}[2h])",
-          "legendFormat": "{{ probe_server }} {{ target_server }} {{ host }}",
+          "legendFormat": "{{ target_server }} {{ host }}",
           "range": true,
           "refId": "A"
         }
@@ -318,17 +391,17 @@
                 "value": 1
               }
             ]
-          }
+          },
+          "unit": "short"
         },
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
+        "h": 10,
         "w": 24,
         "x": 0,
         "y": 18
       },
-      "id": 4,
       "options": {
         "cellHeight": "sm",
         "footer": {
@@ -352,7 +425,7 @@
           "expr": "last_over_time(probe_success{job=\"cloudflare_access_block_e2e\",edge_auth=\"cloudflare_access_block\"}[2h])",
           "format": "table",
           "instant": true,
-          "legendFormat": "__auto",
+          "legendFormat": "{{ host }}",
           "range": false,
           "refId": "A"
         },
@@ -365,7 +438,7 @@
           "expr": "last_over_time(probe_http_status_code{job=\"cloudflare_access_block_e2e\",edge_auth=\"cloudflare_access_block\"}[2h])",
           "format": "table",
           "instant": true,
-          "legendFormat": "__auto",
+          "legendFormat": "{{ host }}",
           "range": false,
           "refId": "B"
         }
@@ -392,18 +465,13 @@
               "instance 1": true,
               "instance 2": true,
               "job 1": true,
-              "job 2": true,
-              "probe_ip_addr_hash 1": true,
-              "probe_ip_addr_hash 2": true,
-              "probe_ip_protocol 1": true,
-              "probe_ip_protocol 2": true
+              "job 2": true
             },
             "indexByName": {},
             "renameByName": {
               "Value #A": "Blocked",
               "Value #B": "HTTP Status",
               "host": "Host",
-              "probe_server 1": "Probe Server",
               "target_server 1": "Target Server"
             }
           }
