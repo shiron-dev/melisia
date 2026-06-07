@@ -75,6 +75,45 @@ TERRAFORM_TARGET ?= terraform
 TERRAFORM_DIR = terraform/$(TERRAFORM_TARGET)
 TERRAFORM_SECRETS_TFVARS = terraform.secrets.tfvars
 TERRAFORM_SECRETS_ARG := $(if $(wildcard $(TERRAFORM_DIR)/$(TERRAFORM_SECRETS_TFVARS)),-var-file=$(TERRAFORM_SECRETS_TFVARS),)
+TRUENAS_PROVIDER_DIR := $(CURDIR)/terraform/provider
+TRUENAS_PROVIDER_BIN := $(TRUENAS_PROVIDER_DIR)/terraform-provider-truenas
+TRUENAS_PROVIDER_DEVRC := $(CURDIR)/.local/terraform-provider-truenas.tfrc
+TRUENAS_PROVIDER_VERSION := 0.0.1
+TRUENAS_PROVIDER_HOST := registry.terraform.io
+TRUENAS_PROVIDER_NAMESPACE := shiron-dev
+TRUENAS_PROVIDER_TYPE := truenas
+TRUENAS_PROVIDER_OS := $(shell uname -s | tr '[:upper:]' '[:lower:]')
+TRUENAS_PROVIDER_ARCH := $(shell uname -m | sed 's/x86_64/amd64/')
+TRUENAS_PROVIDER_MIRROR_DIR := $(CURDIR)/.local/terraform-provider-mirror
+TRUENAS_PROVIDER_MIRROR_PACKAGE_DIR := $(TRUENAS_PROVIDER_MIRROR_DIR)/$(TRUENAS_PROVIDER_HOST)/$(TRUENAS_PROVIDER_NAMESPACE)/$(TRUENAS_PROVIDER_TYPE)/$(TRUENAS_PROVIDER_VERSION)/$(TRUENAS_PROVIDER_OS)_$(TRUENAS_PROVIDER_ARCH)
+TRUENAS_PROVIDER_MIRROR_BIN := $(TRUENAS_PROVIDER_MIRROR_PACKAGE_DIR)/terraform-provider-$(TRUENAS_PROVIDER_TYPE)_v$(TRUENAS_PROVIDER_VERSION)
+TERRAFORM_CLI_CONFIG_ENV := $(if $(filter truenas,$(TERRAFORM_TARGET)),TF_CLI_CONFIG_FILE=$(TRUENAS_PROVIDER_DEVRC),)
+GO ?= go
+
+.PHONY: terraform-provider-build
+terraform-provider-build:
+	cd $(TRUENAS_PROVIDER_DIR) && GOROOT= GOTOOLCHAIN=auto $(GO) build -o $(TRUENAS_PROVIDER_BIN)
+
+.PHONY: terraform-provider-devrc
+terraform-provider-devrc: terraform-provider-build
+	@mkdir -p $(dir $(TRUENAS_PROVIDER_DEVRC))
+	@mkdir -p $(TRUENAS_PROVIDER_MIRROR_PACKAGE_DIR)
+	@cp $(TRUENAS_PROVIDER_BIN) $(TRUENAS_PROVIDER_MIRROR_BIN)
+	@printf '%s\n' \
+		'provider_installation {' \
+		'  filesystem_mirror {' \
+		'    path = "$(TRUENAS_PROVIDER_MIRROR_DIR)"' \
+		'    include = ["$(TRUENAS_PROVIDER_HOST)/$(TRUENAS_PROVIDER_NAMESPACE)/$(TRUENAS_PROVIDER_TYPE)"]' \
+		'  }' \
+		'' \
+		'  direct {' \
+		'    exclude = ["$(TRUENAS_PROVIDER_HOST)/$(TRUENAS_PROVIDER_NAMESPACE)/$(TRUENAS_PROVIDER_TYPE)"]' \
+		'  }' \
+		'}' > $(TRUENAS_PROVIDER_DEVRC)
+
+.PHONY: terraform-truenas-replace-provider-state
+terraform-truenas-replace-provider-state: terraform-provider-devrc
+	cd terraform/truenas && TF_CLI_CONFIG_FILE=$(TRUENAS_PROVIDER_DEVRC) terraform state replace-provider registry.terraform.io/baladithyab/truenas registry.terraform.io/shiron-dev/truenas
 
 # cmt ビルド + JSON Schema 生成
 .PHONY: cmt-init
@@ -95,16 +134,16 @@ cmt-apply: cmt-init
 	$(CMT_BIN) --config $(CMT_CONFIG) apply $(CMT_OPT)
 
 .PHONY: terraform-init
-terraform-init: init
-	cd $(TERRAFORM_DIR) && terraform init
+terraform-init: init $(if $(filter truenas,$(TERRAFORM_TARGET)),terraform-provider-devrc)
+	cd $(TERRAFORM_DIR) && $(TERRAFORM_CLI_CONFIG_ENV) terraform init
 
 .PHONY: terraform-plan
 terraform-plan: terraform-init
-	cd $(TERRAFORM_DIR) && terraform plan $(TERRAFORM_SECRETS_ARG)
+	cd $(TERRAFORM_DIR) && $(TERRAFORM_CLI_CONFIG_ENV) terraform plan $(TERRAFORM_SECRETS_ARG)
 
 .PHONY: terraform-apply
 terraform-apply: terraform-init
-	cd $(TERRAFORM_DIR) && terraform apply $(TERRAFORM_SECRETS_ARG) -lock=false
+	cd $(TERRAFORM_DIR) && $(TERRAFORM_CLI_CONFIG_ENV) terraform apply $(TERRAFORM_SECRETS_ARG) -lock=false
 	$(MAKE) sops-encrypt
 
 .PHONY: terraform-lint
@@ -117,7 +156,7 @@ terraform-fmt:
 
 .PHONY: terraform-validate
 terraform-validate: terraform-init
-	cd $(TERRAFORM_DIR) && terraform validate
+	cd $(TERRAFORM_DIR) && $(TERRAFORM_CLI_CONFIG_ENV) terraform validate
 
 # https://github.com/aquasecurity/trivy - IaC misconfig and vulnerability scanning
 .PHONY: terraform-trivy

@@ -1,8 +1,8 @@
 terraform {
   required_providers {
     truenas = {
-      source  = "baladithyab/truenas"
-      version = "0.2.25"
+      source  = "shiron-dev/truenas"
+      version = "0.0.1"
     }
   }
 
@@ -15,6 +15,7 @@ terraform {
 }
 
 provider "truenas" {
-  base_url = var.truenas_url
-  api_key  = var.truenas_api_key
+  base_url                 = var.truenas_url
+  api_key                  = var.truenas_api_key
+  tls_insecure_skip_verify = var.truenas_tls_insecure_skip_verify
 }

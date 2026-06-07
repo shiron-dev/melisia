@@ -1,3 +1,4 @@
 *.secrets.*
 !*.secrets.*.sops
 .local/
+terraform/truenas/.terraform.lock.hcl
