@@ -179,6 +179,7 @@ func TestSharedStringSliceValueAccessors(t *testing.T) {
 	t.Parallel()
 
 	var values []string
+
 	flagValue := newSharedStringSliceValue([]string{"default"}, &values)
 
 	if flagValue.Type() != "stringSlice" {
@@ -209,8 +210,9 @@ func TestSharedStringSliceValueAccessors(t *testing.T) {
 	}
 }
 
-func TestExecuteNormalizesTerraformTargetArg(t *testing.T) {
+func TestExecuteNormalizesTerraformTargetArg(t *testing.T) { //nolint:paralleltest
 	originalArgs := os.Args
+
 	t.Cleanup(func() {
 		os.Args = originalArgs
 	})
