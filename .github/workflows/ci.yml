@@ -195,8 +195,18 @@ jobs:
         with:
           github_token: ${{ github.token }}
           level: warning
-      - uses: reviewdog/action-shfmt@d8f080930b9be5847b4f97e9f4122b81a82aaeac # v1.0.4
+      - name: Install shfmt
+        run: |
+          set -euo pipefail
+          curl -sSfL \
+            -o /tmp/shfmt \
+            https://github.com/mvdan/sh/releases/download/v3.12.0/shfmt_v3.12.0_linux_amd64
+          sudo install -m 0755 /tmp/shfmt /usr/local/bin/shfmt
+      - name: Run shfmt
+        run: shfmt -i 2 -ci -w .
+      - uses: reviewdog/action-suggester@87d77977e46ff1b90917c96ee550ac2e297c71a2 # v1.20.1
         with:
+          tool_name: shfmt
           github_token: ${{ github.token }}
           level: warning
 
