@@ -3,6 +3,7 @@ package cmd
 import (
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -47,5 +48,24 @@ It follows a plan/apply workflow similar to Terraform:
 
 // Execute runs the root command.
 func Execute() error {
-	return newRootCmd().Execute()
+	rootCommand := newRootCmd()
+	rootCommand.SetArgs(normalizeTerraformTargetArgs(os.Args[1:]))
+
+	return rootCommand.Execute()
+}
+
+func normalizeTerraformTargetArgs(args []string) []string {
+	normalized := make([]string, len(args))
+	for i, arg := range args {
+		switch {
+		case arg == "-target":
+			normalized[i] = "--target"
+		case strings.HasPrefix(arg, "-target="):
+			normalized[i] = "--target=" + strings.TrimPrefix(arg, "-target=")
+		default:
+			normalized[i] = arg
+		}
+	}
+
+	return normalized
 }

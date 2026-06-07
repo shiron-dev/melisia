@@ -298,6 +298,7 @@ cmt [--config <path>] <command> [flags]
 plan / apply フラグ:
   --host      ホスト名でフィルタ（複数指定可）
   --project   プロジェクト名でフィルタ（複数指定可）
+  --target   --project の別名。Terraform 風に -target=NAME も利用可（複数指定可）
 
 plan フラグ:
   --exit-code  終了コードで結果を返す（CI 等向け）:
