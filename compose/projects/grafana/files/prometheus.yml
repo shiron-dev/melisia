@@ -87,6 +87,29 @@ scrape_configs:
         replacement: '$1'
       - target_label: __address__
         replacement: blackbox_exporter:9115
+  - job_name: 'cloudflare_access_block_e2e'
+    scrape_interval: 1h
+    scrape_timeout: 15s
+    metrics_path: /probe
+    params:
+      module: [cloudflare_access_blocked_302]
+    static_configs:
+      - targets:
+          - https://grafana.shiron.dev/
+        labels:
+          edge_auth: cloudflare_access_block
+          target_server: arm-srv
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - source_labels: [__param_target]
+        regex: 'https?://([^/:]+).*'
+        target_label: host
+        replacement: '$1'
+      - target_label: __address__
+        replacement: blackbox_exporter:9115
 
 remote_write:
   - url: "http://victoriametrics:8428/api/v1/write"
