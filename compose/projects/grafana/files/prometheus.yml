@@ -33,10 +33,7 @@ scrape_configs:
     static_configs:
       - targets:
           - https://grafana.shiron.dev/
-        labels:
-          edge_auth: passthrough
-          target_server: arm-srv
-      - targets:
+          - https://influxdb.shiron.dev/
           - https://n8n.shiron.dev/
           - https://snipeit.shiron.dev/
         labels:
@@ -44,15 +41,45 @@ scrape_configs:
           target_server: arm-srv
       - targets:
           - https://home.melisia.net/
-        labels:
-          edge_auth: passthrough
-          target_server: home-ep
-      - targets:
           - https://zigbee2mqtt.melisia.net/
           - https://switchbot-mqtt.melisia.net/
           - https://esphome.melisia.net/
         labels:
           edge_auth: cloudflare_access
+          target_server: home-ep
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - source_labels: [__param_target]
+        regex: 'https?://([^/:]+).*'
+        target_label: host
+        replacement: '$1'
+      - target_label: __address__
+        replacement: blackbox_exporter:9115
+  - job_name: 'cloudflare_access_block_e2e'
+    scrape_interval: 1h
+    scrape_timeout: 15s
+    metrics_path: /probe
+    params:
+      module: [cloudflare_access_blocked_302]
+    static_configs:
+      - targets:
+          - https://grafana.shiron.dev/
+          - https://influxdb.shiron.dev/
+          - https://n8n.shiron.dev/
+          - https://snipeit.shiron.dev/
+        labels:
+          edge_auth: cloudflare_access_block
+          target_server: arm-srv
+      - targets:
+          - https://home.melisia.net/
+          - https://zigbee2mqtt.melisia.net/
+          - https://switchbot-mqtt.melisia.net/
+          - https://esphome.melisia.net/
+        labels:
+          edge_auth: cloudflare_access_block
           target_server: home-ep
     relabel_configs:
       - source_labels: [__address__]
