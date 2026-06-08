@@ -33,21 +33,21 @@ services:
       retries: 3
       start_period: 20s
 
-  speedtest_exporter:
-    container_name: home_ep_speedtest_exporter
+  cloudflare_speedtest_exporter:
+    container_name: home_ep_cloudflare_speedtest_exporter
     image: python:3.14-alpine@sha256:5a824eb82cc75361f98611f3cfc5091ea33f10a6ccea4d4ebdabbc523b9a1614
-    command: ["python", "/app/speedtest-exporter.py"]
+    command: ["python", "/app/cloudflare-speedtest-exporter.py"]
     ports:
       - "127.0.0.1:9798:9798"
     networks:
       - home-automation
     environment:
-      SPEEDTEST_INTERVAL_SECONDS: "600"
-      SPEEDTEST_DOWNLOAD_BYTES: "25000000"
-      SPEEDTEST_UPLOAD_BYTES: "10000000"
-      SPEEDTEST_TARGET_BASE_URL: "https://speed.cloudflare.com"
+      CLOUDFLARE_SPEEDTEST_INTERVAL_SECONDS: "600"
+      CLOUDFLARE_SPEEDTEST_DOWNLOAD_BYTES: "25000000"
+      CLOUDFLARE_SPEEDTEST_UPLOAD_BYTES: "10000000"
+      CLOUDFLARE_SPEEDTEST_TARGET_BASE_URL: "https://speed.cloudflare.com"
     volumes:
-      - "./speedtest-exporter.py:/app/speedtest-exporter.py:ro"
+      - "./cloudflare-speedtest-exporter.py:/app/cloudflare-speedtest-exporter.py:ro"
     restart: always
     security_opt:
       - no-new-privileges:true

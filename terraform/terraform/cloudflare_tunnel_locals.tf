@@ -63,9 +63,9 @@ locals {
           policies  = local.cloudflare_access_policy_refs.shiron
         },
         {
-          hostname  = "home-ep-speedtest.melisia.net"
+          hostname  = "home-ep-cloudflare-speedtest.melisia.net"
           zone_name = "melisia.net"
-          service   = "http://home_ep_speedtest_exporter:9798"
+          service   = "http://home_ep_cloudflare_speedtest_exporter:9798"
           policies  = local.cloudflare_access_policy_refs.shiron
         }
       ]
