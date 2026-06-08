@@ -138,7 +138,6 @@ resource "grafana_rule_group" "cloudflare_access_block_e2e" {
   rule {
     name           = "Cloudflare Access block E2E probe failed"
     condition      = "C"
-    for            = "5m"
     no_data_state  = "Alerting"
     exec_err_state = "Alerting"
     annotations = {
