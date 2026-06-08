@@ -468,6 +468,7 @@ func TestApplyWithDeps_ComposeRecreate(t *testing.T) {
 						ProjectName:   "grafana",
 						RemoteDir:     "/srv/grafana",
 						ComposeAction: "up",
+						RemoveOrphans: true,
 						Compose: &ComposePlan{
 							DesiredAction: "up",
 							ActionType:    ComposeRecreateServices,
@@ -492,6 +493,7 @@ func TestApplyWithDeps_ComposeRecreate(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	factory := remote.NewMockClientFactory(ctrl)
 	client := remote.NewMockRemoteClient(ctrl)
+	composeCmd := "docker compose up -d --force-recreate --remove-orphans"
 
 	gomock.InOrder(
 		factory.EXPECT().
@@ -499,7 +501,7 @@ func TestApplyWithDeps_ComposeRecreate(t *testing.T) {
 			Return(client, nil),
 		client.EXPECT().WriteFile("/srv/grafana/compose.yml", gomock.Any()).Return(nil),
 		client.EXPECT().WriteFile("/srv/grafana/.cmt-manifest.json", gomock.Any()).Return(nil),
-		client.EXPECT().RunCommand("/srv/grafana", "docker compose up -d --force-recreate").Return("ok", nil),
+		client.EXPECT().RunCommand("/srv/grafana", composeCmd).Return("ok", nil),
 		client.EXPECT().Close().Return(nil),
 	)
 

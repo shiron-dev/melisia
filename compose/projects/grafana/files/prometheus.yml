@@ -117,7 +117,7 @@ scrape_configs:
         target_label: instance
       - target_label: __address__
         replacement: home-ep-blackbox.melisia.net
-  - job_name: 'home_ep_speedtest'
+  - job_name: 'home_ep_cloudflare_speedtest'
     scrape_interval: 30s
     scrape_timeout: 10s
     scheme: https
@@ -128,7 +128,7 @@ scrape_configs:
         secrets: ["{{ .cloudflare_access_e2e_client_secret }}"]
     static_configs:
       - targets:
-          - home-ep-speedtest.melisia.net
+          - home-ep-cloudflare-speedtest.melisia.net
         labels:
           probe_server: home-ep
           target_server: speed.cloudflare.com

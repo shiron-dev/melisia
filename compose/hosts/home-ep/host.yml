@@ -4,7 +4,8 @@ sshConfig: ssh_config
 
 projects:
   network-monitor:
-    postSyncCommand: chmod 0644 blackbox.yml speedtest-exporter.py
+    removeOrphans: true
+    postSyncCommand: chmod 0644 blackbox.yml cloudflare-speedtest-exporter.py
 
   home-assistant:
     postSyncCommand: >-

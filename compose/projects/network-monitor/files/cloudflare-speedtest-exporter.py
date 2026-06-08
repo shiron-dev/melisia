@@ -11,13 +11,13 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
-INTERVAL_SECONDS = int(os.environ.get("SPEEDTEST_INTERVAL_SECONDS", "600"))
-DOWNLOAD_BYTES = int(os.environ.get("SPEEDTEST_DOWNLOAD_BYTES", "25000000"))
-UPLOAD_BYTES = int(os.environ.get("SPEEDTEST_UPLOAD_BYTES", "10000000"))
-TARGET_BASE_URL = os.environ.get("SPEEDTEST_TARGET_BASE_URL", "https://speed.cloudflare.com").rstrip("/")
-HTTP_TIMEOUT_SECONDS = int(os.environ.get("SPEEDTEST_HTTP_TIMEOUT_SECONDS", "90"))
-LISTEN_ADDR = os.environ.get("SPEEDTEST_EXPORTER_LISTEN_ADDR", "0.0.0.0")
-LISTEN_PORT = int(os.environ.get("SPEEDTEST_EXPORTER_LISTEN_PORT", "9798"))
+INTERVAL_SECONDS = int(os.environ.get("CLOUDFLARE_SPEEDTEST_INTERVAL_SECONDS", "600"))
+DOWNLOAD_BYTES = int(os.environ.get("CLOUDFLARE_SPEEDTEST_DOWNLOAD_BYTES", "25000000"))
+UPLOAD_BYTES = int(os.environ.get("CLOUDFLARE_SPEEDTEST_UPLOAD_BYTES", "10000000"))
+TARGET_BASE_URL = os.environ.get("CLOUDFLARE_SPEEDTEST_TARGET_BASE_URL", "https://speed.cloudflare.com").rstrip("/")
+HTTP_TIMEOUT_SECONDS = int(os.environ.get("CLOUDFLARE_SPEEDTEST_HTTP_TIMEOUT_SECONDS", "90"))
+LISTEN_ADDR = os.environ.get("CLOUDFLARE_SPEEDTEST_EXPORTER_LISTEN_ADDR", "0.0.0.0")
+LISTEN_PORT = int(os.environ.get("CLOUDFLARE_SPEEDTEST_EXPORTER_LISTEN_PORT", "9798"))
 
 state_lock = threading.Lock()
 state = {
@@ -35,7 +35,7 @@ state = {
 
 def timed_request(url, data=None, read_response=True):
     started = time.monotonic()
-    request = urllib.request.Request(url, data=data, headers={"User-Agent": "home-ep-speedtest-exporter/1.0"})
+    request = urllib.request.Request(url, data=data, headers={"User-Agent": "home-ep-cloudflare-speedtest-exporter/1.0"})
     with urllib.request.urlopen(request, timeout=HTTP_TIMEOUT_SECONDS) as response:
         first_byte_at = time.monotonic()
         total = 0
@@ -123,33 +123,33 @@ def metrics_body():
         snapshot = dict(state)
 
     lines = [
-        "# HELP home_ep_speedtest_success Whether the latest home-ep speed test completed successfully.",
-        "# TYPE home_ep_speedtest_success gauge",
-        f"home_ep_speedtest_success {snapshot['success']}",
-        "# HELP home_ep_speedtest_last_run_timestamp_seconds Unix timestamp of the latest home-ep speed test run.",
-        "# TYPE home_ep_speedtest_last_run_timestamp_seconds gauge",
-        f"home_ep_speedtest_last_run_timestamp_seconds {prom_value(snapshot['last_run_timestamp_seconds'])}",
-        "# HELP home_ep_speedtest_download_bits_per_second Latest measured download throughput.",
-        "# TYPE home_ep_speedtest_download_bits_per_second gauge",
-        f"home_ep_speedtest_download_bits_per_second {prom_value(snapshot['download_bits_per_second'])}",
-        "# HELP home_ep_speedtest_upload_bits_per_second Latest measured upload throughput.",
-        "# TYPE home_ep_speedtest_upload_bits_per_second gauge",
-        f"home_ep_speedtest_upload_bits_per_second {prom_value(snapshot['upload_bits_per_second'])}",
-        "# HELP home_ep_speedtest_latency_seconds Median time to first byte across latency probes.",
-        "# TYPE home_ep_speedtest_latency_seconds gauge",
-        f"home_ep_speedtest_latency_seconds {prom_value(snapshot['latency_seconds'])}",
-        "# HELP home_ep_speedtest_jitter_seconds Mean absolute deviation from median latency.",
-        "# TYPE home_ep_speedtest_jitter_seconds gauge",
-        f"home_ep_speedtest_jitter_seconds {prom_value(snapshot['jitter_seconds'])}",
-        "# HELP home_ep_speedtest_download_bytes Bytes read during the latest download test.",
-        "# TYPE home_ep_speedtest_download_bytes gauge",
-        f"home_ep_speedtest_download_bytes {snapshot['download_bytes']}",
-        "# HELP home_ep_speedtest_upload_bytes Bytes written during the latest upload test.",
-        "# TYPE home_ep_speedtest_upload_bytes gauge",
-        f"home_ep_speedtest_upload_bytes {snapshot['upload_bytes']}",
-        "# HELP home_ep_speedtest_interval_seconds Configured speed test interval.",
-        "# TYPE home_ep_speedtest_interval_seconds gauge",
-        f"home_ep_speedtest_interval_seconds {INTERVAL_SECONDS}",
+        "# HELP home_ep_cloudflare_speedtest_success Whether the latest home-ep Cloudflare Speed Test completed successfully.",
+        "# TYPE home_ep_cloudflare_speedtest_success gauge",
+        f"home_ep_cloudflare_speedtest_success {snapshot['success']}",
+        "# HELP home_ep_cloudflare_speedtest_last_run_timestamp_seconds Unix timestamp of the latest home-ep Cloudflare Speed Test run.",
+        "# TYPE home_ep_cloudflare_speedtest_last_run_timestamp_seconds gauge",
+        f"home_ep_cloudflare_speedtest_last_run_timestamp_seconds {prom_value(snapshot['last_run_timestamp_seconds'])}",
+        "# HELP home_ep_cloudflare_speedtest_download_bits_per_second Latest measured Cloudflare Speed Test download throughput.",
+        "# TYPE home_ep_cloudflare_speedtest_download_bits_per_second gauge",
+        f"home_ep_cloudflare_speedtest_download_bits_per_second {prom_value(snapshot['download_bits_per_second'])}",
+        "# HELP home_ep_cloudflare_speedtest_upload_bits_per_second Latest measured Cloudflare Speed Test upload throughput.",
+        "# TYPE home_ep_cloudflare_speedtest_upload_bits_per_second gauge",
+        f"home_ep_cloudflare_speedtest_upload_bits_per_second {prom_value(snapshot['upload_bits_per_second'])}",
+        "# HELP home_ep_cloudflare_speedtest_latency_seconds Median time to first byte across Cloudflare Speed Test latency probes.",
+        "# TYPE home_ep_cloudflare_speedtest_latency_seconds gauge",
+        f"home_ep_cloudflare_speedtest_latency_seconds {prom_value(snapshot['latency_seconds'])}",
+        "# HELP home_ep_cloudflare_speedtest_jitter_seconds Mean absolute deviation from median Cloudflare Speed Test latency.",
+        "# TYPE home_ep_cloudflare_speedtest_jitter_seconds gauge",
+        f"home_ep_cloudflare_speedtest_jitter_seconds {prom_value(snapshot['jitter_seconds'])}",
+        "# HELP home_ep_cloudflare_speedtest_download_bytes Bytes read during the latest Cloudflare Speed Test download test.",
+        "# TYPE home_ep_cloudflare_speedtest_download_bytes gauge",
+        f"home_ep_cloudflare_speedtest_download_bytes {snapshot['download_bytes']}",
+        "# HELP home_ep_cloudflare_speedtest_upload_bytes Bytes written during the latest Cloudflare Speed Test upload test.",
+        "# TYPE home_ep_cloudflare_speedtest_upload_bytes gauge",
+        f"home_ep_cloudflare_speedtest_upload_bytes {snapshot['upload_bytes']}",
+        "# HELP home_ep_cloudflare_speedtest_interval_seconds Configured Cloudflare Speed Test interval.",
+        "# TYPE home_ep_cloudflare_speedtest_interval_seconds gauge",
+        f"home_ep_cloudflare_speedtest_interval_seconds {INTERVAL_SECONDS}",
     ]
 
     return "\n".join(lines) + "\n"

@@ -217,7 +217,8 @@ projects:
 `ignore` の場合は Compose の up/down 実行自体をスキップします。
 ファイル差分がなくても Compose 状態に差分があれば apply の対象になります。
 
-`projects.<name>.removeOrphans: true` を指定すると、`composeAction: down` の実行時に
+`projects.<name>.removeOrphans: true` を指定すると、サービス再作成時に
+`docker compose up -d --force-recreate --remove-orphans`、`composeAction: down` の実行時に
 `docker compose down --remove-orphans` を使います。
 
 ### `beforeApplyHooks` — apply 前フック

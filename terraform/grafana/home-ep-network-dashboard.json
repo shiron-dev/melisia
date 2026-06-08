@@ -161,7 +161,7 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "home_ep_speedtest_download_bits_per_second{job=\"home_ep_speedtest\"} / 1000000",
+          "expr": "home_ep_cloudflare_speedtest_download_bits_per_second{job=\"home_ep_cloudflare_speedtest\"} / 1000000",
           "instant": true,
           "legendFormat": "download",
           "range": false,
@@ -228,7 +228,7 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "home_ep_speedtest_upload_bits_per_second{job=\"home_ep_speedtest\"} / 1000000",
+          "expr": "home_ep_cloudflare_speedtest_upload_bits_per_second{job=\"home_ep_cloudflare_speedtest\"} / 1000000",
           "instant": true,
           "legendFormat": "upload",
           "range": false,
@@ -299,14 +299,14 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "time() - home_ep_speedtest_last_run_timestamp_seconds{job=\"home_ep_speedtest\"}",
+          "expr": "time() - home_ep_cloudflare_speedtest_last_run_timestamp_seconds{job=\"home_ep_cloudflare_speedtest\"}",
           "instant": true,
           "legendFormat": "age",
           "range": false,
           "refId": "A"
         }
       ],
-      "title": "Last Speedtest Age",
+      "title": "Last Cloudflare Speed Test Age",
       "type": "stat"
     },
     {
@@ -406,8 +406,8 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "home_ep_speedtest_latency_seconds{job=\"home_ep_speedtest\"} * 1000",
-          "legendFormat": "speedtest latency",
+          "expr": "home_ep_cloudflare_speedtest_latency_seconds{job=\"home_ep_cloudflare_speedtest\"} * 1000",
+          "legendFormat": "Cloudflare Speed Test latency",
           "range": true,
           "refId": "B"
         },
@@ -417,8 +417,8 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "home_ep_speedtest_jitter_seconds{job=\"home_ep_speedtest\"} * 1000",
-          "legendFormat": "speedtest jitter",
+          "expr": "home_ep_cloudflare_speedtest_jitter_seconds{job=\"home_ep_cloudflare_speedtest\"} * 1000",
+          "legendFormat": "Cloudflare Speed Test jitter",
           "range": true,
           "refId": "C"
         }
@@ -512,7 +512,7 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "home_ep_speedtest_download_bits_per_second{job=\"home_ep_speedtest\"} / 1000000",
+          "expr": "home_ep_cloudflare_speedtest_download_bits_per_second{job=\"home_ep_cloudflare_speedtest\"} / 1000000",
           "legendFormat": "download",
           "range": true,
           "refId": "A"
@@ -523,7 +523,7 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "home_ep_speedtest_upload_bits_per_second{job=\"home_ep_speedtest\"} / 1000000",
+          "expr": "home_ep_cloudflare_speedtest_upload_bits_per_second{job=\"home_ep_cloudflare_speedtest\"} / 1000000",
           "legendFormat": "upload",
           "range": true,
           "refId": "B"
@@ -634,8 +634,8 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "home_ep_speedtest_success{job=\"home_ep_speedtest\"}",
-          "legendFormat": "speedtest",
+          "expr": "home_ep_cloudflare_speedtest_success{job=\"home_ep_cloudflare_speedtest\"}",
+          "legendFormat": "Cloudflare Speed Test",
           "range": true,
           "refId": "B"
         }
