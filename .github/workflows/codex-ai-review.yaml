@@ -998,9 +998,14 @@ jobs:
       # Mint a narrowly-scoped (secrets:write only) token used solely to persist a
       # rotated auth bundle. Runs in a step Codex cannot read the env of, after the
       # review has finished, so the review execution never has access to it.
+      # Best-effort: requires the Codex review GitHub App to hold the repository
+      # `Secrets: write` permission. continue-on-error keeps a missing permission
+      # from failing the review; the persist step below warns loudly if a rotation
+      # then can't be saved.
       - name: Create token for Codex auth persistence
         id: persist_token
         if: always()
+        continue-on-error: true
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           app-id: ${{ secrets.CODEX_REVIEW_APP_ID }}
@@ -1033,6 +1038,11 @@ jobs:
           # PR runs that share this secret.
           if [[ -f "$ORIG_AUTH_PATH" ]] && cmp -s "$auth" "$ORIG_AUTH_PATH"; then
             echo "Codex did not rotate the token bundle; secret unchanged."
+            exit 0
+          fi
+
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "::warning::Codex rotated the auth bundle but no secrets:write token is available. Grant the Codex review GitHub App the 'Secrets: write' repository permission, then update CODEX_AUTH_JSON via 'codex login' — otherwise the next run may fail with refresh_token_reused."
             exit 0
           fi
 
