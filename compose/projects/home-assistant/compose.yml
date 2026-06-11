@@ -123,6 +123,7 @@ services:
       TUNNEL_TOKEN: "{{ .cf_tunnel_token }}"
     extra_hosts:
       - "homeassistant:host-gateway"
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
     logging: *default-logging
     networks:
@@ -228,7 +229,7 @@ services:
   zigbee2mqtt:
     <<: *resource-medium
     container_name: zigbee2mqtt
-    image: koenkk/zigbee2mqtt:2.10.1@sha256:67c26dcf8346aced02fe1380a6afd1b57268bcef10faae3f6057c13d5d3dfa80
+    image: koenkk/zigbee2mqtt:2.11.0@sha256:f1f5195076d771727e9ff3db638de0f54d37969a66f317cd34624a7af5faf364
     user: "1000:1000"
     volumes:
       - ./zigbee2mqtt_data:/app/data:rw

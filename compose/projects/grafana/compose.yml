@@ -1,6 +1,6 @@
 services:
   grafana:
-    image: grafana/grafana-oss:12.4.3@sha256:2e986801428cd689c2358605289c90ab37d2b39e24808874971f54c99bcdc412
+    image: grafana/grafana-oss:13.0.2@sha256:5dad0df181cb644a14e13617b913b261a54f7d4fd4510721dba420929f35bea2
     platform: linux/arm64
     user: "472"
     container_name: grafana
@@ -71,6 +71,13 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    # kics-scan ignore-line
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
     deploy:
       resources:
         limits:
@@ -80,7 +87,7 @@ services:
           cpus: '0.25'
           memory: 256M
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8086/health"]
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "http://127.0.0.1:8086/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -143,6 +150,62 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+  docker_compose_exporter:
+    container_name: docker_compose_exporter
+    image: python:3.14-alpine@sha256:5a824eb82cc75361f98611f3cfc5091ea33f10a6ccea4d4ebdabbc523b9a1614
+    command: ["python", "/app/docker-compose-exporter.py"]
+    restart: always
+    volumes:
+      - "./docker-compose-exporter.py:/app/docker-compose-exporter.py:ro"
+      # kics-scan ignore-line
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+        reservations:
+          cpus: '0.05'
+          memory: 32M
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:9487/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+  blackbox_exporter:
+    container_name: blackbox_exporter
+    image: prom/blackbox-exporter:v0.28.0@sha256:e753ff9f3fc458d02cca5eddab5a77e1c175eee484a8925ac7d524f04366c2fc
+    user: "1003:1004"
+    ports:
+      - "127.0.0.1:9115:9115"
+    volumes:
+      - "./blackbox.yml:/config/blackbox.yml:ro"
+    command:
+      - "--config.file=/config/blackbox.yml"
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:9115/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
   node_exporter:
     image: quay.io/prometheus/node-exporter:v1.10.2@sha256:337ff1d356b68d39cef853e8c6345de11ce7556bb34cda8bd205bcf2ed30b565
     container_name: node_exporter

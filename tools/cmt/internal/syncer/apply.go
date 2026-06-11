@@ -781,7 +781,12 @@ func composeCommand(projectPlan ProjectPlan) (string, bool) {
 	case ComposeStartServices:
 		return "docker compose up -d", true
 	case ComposeRecreateServices:
-		return "docker compose up -d --force-recreate", true
+		cmd := "docker compose up -d --force-recreate"
+		if projectPlan.RemoveOrphans {
+			cmd += " --remove-orphans"
+		}
+
+		return cmd, true
 	case ComposeStopServices:
 		cmd := "docker compose down"
 		if projectPlan.RemoveOrphans {

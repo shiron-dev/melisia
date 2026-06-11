@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/shiron-dev/melisia/tools/cmt/internal/config"
+	"github.com/shiron-dev/melisia/tools/cmt/internal/lock"
 	"github.com/shiron-dev/melisia/tools/cmt/internal/syncer"
 
 	"github.com/spf13/cobra"
@@ -35,6 +36,15 @@ func newApplyCmd(configPath *string) *cobra.Command {
 		if err != nil {
 			return err
 		}
+
+		hosts := config.FilterHosts(cfg.Hosts, hostFilter)
+
+		release, err := acquireHostLocks(lock.New(), hosts, "apply", os.Stdout)
+		if err != nil {
+			return err
+		}
+
+		defer release()
 
 		planDependencies := new(syncer.PlanDependencies)
 		planDependencies.ClientFactory = applyDependencies.ClientFactory
@@ -77,7 +87,7 @@ func bindApplyFlags(
 	expectedPlanSHA256 *string,
 ) {
 	applyCommand.Flags().StringSliceVar(hostFilter, "host", nil, "filter by host name (repeatable)")
-	applyCommand.Flags().StringSliceVar(projectFilter, "project", nil, "filter by project name (repeatable)")
+	bindProjectFilterFlags(applyCommand, projectFilter)
 	applyCommand.Flags().BoolVar(autoApprove, "auto-approve", false, "skip confirmation prompt")
 	applyCommand.Flags().BoolVar(
 		refreshManifestOnNoop,

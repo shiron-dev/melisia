@@ -17,7 +17,7 @@ jobs:
     outputs:
       matrix: ${{ steps.discover.outputs.matrix }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - name: Discover terraform roots
         id: discover
         uses: ./.github/actions/discover-terraform-roots
@@ -170,13 +170,13 @@ jobs:
       cancel-in-progress: false
     env:
       GITHUB_TOKEN: ${{ github.token }}
-      TERRAFORM_APPLY_SKIP_TARGETS: "terraform/aws,terraform/github_secrets,terraform/grafana"
+      TERRAFORM_APPLY_SKIP_TARGETS: "terraform/aws,terraform/github_secrets,terraform/grafana,terraform/truenas"
       TERRAFORM_PLAN_KMS_KEY: sops-key
       TERRAFORM_PLAN_KMS_KEYRING: sops
       TERRAFORM_PLAN_KMS_LOCATION: global
       TERRAFORM_PLAN_BUCKET: shiron-dev-terraform
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - name: Get Terraform version from mise.toml
         id: terraform-version
         run: |
@@ -209,7 +209,13 @@ jobs:
       - name: Decrypt secrets
         run: make sops-decrypt
       - name: Terraform Init
-        run: cd "${{ matrix.target.path }}" && terraform init
+        run: |
+          if echo ",${TERRAFORM_APPLY_SKIP_TARGETS}," | grep -Fq ",${{ matrix.target.path }},"; then
+            echo "Skipping terraform init for ${{ matrix.target.path }}: target is listed in TERRAFORM_APPLY_SKIP_TARGETS."
+            exit 0
+          fi
+
+          cd "${{ matrix.target.path }}" && terraform init
       - name: Run terraform plan
         id: terraform-plan
         run: |
@@ -379,6 +385,7 @@ jobs:
       TERRAFORM_PLAN_KMS_KEYRING: sops
       TERRAFORM_PLAN_KMS_LOCATION: global
       TERRAFORM_PLAN_BUCKET: shiron-dev-terraform
+      TERRAFORM_APPLY_SKIP_TARGETS: "terraform/aws,terraform/github_secrets,terraform/grafana,terraform/truenas"
     steps:
       - name: Check run is latest before apply
         id: stale-check
@@ -431,7 +438,7 @@ jobs:
             }
 
             core.setOutput("is_latest", "true");
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         if: steps.stale-check.outputs.is_latest == 'true'
       - name: Get Terraform version from mise.toml
         id: terraform-version
@@ -506,7 +513,13 @@ jobs:
           echo "${{ matrix.target.plan_sha256 }}  ${plan_file}" | sha256sum --check
       - name: Terraform Init
         if: steps.stale-check.outputs.is_latest == 'true'
-        run: cd "${{ matrix.target.path }}" && terraform init
+        run: |
+          if echo ",${TERRAFORM_APPLY_SKIP_TARGETS}," | grep -Fq ",${{ matrix.target.path }},"; then
+            echo "Skipping terraform init for ${{ matrix.target.path }}: target is listed in TERRAFORM_APPLY_SKIP_TARGETS."
+            exit 0
+          fi
+
+          cd "${{ matrix.target.path }}" && terraform init
       - name: Check run is latest before terraform apply
         id: pre-apply-stale-check
         if: steps.stale-check.outputs.is_latest == 'true'
@@ -564,6 +577,12 @@ jobs:
         if: steps.stale-check.outputs.is_latest == 'true' && steps.pre-apply-stale-check.outputs.is_latest == 'true'
         run: |
           set +e
+
+          if echo ",${TERRAFORM_APPLY_SKIP_TARGETS}," | grep -Fq ",${{ matrix.target.path }},"; then
+            echo "Skipping terraform apply for ${{ matrix.target.path }}: target is listed in TERRAFORM_APPLY_SKIP_TARGETS."
+            echo "exit_code=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           output_file="$(mktemp --suffix=.txt)"
           plan_file="$GITHUB_WORKSPACE/plan-files/tfplan_${{ matrix.target.id }}.bin"

@@ -6,6 +6,7 @@ projects:
   grafana:
     remotePath: /var
     composeAction: ignore
+    postSyncCommand: chmod 0644 docker-compose-exporter.py && docker compose up -d --remove-orphans && docker compose restart blackbox_exporter prometheus
     dirs:
       - grafana_storage:
         owner: 472
@@ -61,6 +62,7 @@ projects:
   discord-webhook:
 
   snipeit:
+    composeAction: down
     dirs:
       - db_data:
         owner: 999

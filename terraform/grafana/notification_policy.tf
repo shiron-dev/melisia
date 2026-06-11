@@ -11,5 +11,7 @@ resource "grafana_notification_policy" "root" {
 
   depends_on = [
     grafana_contact_point.email,
+    grafana_contact_point.slack,
+    grafana_contact_point.webhook,
   ]
 }

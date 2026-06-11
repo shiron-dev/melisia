@@ -31,6 +31,60 @@ For CI or shared encrypted config, put `grafana_auth` in `terraform.secrets.tfva
 
 Rule groups are driven by `var.rule_groups` so alert rules can be added in `terraform.secrets.tfvars` or a normal tfvars file without changing the resource shape.
 
+Slack notifications can be enabled by adding a Slack contact point and routing the root notification policy to it. Put webhook URLs, Slack API tokens, and channel IDs in `terraform.secrets.tfvars` and encrypt them with SOPS:
+
+```hcl
+slack_contact_points = {
+  slack-alerts = {
+    url      = "https://hooks.slack.com/services/..."
+    username = "Grafana"
+    title    = "{{ template \"default.title\" . }}"
+    text     = "{{ template \"default.message\" . }}"
+  }
+}
+
+notification_policy = {
+  contact_point   = "slack-alerts"
+  group_by        = ["alertname"]
+  group_wait      = "30s"
+  group_interval  = "5m"
+  repeat_interval = "4h"
+}
+```
+
+If using a Slack bot token instead of an incoming webhook, set `token` and `recipient` instead of `url`.
+
+Grafana Cloud IRM notifications are sent from self-hosted Grafana Alerting through a webhook contact point. Manage the IRM integration endpoint in `terraform/grafana_irm`, then put its sensitive output in this root's `terraform.secrets.tfvars`:
+
+```hcl
+webhook_contact_points = {
+  grafana-cloud-irm = {
+    url = "<terraform/grafana_irm selfhost_grafana_irm_webhook_url>"
+  }
+}
+
+notification_policy = {
+  contact_point = "grafana-cloud-irm"
+  group_by = [
+    "grafana_folder",
+    "alertname",
+  ]
+}
+```
+
+## Metrics Persistence
+
+**メトリクスの永続化バックエンドは必ず用意すること。**
+
+Grafana 自体はメトリクスを保存しない。Prometheus や類似のスクレイパーが収集したデータを永続化する専用ストレージ（VictoriaMetrics など）を別途立ち上げ、Grafana のデータソースはそこを向けること。
+
+- ✅ 正しい構成: Prometheus → **VictoriaMetrics** → Grafana データソース
+- ❌ 避けるべき構成: Prometheus（永続 volume なし）→ Grafana データソース
+
+Prometheus はローカル TSDB にデータを書き込むが、永続 volume をマウントしていない場合はコンテナの再作成・削除でデータが失われる。またデフォルトの保持期間は 15 日と短い。VictoriaMetrics のような長期ストレージを挟むことで、コンテナのライフサイクルや障害・移行をまたいでメトリクスを保持できる。
+
+このリポジトリでは `victoriametrics` コンテナ（`compose/projects/grafana/compose.yml`）が永続ストレージの役割を担い、Grafana データソース UID `P95B22FBE6FE890D0` がそこを参照している。新しいデータソースを追加する場合も、必ず永続化バックエンドを経由させること。
+
 ## Existing Resources
 
 The existing VictoriaMetrics-backed Prometheus data source has a deterministic UID in cmt provisioning:

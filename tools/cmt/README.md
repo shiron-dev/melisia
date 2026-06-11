@@ -217,7 +217,8 @@ projects:
 `ignore` の場合は Compose の up/down 実行自体をスキップします。
 ファイル差分がなくても Compose 状態に差分があれば apply の対象になります。
 
-`projects.<name>.removeOrphans: true` を指定すると、`composeAction: down` の実行時に
+`projects.<name>.removeOrphans: true` を指定すると、サービス再作成時に
+`docker compose up -d --force-recreate --remove-orphans`、`composeAction: down` の実行時に
 `docker compose down --remove-orphans` を使います。
 
 ### `beforeApplyHooks` — apply 前フック
@@ -298,6 +299,7 @@ cmt [--config <path>] <command> [flags]
 plan / apply フラグ:
   --host      ホスト名でフィルタ（複数指定可）
   --project   プロジェクト名でフィルタ（複数指定可）
+  --target   --project の別名。Terraform 風に -target=NAME も利用可（複数指定可）
 
 plan フラグ:
   --exit-code  終了コードで結果を返す（CI 等向け）:

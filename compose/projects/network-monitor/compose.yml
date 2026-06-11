@@ -1,0 +1,74 @@
+services:
+  blackbox_exporter:
+    container_name: home_ep_blackbox_exporter
+    image: prom/blackbox-exporter:v0.28.0@sha256:e753ff9f3fc458d02cca5eddab5a77e1c175eee484a8925ac7d524f04366c2fc
+    ports:
+      - "127.0.0.1:9115:9115"
+    networks:
+      - home-automation
+    volumes:
+      - "./blackbox.yml:/config/blackbox.yml:ro"
+    command:
+      - "--config.file=/config/blackbox.yml"
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # kics-scan ignore-line
+    cap_add:
+      - NET_RAW
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:9115/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  cloudflare_speedtest_exporter:
+    container_name: home_ep_cloudflare_speedtest_exporter
+    image: python:3.14-alpine@sha256:5a824eb82cc75361f98611f3cfc5091ea33f10a6ccea4d4ebdabbc523b9a1614
+    command: ["python", "/app/cloudflare-speedtest-exporter.py"]
+    ports:
+      - "127.0.0.1:9798:9798"
+    networks:
+      - home-automation
+    environment:
+      CLOUDFLARE_SPEEDTEST_INTERVAL_SECONDS: "600"
+      CLOUDFLARE_SPEEDTEST_DOWNLOAD_BYTES: "25000000"
+      CLOUDFLARE_SPEEDTEST_UPLOAD_BYTES: "10000000"
+      CLOUDFLARE_SPEEDTEST_TARGET_BASE_URL: "https://speed.cloudflare.com"
+    volumes:
+      - "./cloudflare-speedtest-exporter.py:/app/cloudflare-speedtest-exporter.py:ro"
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:9798/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+networks:
+  home-automation:
+    external: true
+    name: home-assistant_home-automation

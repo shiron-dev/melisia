@@ -24,3 +24,15 @@ output "cf_access_client_secret" {
   value       = cloudflare_zero_trust_access_service_token.github_actions_arm_srv.client_secret
   sensitive   = true
 }
+
+output "cf_access_e2e_client_id" {
+  description = "Cloudflare Zero Trust Access Service Token client ID for Grafana E2E probes"
+  value       = cloudflare_zero_trust_access_service_token.e2e.client_id
+  sensitive   = true
+}
+
+output "cf_access_e2e_client_secret" {
+  description = "Cloudflare Zero Trust Access Service Token client secret for Grafana E2E probes"
+  value       = cloudflare_zero_trust_access_service_token.e2e.client_secret
+  sensitive   = true
+}
