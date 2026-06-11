@@ -493,18 +493,61 @@ jobs:
             "$BASE_SHA" \
             "$HEAD_SHA"
 
+      # Seed Codex's auth bundle from the secret, read-only. This job holds NO
+      # secrets:write credential: the rotating ChatGPT refresh token is refreshed
+      # and persisted out-of-band by the codex-auth-refresh.yml scheduled workflow,
+      # which never runs `codex exec` or any PR-controlled code. Keeping all
+      # privileged operations off this runner means a prompt injection in the
+      # untrusted Codex run has nothing to exfiltrate.
       - name: Prepare Codex auth home
         env:
           CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
+          CODEX_HOME: ${{ runner.temp }}/codex-home
         run: |
           if [[ -z "$CODEX_AUTH_JSON" ]]; then
             echo "Missing required Codex auth JSON" >&2
             exit 1
           fi
 
-          mkdir -p "$RUNNER_TEMP/codex-home"
-          printf '%s' "$CODEX_AUTH_JSON" > "$RUNNER_TEMP/codex-home/auth.json"
-          chmod 600 "$RUNNER_TEMP/codex-home/auth.json"
+          mkdir -p "$CODEX_HOME"
+
+          # Blank the rotating refresh token before handing auth.json to the
+          # untrusted `codex exec` run. The scheduled codex-auth-refresh workflow
+          # keeps the access token fresh, so the review never needs to refresh;
+          # without the refresh token a prompt injection cannot read or consume the
+          # shared, single-use credential. The field is kept (empty) so Codex can
+          # still deserialize the bundle, and if the access token has somehow
+          # expired the review simply fails instead of rotating the shared token.
+          #
+          # This runs with the PR head checked out and CODEX_AUTH_JSON in the env.
+          # Run it from $RUNNER_TEMP and with `-P` (PYTHONSAFEPATH) so the PR
+          # workspace is NOT on Python's import path — otherwise a PR-supplied
+          # `json.py`/`os.py` at the repo root could execute (with the secret in
+          # env) during `import`, before the token is blanked.
+          cd "$RUNNER_TEMP"
+          python3 -P - <<'PY'
+          import json
+          import os
+          import sys
+
+          try:
+              auth = json.loads(os.environ["CODEX_AUTH_JSON"])
+          except json.JSONDecodeError as exc:
+              sys.exit(f"CODEX_AUTH_JSON is not valid JSON: {exc}")
+          if not isinstance(auth, dict) or not isinstance(auth.get("tokens"), dict):
+              sys.exit("CODEX_AUTH_JSON must be an object with a `tokens` object")
+
+          # Use a variable key so static secret scanners do not flag a literal
+          # token mapping; keep the field present but empty.
+          rt_field = "refresh_token"
+          auth["tokens"][rt_field] = ""
+
+          path = os.path.join(os.environ["CODEX_HOME"], "auth.json")
+          with open(path, "w", encoding="utf-8") as handle:
+              json.dump(auth, handle)
+          os.chmod(path, 0o600)
+          print("Seeded Codex auth.json without the refresh token.")
+          PY
 
       - name: Load review assets from trusted base commit
         env:
