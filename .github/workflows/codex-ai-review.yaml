@@ -506,6 +506,10 @@ jobs:
           app-id: ${{ secrets.CODEX_REVIEW_APP_ID }}
           private-key: ${{ secrets.CODEX_REVIEW_APP_PRIVATE_KEY }}
           permission-secrets: write
+          # We revoke this token ourselves before Codex runs (see the revoke step),
+          # so disable the action's own post-job revoke (which would otherwise leave
+          # the token valid throughout the untrusted Codex run).
+          skip-token-revoke: true
 
       - name: Prepare and refresh Codex auth home
         id: prepare_auth
@@ -682,6 +686,21 @@ jobs:
           set -euo pipefail
           echo "Persisting rotated Codex auth bundle to CODEX_AUTH_JSON secret."
           gh secret set CODEX_AUTH_JSON --repo "$GITHUB_REPOSITORY" < "$CODEX_HOME/auth.json"
+
+      # Revoke the secrets:write token *before* Codex runs. After this, even if a
+      # prompt injection in the untrusted Codex run reads the token string from
+      # runner state / $RUNNER_TEMP, it is already invalid and grants nothing.
+      - name: Revoke Codex auth persistence token
+        if: ${{ always() && steps.persist_token.outputs.token != '' }}
+        env:
+          GH_TOKEN: ${{ steps.persist_token.outputs.token }}
+        run: |
+          set -euo pipefail
+          if gh api --method DELETE /installation/token --silent; then
+            echo "Revoked the secrets:write persistence token."
+          else
+            echo "::warning::Failed to revoke the persistence token; it will expire on its own (~1h)."
+          fi
 
       - name: Load review assets from trusted base commit
         env:
