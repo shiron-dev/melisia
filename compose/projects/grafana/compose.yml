@@ -58,40 +58,12 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-  influxdb:
-    image: influxdb:2.9.1@sha256:c9acb506f536915c97ff71c971970ad9c2a38b2b8a0d54200ef0ef430f7a37f0
-    container_name: influxdb
-    restart: always
-    volumes:
-      - ./influxdb_data:/var/lib/influxdb2
-      - ./influxdb_config:/etc/influxdb2
-    ports:
-      - "127.0.0.1:8086:8086"
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    # kics-scan ignore-line
-    cap_add:
-      - CHOWN
-      - DAC_OVERRIDE
-      - FOWNER
-      - SETGID
-      - SETUID
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 1G
-        reservations:
-          cpus: '0.25'
-          memory: 256M
-    healthcheck:
-      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "http://127.0.0.1:8086/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+  # influxdb はメトリクス永続化を VictoriaMetrics に一本化したため停止した。
+  # コンテナ定義のみ外し、データ (bind mount の ./influxdb_data / ./influxdb_config)
+  # は据え置く。postSyncCommand の `docker compose up -d --remove-orphans` により
+  # 既存コンテナはオーファンとして停止・削除される。
+  # influxdb.shiron.dev の Cloudflare Tunnel と prometheus の e2e プローブは
+  # snipeit と同様、停止済みサービスでも残置する慣例に合わせて据え置く。
 
   victoriametrics:
     container_name: victoriametrics
