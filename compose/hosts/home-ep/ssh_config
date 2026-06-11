@@ -1,8 +1,11 @@
-Include ~/.ssh/config
-
+# home-ep settings must precede the Include: ssh uses the first value
+# obtained for keywords like IdentityAgent/IdentityFile, so matching here
+# first guarantees ssh-agent stays disabled regardless of ~/.ssh/config.
 Host home-ep
   HostName 192.168.1.61
   User shiron
   IdentityFile .local/ssh/home_ep_key
   IdentitiesOnly yes
   IdentityAgent none
+
+Include ~/.ssh/config
