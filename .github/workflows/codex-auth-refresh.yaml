@@ -123,31 +123,47 @@ jobs:
 
           emit("rotated", "false")
 
-          # Primary signal: the access token's own JWT `exp`, exactly what Codex uses
-          # to decide whether to refresh at startup.
+          # Codex refreshes at startup when EITHER the access token's JWT `exp` is
+          # near (within 5 min) OR `last_refresh` is older than ~8 days. The review
+          # job runs with the refresh token blanked, so it cannot refresh — the
+          # secret must therefore stay fresh on BOTH axes, or a review run would
+          # fail. Refresh here if either signal is stale.
+          reasons = []
+
+          # Axis 1: access-token expiry.
           exp = jwt_expiry(tokens.get("access_token") or "")
           if exp is not None:
               hours_left = (exp - now.timestamp()) / 3600.0
-              if hours_left > refresh_before_exp_hours:
-                  print(f"access_token valid for {hours_left:.1f}h; no refresh needed.")
-                  sys.exit(0)
-              print(f"access_token expires in {hours_left:.1f}h; refreshing.")
+              if hours_left <= refresh_before_exp_hours:
+                  reasons.append(f"access_token expires in {hours_left:.1f}h")
+              else:
+                  print(f"access_token valid for {hours_left:.1f}h.")
           else:
-              # Fallback: no parseable exp — use last_refresh age (Codex's 8-day path).
-              age_days = None
-              last_refresh = auth.get("last_refresh")
-              if isinstance(last_refresh, str) and last_refresh:
-                  try:
-                      parsed = datetime.fromisoformat(last_refresh.replace("Z", "+00:00"))
-                      if parsed.tzinfo is None:
-                          parsed = parsed.replace(tzinfo=timezone.utc)
-                      age_days = (now - parsed).total_seconds() / 86400
-                  except ValueError:
-                      age_days = None
-              if age_days is not None and age_days < refresh_after_days:
-                  print(f"access_token has no parseable exp; bundle age {age_days:.1f}d is fresh; no refresh needed.")
-                  sys.exit(0)
-              print("access_token has no parseable exp and bundle is stale/unknown age; refreshing.")
+              reasons.append("access_token has no parseable exp")
+
+          # Axis 2: bundle age (last_refresh), mirroring Codex's ~8-day path.
+          age_days = None
+          last_refresh = auth.get("last_refresh")
+          if isinstance(last_refresh, str) and last_refresh:
+              try:
+                  parsed = datetime.fromisoformat(last_refresh.replace("Z", "+00:00"))
+                  if parsed.tzinfo is None:
+                      parsed = parsed.replace(tzinfo=timezone.utc)
+                  age_days = (now - parsed).total_seconds() / 86400
+              except ValueError:
+                  age_days = None
+          if age_days is None:
+              reasons.append("last_refresh missing/unparseable")
+          elif age_days >= refresh_after_days:
+              reasons.append(f"last_refresh is {age_days:.1f}d old")
+          else:
+              print(f"last_refresh is {age_days:.1f}d old.")
+
+          if not reasons:
+              print("Codex auth bundle is fresh on both expiry and age; no refresh needed.")
+              sys.exit(0)
+
+          print("Refreshing because: " + "; ".join(reasons) + ".")
 
           if not refresh_token:
               sys.exit("Codex auth bundle has no refresh_token; run `codex login` and update CODEX_AUTH_JSON.")
