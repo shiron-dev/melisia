@@ -30,6 +30,11 @@ concurrency:
 
 jobs:
   refresh:
+    # This job holds CODEX_AUTH_JSON and a secrets:write token, so only ever run
+    # the workflow body from the default branch. workflow_dispatch lets a user
+    # pick any ref (including a PR branch); without this guard a PR-modified copy
+    # of this workflow could run with those credentials.
+    if: ${{ github.ref_name == github.event.repository.default_branch }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
