@@ -14,7 +14,11 @@ name: Codex Auth Refresh
 on:
   schedule:
     # Daily; refreshes only when the bundle is actually approaching staleness.
-    - cron: "17 3 * * *"
+    # Every 6 hours. Combined with the ~24h pre-expiry refresh margin below, the
+    # secret's access token is always valid by a wide margin, so review jobs never
+    # hit Codex's own (5-minute-to-expiry) proactive refresh and never consume the
+    # shared, single-use refresh token themselves.
+    - cron: "17 */6 * * *"
   workflow_dispatch:
 
 permissions:
@@ -42,9 +46,14 @@ jobs:
         env:
           CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
           AUTH_OUT: ${{ runner.temp }}/codex-auth.json
-          # Refresh before the access token approaches expiry and well before
-          # Codex's own ~8-day window, so review runs never need to self-rotate.
-          REFRESH_AFTER_DAYS: "5"
+          # Refresh once the access token is within this many hours of its JWT `exp`.
+          # Must exceed the cron interval (6h) so the secret's access token is always
+          # refreshed well before it can expire, matching how Codex itself decides to
+          # refresh (codex-rs/login/src/auth/manager.rs: it refreshes when the
+          # access_token exp is within 5 minutes, else when last_refresh > 8 days).
+          REFRESH_BEFORE_EXP_HOURS: "24"
+          # Fallback only used when the access token has no parseable JWT exp.
+          REFRESH_AFTER_DAYS: "7"
         run: |
           if [[ -z "$CODEX_AUTH_JSON" ]]; then
             echo "Missing required Codex auth JSON" >&2
@@ -52,6 +61,7 @@ jobs:
           fi
 
           python3 - <<'PY'
+          import base64
           import json
           import os
           import sys
@@ -70,11 +80,26 @@ jobs:
           }
 
           out_path = os.environ["AUTH_OUT"]
-          refresh_after_days = float(os.environ.get("REFRESH_AFTER_DAYS", "5"))
+          refresh_before_exp_hours = float(os.environ.get("REFRESH_BEFORE_EXP_HOURS", "24"))
+          refresh_after_days = float(os.environ.get("REFRESH_AFTER_DAYS", "7"))
+          now = datetime.now(timezone.utc)
 
           def emit(name, value):
               with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
                   handle.write(f"{name}={value}\n")
+
+          def jwt_expiry(token):
+              # Decode the JWT payload (no signature check needed — we only read `exp`,
+              # and the API validates the token server-side) to mirror Codex's own
+              # exp-based proactive refresh decision.
+              try:
+                  payload = token.split(".")[1]
+                  payload += "=" * (-len(payload) % 4)
+                  claims = json.loads(base64.urlsafe_b64decode(payload))
+                  exp = claims.get("exp")
+                  return int(exp) if exp is not None else None
+              except Exception:
+                  return None
 
           try:
               auth = json.loads(os.environ["CODEX_AUTH_JSON"])
@@ -88,21 +113,31 @@ jobs:
 
           emit("rotated", "false")
 
-          # Age of the current bundle.
-          age_days = None
-          last_refresh = auth.get("last_refresh")
-          if isinstance(last_refresh, str) and last_refresh:
-              try:
-                  parsed = datetime.fromisoformat(last_refresh.replace("Z", "+00:00"))
-                  if parsed.tzinfo is None:
-                      parsed = parsed.replace(tzinfo=timezone.utc)
-                  age_days = (datetime.now(timezone.utc) - parsed).total_seconds() / 86400
-              except ValueError:
-                  age_days = None
-
-          if age_days is not None and age_days < refresh_after_days:
-              print(f"Codex auth bundle is fresh (age={age_days:.1f}d); no refresh needed.")
-              sys.exit(0)
+          # Primary signal: the access token's own JWT `exp`, exactly what Codex uses
+          # to decide whether to refresh at startup.
+          exp = jwt_expiry(tokens.get("access_token") or "")
+          if exp is not None:
+              hours_left = (exp - now.timestamp()) / 3600.0
+              if hours_left > refresh_before_exp_hours:
+                  print(f"access_token valid for {hours_left:.1f}h; no refresh needed.")
+                  sys.exit(0)
+              print(f"access_token expires in {hours_left:.1f}h; refreshing.")
+          else:
+              # Fallback: no parseable exp — use last_refresh age (Codex's 8-day path).
+              age_days = None
+              last_refresh = auth.get("last_refresh")
+              if isinstance(last_refresh, str) and last_refresh:
+                  try:
+                      parsed = datetime.fromisoformat(last_refresh.replace("Z", "+00:00"))
+                      if parsed.tzinfo is None:
+                          parsed = parsed.replace(tzinfo=timezone.utc)
+                      age_days = (now - parsed).total_seconds() / 86400
+                  except ValueError:
+                      age_days = None
+              if age_days is not None and age_days < refresh_after_days:
+                  print(f"access_token has no parseable exp; bundle age {age_days:.1f}d is fresh; no refresh needed.")
+                  sys.exit(0)
+              print("access_token has no parseable exp and bundle is stale/unknown age; refreshing.")
 
           if not refresh_token:
               sys.exit("Codex auth bundle has no refresh_token; run `codex login` and update CODEX_AUTH_JSON.")
