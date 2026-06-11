@@ -11,15 +11,20 @@ name: Codex Auth Refresh
 # It is the ONLY place that holds a secrets:write credential, so the untrusted
 # Codex review run shares no runner with it.
 
+# SECURITY: schedule is the ONLY trigger on purpose. Scheduled runs always use
+# the workflow definition from the default branch, which is a real trust
+# boundary. workflow_dispatch is intentionally NOT used: it would run the
+# definition from the dispatcher's chosen ref, so a PR branch could remove any
+# in-file guard and run this privileged job (it holds CODEX_AUTH_JSON and a
+# secrets:write token) from PR-controlled code. To refresh out-of-band, update
+# the CODEX_AUTH_JSON secret directly (e.g. after `codex login`).
 on:
   schedule:
-    # Daily; refreshes only when the bundle is actually approaching staleness.
     # Every 6 hours. Combined with the ~24h pre-expiry refresh margin below, the
     # secret's access token is always valid by a wide margin, so review jobs never
     # hit Codex's own (5-minute-to-expiry) proactive refresh and never consume the
     # shared, single-use refresh token themselves.
     - cron: "17 */6 * * *"
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -30,10 +35,10 @@ concurrency:
 
 jobs:
   refresh:
-    # This job holds CODEX_AUTH_JSON and a secrets:write token, so only ever run
-    # the workflow body from the default branch. workflow_dispatch lets a user
-    # pick any ref (including a PR branch); without this guard a PR-modified copy
-    # of this workflow could run with those credentials.
+    # Defense in depth: this job holds CODEX_AUTH_JSON and a secrets:write token,
+    # so refuse to run unless on the default branch. With schedule as the only
+    # trigger this is always true, but it guards against a future trigger being
+    # added without re-reviewing this constraint.
     if: ${{ github.ref_name == github.event.repository.default_branch }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
