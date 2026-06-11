@@ -14,16 +14,18 @@ type acquiredLock struct {
 }
 
 func acquireHostLocks(hosts []config.HostEntry, operation string, w io.Writer) (func(), error) {
+	locker := lock.New()
+
 	var acquired []acquiredLock
 
 	releaseFn := func() {
 		for _, l := range acquired {
-			_ = lock.Release(l.hostName, l.lockID)
+			_ = locker.Release(l.hostName, l.lockID)
 		}
 	}
 
 	for _, host := range hosts {
-		info, err := lock.Acquire(host.Name, operation)
+		info, err := locker.Acquire(host.Name, operation)
 		if err != nil {
 			releaseFn()
 

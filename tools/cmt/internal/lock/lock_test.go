@@ -2,23 +2,17 @@ package lock_test
 
 import (
 	"errors"
-	"os"
 	"testing"
 
 	"github.com/shiron-dev/melisia/tools/cmt/internal/lock"
 )
 
-func withTempLockDir(t *testing.T) {
-	t.Helper()
-
-	dir := t.TempDir()
-	t.Setenv("XDG_DATA_HOME", dir)
-}
-
 func TestAcquireAndRelease(t *testing.T) {
-	withTempLockDir(t)
+	t.Parallel()
 
-	info, err := lock.Acquire("test-host", "plan")
+	locker := lock.NewWithDir(t.TempDir())
+
+	info, err := locker.Acquire("test-host", "plan")
 	if err != nil {
 		t.Fatalf("unexpected error acquiring lock: %v", err)
 	}
@@ -35,22 +29,25 @@ func TestAcquireAndRelease(t *testing.T) {
 		t.Error("expected non-empty who")
 	}
 
-	if err := lock.Release("test-host", info.ID); err != nil {
+	err = locker.Release("test-host", info.ID)
+	if err != nil {
 		t.Fatalf("unexpected error releasing lock: %v", err)
 	}
 }
 
 func TestAcquireAlreadyLocked(t *testing.T) {
-	withTempLockDir(t)
+	t.Parallel()
 
-	info, err := lock.Acquire("test-host", "apply")
+	locker := lock.NewWithDir(t.TempDir())
+
+	info, err := locker.Acquire("test-host", "apply")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	defer func() { _ = lock.Release("test-host", info.ID) }()
+	defer func() { _ = locker.Release("test-host", info.ID) }()
 
-	_, err = lock.Acquire("test-host", "plan")
+	_, err = locker.Acquire("test-host", "plan")
 	if err == nil {
 		t.Fatal("expected error when acquiring already-locked host")
 	}
@@ -61,64 +58,75 @@ func TestAcquireAlreadyLocked(t *testing.T) {
 }
 
 func TestReleaseNotOwned(t *testing.T) {
-	withTempLockDir(t)
+	t.Parallel()
 
-	info, err := lock.Acquire("test-host", "plan")
+	locker := lock.NewWithDir(t.TempDir())
+
+	info, err := locker.Acquire("test-host", "plan")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	defer func() { _ = lock.ForceUnlock("test-host") }()
-
-	err = lock.Release("test-host", "wrong-id")
-	if err == nil {
-		t.Fatal("expected error when releasing with wrong ID")
-	}
+	defer func() { _ = locker.ForceUnlock("test-host") }()
 
 	if info.ID == "wrong-id" {
 		t.Skip("generated ID happened to match, skipping")
 	}
+
+	err = locker.Release("test-host", "wrong-id")
+	if err == nil {
+		t.Fatal("expected error when releasing with wrong ID")
+	}
 }
 
 func TestForceUnlock(t *testing.T) {
-	withTempLockDir(t)
+	t.Parallel()
 
-	info, err := lock.Acquire("test-host", "apply")
+	locker := lock.NewWithDir(t.TempDir())
+
+	_, err := locker.Acquire("test-host", "apply")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	_ = info
-
-	if err := lock.ForceUnlock("test-host"); err != nil {
+	err = locker.ForceUnlock("test-host")
+	if err != nil {
 		t.Fatalf("unexpected error force-unlocking: %v", err)
 	}
 
-	if lock.IsLocked("test-host") {
+	if locker.IsLocked("test-host") {
 		t.Error("expected host to be unlocked after force-unlock")
 	}
 }
 
 func TestForceUnlockNoLock(t *testing.T) {
-	withTempLockDir(t)
+	t.Parallel()
 
-	err := lock.ForceUnlock("no-such-host")
+	locker := lock.NewWithDir(t.TempDir())
+
+	err := locker.ForceUnlock("no-such-host")
 	if err == nil {
 		t.Fatal("expected error when force-unlocking non-existent lock")
+	}
+
+	if !errors.Is(err, lock.ErrLockNotFound) {
+		t.Errorf("expected ErrLockNotFound, got %v", err)
 	}
 }
 
 func TestRead(t *testing.T) {
-	withTempLockDir(t)
+	t.Parallel()
 
-	info, err := lock.Acquire("test-host", "plan")
+	locker := lock.NewWithDir(t.TempDir())
+
+	info, err := locker.Acquire("test-host", "plan")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	defer func() { _ = lock.Release("test-host", info.ID) }()
+	defer func() { _ = locker.Release("test-host", info.ID) }()
 
-	read, err := lock.Read("test-host")
+	read, err := locker.Read("test-host")
 	if err != nil {
 		t.Fatalf("unexpected error reading lock: %v", err)
 	}
@@ -133,48 +141,54 @@ func TestRead(t *testing.T) {
 }
 
 func TestReadNoLock(t *testing.T) {
-	withTempLockDir(t)
+	t.Parallel()
 
-	_, err := lock.Read("no-such-host")
+	locker := lock.NewWithDir(t.TempDir())
+
+	_, err := locker.Read("no-such-host")
 	if err == nil {
 		t.Fatal("expected error when reading non-existent lock")
 	}
 
-	if !os.IsNotExist(err) {
-		t.Errorf("expected os.IsNotExist, got %v", err)
+	if !errors.Is(err, lock.ErrLockNotFound) {
+		t.Errorf("expected ErrLockNotFound, got %v", err)
 	}
 }
 
 func TestIsLocked(t *testing.T) {
-	withTempLockDir(t)
+	t.Parallel()
 
-	if lock.IsLocked("test-host") {
+	locker := lock.NewWithDir(t.TempDir())
+
+	if locker.IsLocked("test-host") {
 		t.Error("expected host to be unlocked initially")
 	}
 
-	info, err := lock.Acquire("test-host", "plan")
+	info, err := locker.Acquire("test-host", "plan")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	defer func() { _ = lock.Release("test-host", info.ID) }()
+	defer func() { _ = locker.Release("test-host", info.ID) }()
 
-	if !lock.IsLocked("test-host") {
+	if !locker.IsLocked("test-host") {
 		t.Error("expected host to be locked after acquire")
 	}
 }
 
 func TestReleaseAlreadyGone(t *testing.T) {
-	withTempLockDir(t)
+	t.Parallel()
 
-	info, err := lock.Acquire("test-host", "plan")
+	locker := lock.NewWithDir(t.TempDir())
+
+	info, err := locker.Acquire("test-host", "plan")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	_ = lock.ForceUnlock("test-host")
+	_ = locker.ForceUnlock("test-host")
 
-	err = lock.Release("test-host", info.ID)
+	err = locker.Release("test-host", info.ID)
 	if err != nil {
 		t.Errorf("expected no error when releasing already-gone lock, got %v", err)
 	}
