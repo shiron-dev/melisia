@@ -6,7 +6,7 @@ projects:
   grafana:
     remotePath: /var
     composeAction: ignore
-    postSyncCommand: chmod 0644 docker-compose-exporter.py vmagent.yml && docker compose up -d --remove-orphans && docker compose restart blackbox_exporter vmagent
+    postSyncCommand: chmod 0644 docker-compose-exporter.py vmagent.yml vmauth.yml && docker compose up -d --remove-orphans && docker compose restart blackbox_exporter vmagent vmauth
     dirs:
       - grafana_storage:
         owner: 472

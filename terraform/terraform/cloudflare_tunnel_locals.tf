@@ -13,13 +13,16 @@ locals {
           service   = "http://influxdb:8086"
           policies  = local.cloudflare_access_policy_refs.shiron
         },
-        # home-ep の vmagent が remote_write (push) する VictoriaMetrics の
-        # 書き込みエンドポイント。Access (e2e service token + shiron) で保護する。
+        # home-ep の vmagent が remote_write (push) する書き込みエンドポイント。
+        # vmauth が /api/v1/write のみを VictoriaMetrics へ転送し、query/admin API
+        # には到達させない。Access は専用 service token (vm_write) のみ許可し、
+        # 共通 e2e ポリシーや人間ログインは通さない (skip_e2e_policy)。
         {
-          hostname  = "vm-write.shiron.dev"
-          zone_name = "shiron.dev"
-          service   = "http://victoriametrics:8428"
-          policies  = local.cloudflare_access_policy_refs.shiron
+          hostname        = "vm-write.shiron.dev"
+          zone_name       = "shiron.dev"
+          service         = "http://vmauth:8427"
+          policies        = [local.cloudflare_access_vm_write_policy_ref]
+          skip_e2e_policy = true
         }
       ]
     }
@@ -80,6 +83,7 @@ locals {
           zone_name                 = ingress.zone_name
           service                   = ingress.service
           policies                  = lookup(ingress, "policies", [])
+          skip_e2e_policy           = lookup(ingress, "skip_e2e_policy", false)
           manage_access_application = lookup(ingress, "manage_access_application", true)
           dangerously_allow_public_without_access_policy = lookup(
             ingress,

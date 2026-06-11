@@ -1,0 +1,10 @@
+# vm-write.shiron.dev (Cloudflare Access 保護) から受けたリクエストのうち、
+# remote_write の書き込みパスだけを VictoriaMetrics へ転送する。
+# url_map に一致しないパス (query / admin / delete 系) はルート無しで拒否される。
+# 認証は edge の Cloudflare Access が担うため、vmauth 側では unauthorized_user で
+# パス制限のみ行う。
+unauthorized_user:
+  url_map:
+    - src_paths:
+        - "/api/v1/write"
+      url_prefix: "http://victoriametrics:8428"

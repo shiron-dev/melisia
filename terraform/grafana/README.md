@@ -93,27 +93,39 @@ arm-srv の VictoriaMetrics へ remote_write (push) する。永続化は arm-sr
 
 ```text
 arm-srv:  local exporters / e2e blackbox ──► vmagent ──► victoriametrics ◄── Grafana
-home-ep:  node / blackbox / speedtest ─────► vmagent ──(HTTPS push)──┘
-                                                         vm-write.shiron.dev
-                                                         (Cloudflare Tunnel + Access)
+home-ep:  node / blackbox / speedtest ─────► vmagent ──(HTTPS push)─► vmauth ─┘
+                                                       vm-write.shiron.dev   (/api/v1/write のみ)
+                                                       (Tunnel + Access: vm_write token)
 ```
 
 - arm-srv: `vmagent` (`compose/projects/grafana`) がローカル exporter と
   e2e blackbox プローブをスクレイプし、同居の `victoriametrics` へ remote_write。
 - home-ep: `vmagent` (`compose/projects/network-monitor`) がローカルの node /
   blackbox / cloudflare-speedtest exporter をスクレイプし、`vm-write.shiron.dev`
-  経由で arm-srv の VM へ push。認証は e2e service token (CF-Access ヘッダ)。
+  経由で arm-srv へ push。
 - これにより各 exporter を外部公開してスクレイプさせる必要がなくなり、CF-Access
   認証は「スクレイプ経路」から「remote_write 経路」へ移動した。
 - 旧 InfluxDB は停止し、永続化バックエンドは VictoriaMetrics に一本化した。
+
+#### 書き込み経路の権限境界
+
+`vm-write.shiron.dev` は VictoriaMetrics を直接公開せず、`vmauth`
+(`compose/projects/grafana`、`/api/v1/write` のみ転送する設定 `vmauth.yml`)を
+前段に置く。これにより、認証情報が漏れても query / admin / delete 系 API には
+到達できない (vmauth が `missing route` で拒否)。
+
+認証は書き込み専用の Cloudflare Access service token (`vm_write`) のみで、
+arm-srv 内部の blackbox e2e 用 `e2e` token とは分離している。vm-write の Access
+application には共通 e2e ポリシーを付与しない (`skip_e2e_policy = true`)。
 
 #### 適用順序
 
 経路の張り替えを伴うため、以下の順で適用する。
 
 1. `make terraform-apply TERRAFORM_TARGET=terraform`
-   - `vm-write.shiron.dev` の tunnel ingress / Access app を作成
-   - e2e secret 平文を arm-srv / home-ep 両方の project dir に出力
+   - `vm-write.shiron.dev` の tunnel ingress (vmauth 宛) / Access app / `vm_write`
+     service token を作成
+   - arm-srv に e2e secret 平文、home-ep に vm_write secret 平文を出力
    - 不要になった home-ep exporter の公開 ingress を削除
 2. `make sops-encrypt` で生成された平文 secret を再暗号化してコミット
 3. `make cmt-apply CMT_OPT=--host=home-ep` → home-ep vmagent を起動し push を確認

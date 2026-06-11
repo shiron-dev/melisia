@@ -70,7 +70,8 @@ services:
 
   # home-ep のメトリクスは vmagent でローカルスクレイプし、arm-srv の
   # VictoriaMetrics へ remote_write (push) する。書き込み経路は Cloudflare
-  # Tunnel + Access (vm-write.shiron.dev) で、e2e service token で認証する。
+  # Tunnel + Access (vm-write.shiron.dev) で、書き込み専用の vm_write service
+  # token で認証する。arm-srv 側は vmauth が /api/v1/write のみ転送する。
   # これにより各 exporter を外部公開してスクレイプさせる必要がなくなる。
   vmagent:
     container_name: home_ep_vmagent
@@ -88,7 +89,7 @@ services:
       - "--promscrape.config=/etc/vmagent/scrape.yml"
       - "--remoteWrite.url=https://vm-write.shiron.dev/api/v1/write"
       - "--remoteWrite.tmpDataPath=/vmagent-remotewrite-data"
-      - "--remoteWrite.headers=CF-Access-Client-Id:{{ .cloudflare_access_e2e_client_id }}^^CF-Access-Client-Secret:{{ .cloudflare_access_e2e_client_secret }}"
+      - "--remoteWrite.headers=CF-Access-Client-Id:{{ .cloudflare_vm_write_client_id }}^^CF-Access-Client-Secret:{{ .cloudflare_vm_write_client_secret }}"
       - "--httpListenAddr=:8429"
     restart: always
     security_opt:
