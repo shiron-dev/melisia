@@ -211,6 +211,7 @@ func TestRunForceUnlockWithLockerCancelConfirm(t *testing.T) { //nolint:parallel
 
 	oldStdin := os.Stdin
 	os.Stdin = r
+
 	t.Cleanup(func() { os.Stdin = oldStdin; _ = r.Close() })
 
 	err = runForceUnlockWithLocker(locker, "test-host", false)
@@ -235,6 +236,7 @@ func TestConfirmForceUnlockYes(t *testing.T) { //nolint:paralleltest
 
 		oldStdin := os.Stdin
 		os.Stdin = r
+
 		t.Cleanup(func() { os.Stdin = oldStdin; _ = r.Close() })
 
 		if !confirmForceUnlock("host") {
@@ -254,6 +256,7 @@ func TestConfirmForceUnlockNo(t *testing.T) { //nolint:paralleltest
 
 	oldStdin := os.Stdin
 	os.Stdin = r
+
 	t.Cleanup(func() { os.Stdin = oldStdin; _ = r.Close() })
 
 	if confirmForceUnlock("host") {
