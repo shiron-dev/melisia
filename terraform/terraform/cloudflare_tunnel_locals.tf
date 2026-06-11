@@ -59,7 +59,7 @@ locals {
         {
           hostname  = "home-ep-node.melisia.net"
           zone_name = "melisia.net"
-          service   = "http://home_ep_node_exporter:9100"
+          service   = "http://host.docker.internal:9100"
           policies  = local.cloudflare_access_policy_refs.shiron
         },
         {

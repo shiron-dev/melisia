@@ -123,6 +123,7 @@ services:
       TUNNEL_TOKEN: "{{ .cf_tunnel_token }}"
     extra_hosts:
       - "homeassistant:host-gateway"
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
     logging: *default-logging
     networks:
