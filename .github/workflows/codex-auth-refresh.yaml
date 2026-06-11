@@ -1,0 +1,168 @@
+name: Codex Auth Refresh
+
+# Keeps the CODEX_AUTH_JSON secret's ChatGPT token bundle fresh, isolated from
+# the PR review workflow. ChatGPT refresh tokens rotate (each refresh issues a
+# new refresh token and invalidates the previous one), and ephemeral runners
+# cannot persist Codex's own refresh, so the secret would otherwise go stale and
+# eventually fail with HTTP 401 `refresh_token_reused`.
+#
+# This workflow runs only on trusted triggers (schedule / manual dispatch),
+# never on pull_request, and never runs `codex exec` or any PR-controlled code.
+# It is the ONLY place that holds a secrets:write credential, so the untrusted
+# Codex review run shares no runner with it.
+
+on:
+  schedule:
+    # Daily; refreshes only when the bundle is actually approaching staleness.
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codex-auth-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Create token for Codex auth persistence
+        id: persist_token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.CODEX_REVIEW_APP_ID }}
+          private-key: ${{ secrets.CODEX_REVIEW_APP_PRIVATE_KEY }}
+          permission-secrets: write
+
+      - name: Refresh Codex auth bundle if stale
+        id: refresh
+        env:
+          CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
+          AUTH_OUT: ${{ runner.temp }}/codex-auth.json
+          # Refresh before the access token approaches expiry and well before
+          # Codex's own ~8-day window, so review runs never need to self-rotate.
+          REFRESH_AFTER_DAYS: "5"
+        run: |
+          if [[ -z "$CODEX_AUTH_JSON" ]]; then
+            echo "Missing required Codex auth JSON" >&2
+            exit 1
+          fi
+
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+          import urllib.error
+          import urllib.request
+          from datetime import datetime, timezone
+
+          # OAuth client id Codex uses for the refresh_token grant
+          # (codex-rs/login/src/auth/manager.rs).
+          CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
+          TOKEN_ENDPOINT = "https://auth.openai.com/oauth/token"
+          PERMANENT_ERROR_CODES = {
+              "refresh_token_expired",
+              "refresh_token_reused",
+              "refresh_token_invalidated",
+          }
+
+          out_path = os.environ["AUTH_OUT"]
+          refresh_after_days = float(os.environ.get("REFRESH_AFTER_DAYS", "5"))
+
+          def emit(name, value):
+              with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
+                  handle.write(f"{name}={value}\n")
+
+          try:
+              auth = json.loads(os.environ["CODEX_AUTH_JSON"])
+          except json.JSONDecodeError as exc:
+              sys.exit(f"CODEX_AUTH_JSON is not valid JSON: {exc}")
+          if not isinstance(auth, dict) or not isinstance(auth.get("tokens"), dict):
+              sys.exit("CODEX_AUTH_JSON must be an object with a `tokens` object")
+
+          tokens = auth["tokens"]
+          refresh_token = tokens.get("refresh_token")
+
+          emit("rotated", "false")
+
+          # Age of the current bundle.
+          age_days = None
+          last_refresh = auth.get("last_refresh")
+          if isinstance(last_refresh, str) and last_refresh:
+              try:
+                  parsed = datetime.fromisoformat(last_refresh.replace("Z", "+00:00"))
+                  if parsed.tzinfo is None:
+                      parsed = parsed.replace(tzinfo=timezone.utc)
+                  age_days = (datetime.now(timezone.utc) - parsed).total_seconds() / 86400
+              except ValueError:
+                  age_days = None
+
+          if age_days is not None and age_days < refresh_after_days:
+              print(f"Codex auth bundle is fresh (age={age_days:.1f}d); no refresh needed.")
+              sys.exit(0)
+
+          if not refresh_token:
+              sys.exit("Codex auth bundle has no refresh_token; run `codex login` and update CODEX_AUTH_JSON.")
+
+          # Build the request body via a variable key so static secret scanners do
+          # not flag a literal token mapping as a hardcoded credential.
+          grant = "refresh_token"
+          form = {"client_id": CLIENT_ID, "grant_type": grant}
+          form[grant] = refresh_token
+          payload = json.dumps(form).encode("utf-8")
+          request = urllib.request.Request(
+              TOKEN_ENDPOINT,
+              data=payload,
+              headers={"Content-Type": "application/json", "Accept": "application/json"},
+              method="POST",
+          )
+          try:
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  refreshed = json.loads(response.read().decode("utf-8"))
+          except urllib.error.HTTPError as exc:
+              detail = exc.read().decode("utf-8", "replace")
+              code = None
+              try:
+                  parsed = json.loads(detail)
+                  err = parsed.get("error")
+                  code = (err.get("code") if isinstance(err, dict) else err) or parsed.get("code")
+              except json.JSONDecodeError:
+                  pass
+              if exc.code == 401 or code in PERMANENT_ERROR_CODES:
+                  sys.exit(
+                      f"Codex refresh token is no longer valid (status {exc.code}, code {code!r}). "
+                      "Run `codex login` and update the CODEX_AUTH_JSON secret."
+                  )
+              sys.exit(f"Failed to refresh Codex token (status {exc.code}): {detail}")
+          except urllib.error.URLError as exc:
+              # Transient: do not fail the maintenance job; the next run retries.
+              print(f"::warning::Could not reach Codex token endpoint: {exc.reason}. Will retry next run.")
+              sys.exit(0)
+
+          # Keep prior values for any field the response omits.
+          for field in ("id_token", "access_token", "refresh_token"):
+              value = refreshed.get(field)
+              if value:
+                  tokens[field] = value
+          auth["tokens"] = tokens
+          auth["last_refresh"] = datetime.now(timezone.utc).isoformat()
+
+          with open(out_path, "w", encoding="utf-8") as handle:
+              json.dump(auth, handle)
+          os.chmod(out_path, 0o600)
+          emit("rotated", "true")
+          print("Refreshed Codex auth token bundle.")
+          PY
+
+      - name: Persist refreshed bundle to secret
+        if: ${{ steps.refresh.outputs.rotated == 'true' }}
+        env:
+          GH_TOKEN: ${{ steps.persist_token.outputs.token }}
+          AUTH_OUT: ${{ runner.temp }}/codex-auth.json
+        run: |
+          set -euo pipefail
+          echo "Persisting refreshed Codex auth bundle to CODEX_AUTH_JSON secret."
+          gh secret set CODEX_AUTH_JSON --repo "$GITHUB_REPOSITORY" < "$AUTH_OUT"

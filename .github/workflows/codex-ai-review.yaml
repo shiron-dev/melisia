@@ -493,33 +493,16 @@ jobs:
             "$BASE_SHA" \
             "$HEAD_SHA"
 
-      # Mint a narrowly-scoped (secrets:write only) token used solely to persist a
-      # freshly-rotated auth bundle. Best-effort: requires the Codex review GitHub
-      # App to hold the repository `Secrets: write` permission. continue-on-error
-      # keeps a missing permission from failing the review; we simply skip the
-      # (token-burning) refresh when no persistence is possible.
-      - name: Create token for Codex auth persistence
-        id: persist_token
-        continue-on-error: true
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          app-id: ${{ secrets.CODEX_REVIEW_APP_ID }}
-          private-key: ${{ secrets.CODEX_REVIEW_APP_PRIVATE_KEY }}
-          permission-secrets: write
-          # We revoke this token ourselves before Codex runs (see the revoke step),
-          # so disable the action's own post-job revoke (which would otherwise leave
-          # the token valid throughout the untrusted Codex run).
-          skip-token-revoke: true
-
-      - name: Prepare and refresh Codex auth home
-        id: prepare_auth
+      # Seed Codex's auth bundle from the secret, read-only. This job holds NO
+      # secrets:write credential: the rotating ChatGPT refresh token is refreshed
+      # and persisted out-of-band by the codex-auth-refresh.yml scheduled workflow,
+      # which never runs `codex exec` or any PR-controlled code. Keeping all
+      # privileged operations off this runner means a prompt injection in the
+      # untrusted Codex run has nothing to exfiltrate.
+      - name: Prepare Codex auth home
         env:
           CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
           CODEX_HOME: ${{ runner.temp }}/codex-home
-          PERSIST_AUTH_AVAILABLE: ${{ steps.persist_token.outputs.token != '' }}
-          # Refresh proactively a little before Codex's own ~8-day window so Codex
-          # never needs to rotate the token itself during the (untrusted) review run.
-          REFRESH_AFTER_DAYS: "7"
         run: |
           if [[ -z "$CODEX_AUTH_JSON" ]]; then
             echo "Missing required Codex auth JSON" >&2
@@ -527,180 +510,8 @@ jobs:
           fi
 
           mkdir -p "$CODEX_HOME"
-
-          # SECURITY: the persisted auth bundle must never originate from a file
-          # `codex exec` can touch — a prompt injection in the PR diff could otherwise
-          # write an attacker-controlled bundle that we then store into the secret.
-          # So we perform the OAuth refresh here, in trusted inline code that runs
-          # before Codex and executes no repository code, and persist *this* result
-          # (see the next step). Codex's later writes to auth.json are never read back.
-          #
-          # ChatGPT refresh tokens rotate (each refresh invalidates the previous one),
-          # and ephemeral runners cannot otherwise keep the rotated token, so we write
-          # the new bundle back to the secret. We only refresh when the bundle is
-          # actually old AND we can persist the result — refreshing without persisting
-          # would burn the stored token and break the next run.
-          python3 - <<'PY'
-          import json
-          import os
-          import sys
-          import urllib.error
-          import urllib.request
-          from datetime import datetime, timezone
-
-          # OAuth client id Codex uses for the refresh_token grant
-          # (codex-rs/login/src/auth/manager.rs).
-          CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
-          TOKEN_ENDPOINT = "https://auth.openai.com/oauth/token"
-          PERMANENT_ERROR_CODES = {
-              "refresh_token_expired",
-              "refresh_token_reused",
-              "refresh_token_invalidated",
-          }
-
-          codex_home = os.environ["CODEX_HOME"]
-          auth_path = os.path.join(codex_home, "auth.json")
-          can_persist = os.environ.get("PERSIST_AUTH_AVAILABLE") == "true"
-          refresh_after_days = float(os.environ.get("REFRESH_AFTER_DAYS", "7"))
-
-          def emit(name, value):
-              with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
-                  handle.write(f"{name}={value}\n")
-
-          def warn(message):
-              print(f"::warning::{message}")
-
-          def write_auth(obj):
-              with open(auth_path, "w", encoding="utf-8") as handle:
-                  json.dump(obj, handle)
-              os.chmod(auth_path, 0o600)
-
-          try:
-              auth = json.loads(os.environ["CODEX_AUTH_JSON"])
-          except json.JSONDecodeError as exc:
-              sys.exit(f"CODEX_AUTH_JSON is not valid JSON: {exc}")
-          if not isinstance(auth, dict) or not isinstance(auth.get("tokens"), dict):
-              sys.exit("CODEX_AUTH_JSON must be an object with a `tokens` object")
-
-          tokens = auth["tokens"]
-          refresh_token = tokens.get("refresh_token")
-
-          # Age of the current bundle.
-          age_days = None
-          last_refresh = auth.get("last_refresh")
-          if isinstance(last_refresh, str) and last_refresh:
-              try:
-                  parsed = datetime.fromisoformat(last_refresh.replace("Z", "+00:00"))
-                  if parsed.tzinfo is None:
-                      parsed = parsed.replace(tzinfo=timezone.utc)
-                  age_days = (datetime.now(timezone.utc) - parsed).total_seconds() / 86400
-              except ValueError:
-                  age_days = None
-
-          emit("rotated", "false")
-
-          needs_refresh = (age_days is None) or (age_days >= refresh_after_days)
-          if not needs_refresh:
-              # Bundle still fresh: hand it to Codex unchanged; Codex won't rotate.
-              write_auth(auth)
-              print(f"Codex auth bundle is fresh (age={age_days:.1f}d); no refresh needed.")
-              sys.exit(0)
-
-          if not refresh_token:
-              warn("Codex auth bundle has no refresh_token; cannot refresh. Update CODEX_AUTH_JSON via `codex login`.")
-              write_auth(auth)
-              sys.exit(0)
-
-          if not can_persist:
-              # Refreshing rotates (and invalidates) the stored refresh token; without
-              # the ability to save the replacement we would brick the next run, so we
-              # deliberately skip the refresh and let Codex use the existing bundle.
-              warn(
-                  "Codex auth bundle is stale but no secrets:write credential is available to "
-                  "persist a rotated token. Grant the Codex review GitHub App the 'Secrets: write' "
-                  "repository permission. Proceeding with the existing bundle."
-              )
-              write_auth(auth)
-              sys.exit(0)
-
-          # Perform the refresh ourselves (trusted, pre-Codex). Build the request
-          # body via a variable key so static secret scanners do not flag a literal
-          # token mapping as a hardcoded credential.
-          grant = "refresh_token"
-          form = {"client_id": CLIENT_ID, "grant_type": grant}
-          form[grant] = refresh_token
-          payload = json.dumps(form).encode("utf-8")
-          request = urllib.request.Request(
-              TOKEN_ENDPOINT,
-              data=payload,
-              headers={"Content-Type": "application/json", "Accept": "application/json"},
-              method="POST",
-          )
-          try:
-              with urllib.request.urlopen(request, timeout=30) as response:
-                  refreshed = json.loads(response.read().decode("utf-8"))
-          except urllib.error.HTTPError as exc:
-              detail = exc.read().decode("utf-8", "replace")
-              code = None
-              try:
-                  parsed = json.loads(detail)
-                  err = parsed.get("error")
-                  code = (err.get("code") if isinstance(err, dict) else err) or parsed.get("code")
-              except json.JSONDecodeError:
-                  pass
-              if exc.code == 401 or code in PERMANENT_ERROR_CODES:
-                  warn(
-                      f"Codex refresh token is no longer valid (status {exc.code}, code {code!r}). "
-                      "Run `codex login` and update the CODEX_AUTH_JSON secret. Proceeding with the existing bundle."
-                  )
-              else:
-                  warn(f"Failed to refresh Codex token (status {exc.code}): {detail}. Proceeding with the existing bundle.")
-              write_auth(auth)
-              sys.exit(0)
-          except urllib.error.URLError as exc:
-              warn(f"Could not reach Codex token endpoint: {exc.reason}. Proceeding with the existing bundle.")
-              write_auth(auth)
-              sys.exit(0)
-
-          # Keep prior values for any field the response omits.
-          for field in ("id_token", "access_token", "refresh_token"):
-              value = refreshed.get(field)
-              if value:
-                  tokens[field] = value
-          auth["tokens"] = tokens
-          auth["last_refresh"] = datetime.now(timezone.utc).isoformat()
-          write_auth(auth)
-          emit("rotated", "true")
-          print("Refreshed Codex auth token bundle (trusted, pre-review).")
-          PY
-
-      - name: Persist refreshed Codex auth
-        # Runs before Codex. The file persisted here is produced solely by the
-        # trusted refresh step above, never by `codex exec`, so PR-controlled input
-        # cannot influence what we store into the secret.
-        if: ${{ steps.prepare_auth.outputs.rotated == 'true' }}
-        env:
-          GH_TOKEN: ${{ steps.persist_token.outputs.token }}
-          CODEX_HOME: ${{ runner.temp }}/codex-home
-        run: |
-          set -euo pipefail
-          echo "Persisting rotated Codex auth bundle to CODEX_AUTH_JSON secret."
-          gh secret set CODEX_AUTH_JSON --repo "$GITHUB_REPOSITORY" < "$CODEX_HOME/auth.json"
-
-      # Revoke the secrets:write token *before* Codex runs. After this, even if a
-      # prompt injection in the untrusted Codex run reads the token string from
-      # runner state / $RUNNER_TEMP, it is already invalid and grants nothing.
-      - name: Revoke Codex auth persistence token
-        if: ${{ always() && steps.persist_token.outputs.token != '' }}
-        env:
-          GH_TOKEN: ${{ steps.persist_token.outputs.token }}
-        run: |
-          set -euo pipefail
-          if gh api --method DELETE /installation/token --silent; then
-            echo "Revoked the secrets:write persistence token."
-          else
-            echo "::warning::Failed to revoke the persistence token; it will expire on its own (~1h)."
-          fi
+          printf '%s' "$CODEX_AUTH_JSON" > "$CODEX_HOME/auth.json"
+          chmod 600 "$CODEX_HOME/auth.json"
 
       - name: Load review assets from trusted base commit
         env:
