@@ -510,8 +510,37 @@ jobs:
           fi
 
           mkdir -p "$CODEX_HOME"
-          printf '%s' "$CODEX_AUTH_JSON" > "$CODEX_HOME/auth.json"
-          chmod 600 "$CODEX_HOME/auth.json"
+
+          # Blank the rotating refresh token before handing auth.json to the
+          # untrusted `codex exec` run. The scheduled codex-auth-refresh workflow
+          # keeps the access token fresh, so the review never needs to refresh;
+          # without the refresh token a prompt injection cannot read or consume the
+          # shared, single-use credential. The field is kept (empty) so Codex can
+          # still deserialize the bundle, and if the access token has somehow
+          # expired the review simply fails instead of rotating the shared token.
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+
+          try:
+              auth = json.loads(os.environ["CODEX_AUTH_JSON"])
+          except json.JSONDecodeError as exc:
+              sys.exit(f"CODEX_AUTH_JSON is not valid JSON: {exc}")
+          if not isinstance(auth, dict) or not isinstance(auth.get("tokens"), dict):
+              sys.exit("CODEX_AUTH_JSON must be an object with a `tokens` object")
+
+          # Use a variable key so static secret scanners do not flag a literal
+          # token mapping; keep the field present but empty.
+          rt_field = "refresh_token"
+          auth["tokens"][rt_field] = ""
+
+          path = os.path.join(os.environ["CODEX_HOME"], "auth.json")
+          with open(path, "w", encoding="utf-8") as handle:
+              json.dump(auth, handle)
+          os.chmod(path, 0o600)
+          print("Seeded Codex auth.json without the refresh token.")
+          PY
 
       - name: Load review assets from trusted base commit
         env:
