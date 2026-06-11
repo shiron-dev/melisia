@@ -1016,6 +1016,7 @@ jobs:
         if: always()
         env:
           GH_TOKEN: ${{ steps.persist_token.outputs.token }}
+          PERSIST_AUTH_AVAILABLE: ${{ steps.persist_token.outputs.token != '' }}
           CODEX_HOME: ${{ runner.temp }}/codex-home
           ORIG_AUTH_PATH: ${{ runner.temp }}/codex-auth.orig.json
         run: |
@@ -1041,8 +1042,8 @@ jobs:
             exit 0
           fi
 
-          if [[ -z "${GH_TOKEN:-}" ]]; then
-            echo "::warning::Codex rotated the auth bundle but no secrets:write token is available. Grant the Codex review GitHub App the 'Secrets: write' repository permission, then update CODEX_AUTH_JSON via 'codex login' — otherwise the next run may fail with refresh_token_reused."
+          if [[ "$PERSIST_AUTH_AVAILABLE" != "true" ]]; then
+            echo "::warning::Codex rotated the auth bundle but no secrets:write credential is available. Grant the Codex review GitHub App the 'Secrets: write' repository permission, then update CODEX_AUTH_JSON via 'codex login' — otherwise the next run may fail with refresh_token_reused."
             exit 0
           fi
 
