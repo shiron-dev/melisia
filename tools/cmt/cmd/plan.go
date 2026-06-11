@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/shiron-dev/melisia/tools/cmt/internal/config"
+	"github.com/shiron-dev/melisia/tools/cmt/internal/lock"
 	"github.com/shiron-dev/melisia/tools/cmt/internal/syncer"
 
 	"github.com/spf13/cobra"
@@ -36,41 +37,77 @@ func newPlanCmd(configPath *string) *cobra.Command {
 	planCommand.Use = "plan"
 	planCommand.Short = "Show what would be synced without making changes"
 	planCommand.RunE = func(_ *cobra.Command, _ []string) error {
-		cfg, err := config.LoadCmtConfig(*configPath)
-		if err != nil {
-			return err
-		}
-
-		plan, err := syncer.BuildPlanWithDeps(cfg, hostFilter, projectFilter, dependencies)
-		if err != nil {
-			return err
-		}
-
-		plan.Print(os.Stdout)
-
-		err = writePlanDigestFile(digestFile, plan)
-		if err != nil {
-			return err
-		}
-
-		if syncer.PlanHasExistenceUnknown(plan) {
-			return syncer.ErrExistenceCheckFailed
-		}
-
-		if exitCode {
-			if plan.HasChanges() {
-				os.Exit(exitCodeHasChanges)
-			}
-
-			os.Exit(exitCodeNoChanges)
-		}
-
-		return nil
+		return runPlanCmd(*configPath, hostFilter, projectFilter, exitCode, digestFile, dependencies)
 	}
 
 	bindPlanFlags(planCommand, &hostFilter, &projectFilter, &exitCode, &digestFile)
 
 	return planCommand
+}
+
+func runPlanCmd(
+	configPath string,
+	hostFilter, projectFilter []string,
+	exitCode bool,
+	digestFile string,
+	dependencies syncer.PlanDependencies,
+) error {
+	return runPlanCmdWithLocker(lock.New(), configPath, hostFilter, projectFilter, exitCode, digestFile, dependencies)
+}
+
+func runPlanCmdWithLocker(
+	locker *lock.Locker,
+	configPath string,
+	hostFilter, projectFilter []string,
+	exitCode bool,
+	digestFile string,
+	dependencies syncer.PlanDependencies,
+) error {
+	cfg, err := config.LoadCmtConfig(configPath)
+	if err != nil {
+		return err
+	}
+
+	hosts := config.FilterHosts(cfg.Hosts, hostFilter)
+
+	release, err := acquireHostLocks(locker, hosts, "plan", os.Stdout)
+	if err != nil {
+		return err
+	}
+
+	defer release()
+
+	plan, err := syncer.BuildPlanWithDeps(cfg, hostFilter, projectFilter, dependencies)
+	if err != nil {
+		return err
+	}
+
+	plan.Print(os.Stdout)
+
+	err = writePlanDigestFile(digestFile, plan)
+	if err != nil {
+		return err
+	}
+
+	if syncer.PlanHasExistenceUnknown(plan) {
+		return syncer.ErrExistenceCheckFailed
+	}
+
+	if exitCode {
+		// os.Exit bypasses defer, so release locks explicitly first.
+		release()
+		exitWithPlanCode(plan)
+	}
+
+	return nil
+}
+
+func exitWithPlanCode(plan *syncer.SyncPlan) {
+	if plan.HasChanges() {
+		os.Exit(exitCodeHasChanges)
+	}
+
+	os.Exit(exitCodeNoChanges)
 }
 
 func bindPlanFlags(
