@@ -41,6 +41,15 @@ func newPlanCmd(configPath *string) *cobra.Command {
 			return err
 		}
 
+		hosts := config.FilterHosts(cfg.Hosts, hostFilter)
+
+		release, err := acquireHostLocks(hosts, "plan", os.Stdout)
+		if err != nil {
+			return err
+		}
+
+		defer release()
+
 		plan, err := syncer.BuildPlanWithDeps(cfg, hostFilter, projectFilter, dependencies)
 		if err != nil {
 			return err

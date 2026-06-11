@@ -36,6 +36,15 @@ func newApplyCmd(configPath *string) *cobra.Command {
 			return err
 		}
 
+		hosts := config.FilterHosts(cfg.Hosts, hostFilter)
+
+		release, err := acquireHostLocks(hosts, "apply", os.Stdout)
+		if err != nil {
+			return err
+		}
+
+		defer release()
+
 		planDependencies := new(syncer.PlanDependencies)
 		planDependencies.ClientFactory = applyDependencies.ClientFactory
 		planDependencies.SSHResolver = nil

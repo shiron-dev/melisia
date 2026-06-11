@@ -1,0 +1,73 @@
+package cmd
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/shiron-dev/melisia/tools/cmt/internal/lock"
+	"github.com/spf13/cobra"
+)
+
+func newForceUnlockCmd() *cobra.Command {
+	var force bool
+
+	cmd := new(cobra.Command)
+	cmd.Use = "force-unlock <host>"
+	cmd.Short = "Release a stuck lock for a host"
+	cmd.Long = `Remove the lock file for a host that was left locked by a crashed or interrupted operation.
+
+The lock ID is shown in the lock details. Use --force to skip the confirmation prompt.`
+	cmd.Args = cobra.ExactArgs(1)
+	cmd.RunE = func(_ *cobra.Command, args []string) error {
+		hostName := args[0]
+
+		info, err := lock.Read(hostName)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return fmt.Errorf("no lock found for host %q", hostName)
+			}
+
+			return fmt.Errorf("reading lock for %q: %w", hostName, err)
+		}
+
+		_, _ = fmt.Fprintf(os.Stdout, "Lock info for host %q:\n", hostName)
+		_, _ = fmt.Fprintf(os.Stdout, "  ID:        %s\n", info.ID)
+		_, _ = fmt.Fprintf(os.Stdout, "  Operation: %s\n", info.Operation)
+		_, _ = fmt.Fprintf(os.Stdout, "  Who:       %s\n", info.Who)
+		_, _ = fmt.Fprintf(os.Stdout, "  Created:   %s\n", info.Created.Format(time.RFC3339))
+		_, _ = fmt.Fprintln(os.Stdout)
+
+		if !force {
+			if !confirmForceUnlock(hostName) {
+				_, _ = fmt.Fprintln(os.Stdout, "Force-unlock cancelled.")
+
+				return nil
+			}
+		}
+
+		if err := lock.ForceUnlock(hostName); err != nil {
+			return err
+		}
+
+		_, _ = fmt.Fprintf(os.Stdout, "Lock released for host %q.\n", hostName)
+
+		return nil
+	}
+
+	cmd.Flags().BoolVar(&force, "force", false, "skip confirmation prompt")
+
+	return cmd
+}
+
+func confirmForceUnlock(hostName string) bool {
+	_, _ = fmt.Fprintf(os.Stdout, "Do you really want to force-unlock %q? (y/N): ", hostName)
+
+	reader := bufio.NewReader(os.Stdin)
+	answer, _ := reader.ReadString('\n')
+	answer = strings.TrimSpace(strings.ToLower(answer))
+
+	return answer == "y" || answer == "yes"
+}
