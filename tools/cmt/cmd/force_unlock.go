@@ -64,7 +64,13 @@ func runForceUnlockWithLocker(locker *lock.Locker, hostName string, force bool) 
 		return nil
 	}
 
-	err := locker.ForceUnlock(hostName)
+	var err error
+	if info != nil {
+		err = locker.ForceUnlockWithID(hostName, info.ID)
+	} else {
+		err = locker.ForceUnlock(hostName)
+	}
+
 	if err != nil {
 		return err
 	}

@@ -222,6 +222,52 @@ func TestNew(t *testing.T) {
 	}
 }
 
+func TestForceUnlockWithIDSuccess(t *testing.T) {
+	t.Parallel()
+
+	locker := lock.NewWithDir(t.TempDir())
+
+	info, err := locker.Acquire("test-host", "plan")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	err = locker.ForceUnlockWithID("test-host", info.ID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if locker.IsLocked("test-host") {
+		t.Error("expected host to be unlocked after ForceUnlockWithID")
+	}
+}
+
+func TestForceUnlockWithIDMismatch(t *testing.T) {
+	t.Parallel()
+
+	locker := lock.NewWithDir(t.TempDir())
+
+	_, err := locker.Acquire("test-host", "plan")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	defer func() { _ = locker.ForceUnlock("test-host") }()
+
+	err = locker.ForceUnlockWithID("test-host", "wrong-id")
+	if err == nil {
+		t.Fatal("expected error for mismatched lock ID")
+	}
+
+	if !errors.Is(err, lock.ErrLockIDMismatch) {
+		t.Errorf("expected ErrLockIDMismatch, got %v", err)
+	}
+
+	if !locker.IsLocked("test-host") {
+		t.Error("expected host to remain locked after ID mismatch")
+	}
+}
+
 func TestReleaseAlreadyGone(t *testing.T) {
 	t.Parallel()
 

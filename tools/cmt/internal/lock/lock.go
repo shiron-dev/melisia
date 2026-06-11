@@ -170,6 +170,22 @@ func (l *Locker) ForceUnlock(hostName string) error {
 	return nil
 }
 
+// ForceUnlockWithID removes the lock for hostName only when the current lock ID
+// still matches expectedID. Returns ErrLockIDMismatch if the lock was replaced
+// between the time it was displayed and the time the user confirmed.
+func (l *Locker) ForceUnlockWithID(hostName, expectedID string) error {
+	current, err := l.Read(hostName)
+	if err != nil {
+		return err
+	}
+
+	if current.ID != expectedID {
+		return fmt.Errorf("%w for host %q: expected %s but found %s", ErrLockIDMismatch, hostName, expectedID, current.ID)
+	}
+
+	return l.ForceUnlock(hostName)
+}
+
 // IsLocked reports whether a lock file exists for hostName.
 func (l *Locker) IsLocked(hostName string) bool {
 	_, err := os.Stat(l.filePath(hostName))

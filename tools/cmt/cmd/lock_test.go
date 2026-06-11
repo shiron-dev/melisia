@@ -191,6 +191,35 @@ func TestRunForceUnlockWithLockerSuccess(t *testing.T) {
 	}
 }
 
+func TestRunForceUnlockWithLockerIDChangedAfterConfirm(t *testing.T) {
+	t.Parallel()
+
+	locker := lock.NewWithDir(t.TempDir())
+
+	info, err := locker.Acquire("test-host", "plan")
+	if err != nil {
+		t.Fatalf("unexpected error acquiring lock: %v", err)
+	}
+
+	_ = locker.ForceUnlock("test-host")
+
+	_, err = locker.Acquire("test-host", "apply")
+	if err != nil {
+		t.Fatalf("unexpected error re-acquiring lock: %v", err)
+	}
+
+	defer func() { _ = locker.ForceUnlock("test-host") }()
+
+	err = locker.ForceUnlockWithID("test-host", info.ID)
+	if !errors.Is(err, lock.ErrLockIDMismatch) {
+		t.Errorf("expected ErrLockIDMismatch, got %v", err)
+	}
+
+	if !locker.IsLocked("test-host") {
+		t.Error("expected new lock to remain after ID mismatch")
+	}
+}
+
 func TestRunForceUnlockWithLockerCancelConfirm(t *testing.T) { //nolint:paralleltest
 	locker := lock.NewWithDir(t.TempDir())
 
