@@ -6,11 +6,15 @@ projects:
   grafana:
     remotePath: /var
     composeAction: ignore
-    postSyncCommand: chmod 0644 docker-compose-exporter.py && docker compose up -d --remove-orphans && docker compose restart blackbox_exporter prometheus
+    postSyncCommand: chmod 0644 docker-compose-exporter.py vmagent.yml && docker compose up -d --remove-orphans && docker compose restart blackbox_exporter vmagent
     dirs:
       - grafana_storage:
         owner: 472
         group: 472
+        become: true
+      - vmagent_data:
+        owner: 0
+        group: 0
         become: true
       # influxdb は停止済み (メトリクス永続化は VictoriaMetrics に一本化)。
       # コンテナ定義は compose から外したが、過去データは据え置くため dir は残す。

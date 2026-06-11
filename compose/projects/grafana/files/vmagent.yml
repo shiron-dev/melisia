@@ -1,14 +1,13 @@
 global:
   scrape_interval: 15s
-  evaluation_interval: 15s
   external_labels:
     probe_server: 'arm-srv'
 scrape_configs:
-  - job_name: 'prometheus'
+  - job_name: 'vmagent'
     scrape_interval: 5s
     scrape_timeout: 5s
     static_configs:
-      - targets: ['localhost:9090']
+      - targets: ['localhost:8429']
   - job_name: 'node'
     scrape_interval: 15s
     scrape_timeout: 10s
@@ -91,65 +90,3 @@ scrape_configs:
         replacement: '$1'
       - target_label: __address__
         replacement: blackbox_exporter:9115
-  - job_name: 'home_ep_node'
-    scrape_interval: 15s
-    scrape_timeout: 10s
-    scheme: https
-    http_headers:
-      CF-Access-Client-Id:
-        secrets: ["{{ .cloudflare_access_e2e_client_id }}"]
-      CF-Access-Client-Secret:
-        secrets: ["{{ .cloudflare_access_e2e_client_secret }}"]
-    static_configs:
-      - targets:
-          - home-ep-node.melisia.net
-        labels:
-          probe_server: home-ep
-  - job_name: 'home_ep_icmp'
-    scrape_interval: 30s
-    scrape_timeout: 10s
-    scheme: https
-    metrics_path: /probe
-    http_headers:
-      CF-Access-Client-Id:
-        secrets: ["{{ .cloudflare_access_e2e_client_id }}"]
-      CF-Access-Client-Secret:
-        secrets: ["{{ .cloudflare_access_e2e_client_secret }}"]
-    params:
-      module: [icmp_8_8_8_8]
-    static_configs:
-      - targets:
-          - 8.8.8.8
-        labels:
-          probe_server: home-ep
-          target_server: google-public-dns
-          check: icmp
-    relabel_configs:
-      - source_labels: [__address__]
-        target_label: __param_target
-      - source_labels: [__param_target]
-        target_label: instance
-      - target_label: __address__
-        replacement: home-ep-blackbox.melisia.net
-  - job_name: 'home_ep_cloudflare_speedtest'
-    scrape_interval: 30s
-    scrape_timeout: 10s
-    scheme: https
-    http_headers:
-      CF-Access-Client-Id:
-        secrets: ["{{ .cloudflare_access_e2e_client_id }}"]
-      CF-Access-Client-Secret:
-        secrets: ["{{ .cloudflare_access_e2e_client_secret }}"]
-    static_configs:
-      - targets:
-          - home-ep-cloudflare-speedtest.melisia.net
-        labels:
-          probe_server: home-ep
-          target_server: speed.cloudflare.com
-
-remote_write:
-  - url: "http://victoriametrics:8428/api/v1/write"
-    queue_config:
-      max_samples_per_send: 10000
-      capacity: 20000
-      max_shards: 30

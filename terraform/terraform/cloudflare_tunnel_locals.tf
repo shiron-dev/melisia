@@ -12,6 +12,14 @@ locals {
           zone_name = "shiron.dev"
           service   = "http://influxdb:8086"
           policies  = local.cloudflare_access_policy_refs.shiron
+        },
+        # home-ep の vmagent が remote_write (push) する VictoriaMetrics の
+        # 書き込みエンドポイント。Access (e2e service token + shiron) で保護する。
+        {
+          hostname  = "vm-write.shiron.dev"
+          zone_name = "shiron.dev"
+          service   = "http://victoriametrics:8428"
+          policies  = local.cloudflare_access_policy_refs.shiron
         }
       ]
     }
@@ -55,25 +63,10 @@ locals {
           zone_name = "melisia.net"
           service   = "http://esphome:6052"
           policies  = local.cloudflare_access_policy_refs.shiron
-        },
-        {
-          hostname  = "home-ep-node.melisia.net"
-          zone_name = "melisia.net"
-          service   = "http://host.docker.internal:9100"
-          policies  = local.cloudflare_access_policy_refs.shiron
-        },
-        {
-          hostname  = "home-ep-blackbox.melisia.net"
-          zone_name = "melisia.net"
-          service   = "http://home_ep_blackbox_exporter:9115"
-          policies  = local.cloudflare_access_policy_refs.shiron
-        },
-        {
-          hostname  = "home-ep-cloudflare-speedtest.melisia.net"
-          zone_name = "melisia.net"
-          service   = "http://home_ep_cloudflare_speedtest_exporter:9798"
-          policies  = local.cloudflare_access_policy_refs.shiron
         }
+        # home-ep の exporter (node / blackbox / cloudflare-speedtest) は
+        # vmagent によるローカルスクレイプ + arm-srv VM への push に移行したため、
+        # 外部公開する tunnel ingress は廃止した。
       ]
     }
   }

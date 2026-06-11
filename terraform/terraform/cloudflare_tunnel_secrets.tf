@@ -7,6 +7,17 @@ resource "local_sensitive_file" "cloudflare_access_e2e_secret" {
   })
 }
 
+# home-ep の vmagent が vm-write.shiron.dev (Access 保護) へ remote_write する際の
+# CF-Access service token。arm-srv と同じ e2e token を network-monitor project に配布する。
+resource "local_sensitive_file" "cloudflare_access_e2e_secret_home_ep" {
+  filename = "${path.module}/../../compose/hosts/home-ep/network-monitor/cloudflare-access-e2e.secrets.yml"
+  content = yamlencode({
+    cloudflare_access_e2e_client_id = cloudflare_zero_trust_access_service_token.e2e.client_id
+    # kics-scan ignore-line
+    cloudflare_access_e2e_client_secret = cloudflare_zero_trust_access_service_token.e2e.client_secret
+  })
+}
+
 removed {
   from = local_sensitive_file.cloudflare_tunnel_secret
 
