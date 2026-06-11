@@ -497,6 +497,7 @@ jobs:
         env:
           CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
           CODEX_HOME: ${{ runner.temp }}/codex-home
+          ORIG_AUTH_PATH: ${{ runner.temp }}/codex-auth.orig.json
         run: |
           if [[ -z "$CODEX_AUTH_JSON" ]]; then
             echo "Missing required Codex auth JSON" >&2
@@ -504,124 +505,18 @@ jobs:
           fi
 
           mkdir -p "$CODEX_HOME"
-
-          # The stored secret is a static snapshot of `auth.json`. On ephemeral
-          # GitHub-hosted runners Codex cannot persist its refreshed tokens back
-          # to the secret, so the bundled ChatGPT access token eventually expires
-          # and the review fails. Refresh the token bundle up front using the same
-          # OAuth refresh flow Codex performs internally
-          # (codex-rs/login/src/auth/manager.rs):
-          #   POST https://auth.openai.com/oauth/token
-          #   {"client_id": "...", "grant_type": "refresh_token", "refresh_token": "..."}
-          # then write a fresh auth.json (with last_refresh = now) for `codex exec`.
-          python3 - <<'PY'
-          import json
-          import os
-          import sys
-          import urllib.error
-          import urllib.request
-          from datetime import datetime, timezone
-
-          # OAuth client id Codex uses for the refresh_token grant.
-          CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
-          TOKEN_ENDPOINT = "https://auth.openai.com/oauth/token"
-
-          # Backend error codes that mean the refresh token can never succeed again
-          # (it was rotated out, revoked, or expired). Surface these explicitly so
-          # the operator knows to run `codex login` and update the secret.
-          PERMANENT_ERROR_CODES = {
-              "refresh_token_expired",
-              "refresh_token_reused",
-              "refresh_token_invalidated",
-          }
-
-          codex_home = os.environ["CODEX_HOME"]
-          auth_path = os.path.join(codex_home, "auth.json")
-
-          raw = os.environ["CODEX_AUTH_JSON"]
-          try:
-              auth = json.loads(raw)
-          except json.JSONDecodeError as exc:
-              sys.exit(f"CODEX_AUTH_JSON is not valid JSON: {exc}")
-
-          if not isinstance(auth, dict):
-              sys.exit("CODEX_AUTH_JSON must be a JSON object")
-
-          tokens = auth.get("tokens")
-          if not isinstance(tokens, dict):
-              sys.exit("CODEX_AUTH_JSON is missing the `tokens` object")
-
-          refresh_token = tokens.get("refresh_token")
-          if not refresh_token:
-              sys.exit("CODEX_AUTH_JSON is missing `tokens.refresh_token`")
-
-          payload = json.dumps(
-              {
-                  "client_id": CLIENT_ID,
-                  "grant_type": "refresh_token",
-                  "refresh_token": refresh_token,
-              }
-          ).encode("utf-8")
-
-          request = urllib.request.Request(
-              TOKEN_ENDPOINT,
-              data=payload,
-              headers={
-                  "Content-Type": "application/json",
-                  "Accept": "application/json",
-              },
-              method="POST",
-          )
-
-          try:
-              with urllib.request.urlopen(request, timeout=30) as response:
-                  body = response.read().decode("utf-8")
-          except urllib.error.HTTPError as exc:
-              detail = exc.read().decode("utf-8", "replace")
-              code = None
-              try:
-                  parsed = json.loads(detail)
-                  error = parsed.get("error")
-                  if isinstance(error, dict):
-                      code = error.get("code")
-                  elif isinstance(error, str):
-                      code = error
-                  code = code or parsed.get("code")
-              except json.JSONDecodeError:
-                  pass
-
-              if exc.code == 401 or (code in PERMANENT_ERROR_CODES):
-                  sys.exit(
-                      "Codex refresh token is no longer valid "
-                      f"(status {exc.code}, code {code!r}). "
-                      "Run `codex login` locally and update the CODEX_AUTH_JSON secret."
-                  )
-              sys.exit(f"Failed to refresh Codex token (status {exc.code}): {detail}")
-          except urllib.error.URLError as exc:
-              sys.exit(f"Failed to reach Codex token endpoint: {exc.reason}")
-
-          try:
-              refreshed = json.loads(body)
-          except json.JSONDecodeError as exc:
-              sys.exit(f"Codex token endpoint returned non-JSON response: {exc}")
-
-          # The response may omit fields; keep the prior value when it does so the
-          # refresh never drops an existing token (e.g. account_id, id_token).
-          for field in ("id_token", "access_token", "refresh_token"):
-              value = refreshed.get(field)
-              if value:
-                  tokens[field] = value
-
-          auth["tokens"] = tokens
-          auth["last_refresh"] = datetime.now(timezone.utc).isoformat()
-
-          with open(auth_path, "w", encoding="utf-8") as handle:
-              json.dump(auth, handle)
-
-          print("Refreshed Codex auth token bundle.")
-          PY
-
+          printf '%s' "$CODEX_AUTH_JSON" > "$CODEX_HOME/auth.json"
           chmod 600 "$CODEX_HOME/auth.json"
+
+          # ChatGPT refresh tokens rotate: each refresh issues a new refresh token
+          # and invalidates the previous one. On ephemeral GitHub-hosted runners
+          # Codex's refreshed bundle is otherwise lost, so the static secret keeps
+          # replaying an already-consumed refresh token (HTTP 401
+          # `refresh_token_reused`). We let Codex refresh on demand during the run
+          # and persist the rotated bundle back to the secret afterward (see the
+          # "Persist refreshed Codex auth" step). Snapshot the seeded bundle so we
+          # can detect whether Codex actually rotated it.
+          cp "$CODEX_HOME/auth.json" "$ORIG_AUTH_PATH"
 
       - name: Load review assets from trusted base commit
         env:
@@ -1099,6 +994,50 @@ jobs:
             --output-schema "$CODEX_SCHEMA_PATH" \
             --output-last-message "$CODEX_OUTPUT_PATH" \
             - < "$RUNNER_TEMP/codex-pr-review.md"
+
+      # Mint a narrowly-scoped (secrets:write only) token used solely to persist a
+      # rotated auth bundle. Runs in a step Codex cannot read the env of, after the
+      # review has finished, so the review execution never has access to it.
+      - name: Create token for Codex auth persistence
+        id: persist_token
+        if: always()
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.CODEX_REVIEW_APP_ID }}
+          private-key: ${{ secrets.CODEX_REVIEW_APP_PRIVATE_KEY }}
+          permission-secrets: write
+
+      - name: Persist refreshed Codex auth
+        if: always()
+        env:
+          GH_TOKEN: ${{ steps.persist_token.outputs.token }}
+          CODEX_HOME: ${{ runner.temp }}/codex-home
+          ORIG_AUTH_PATH: ${{ runner.temp }}/codex-auth.orig.json
+        run: |
+          set -euo pipefail
+          auth="$CODEX_HOME/auth.json"
+          if [[ ! -f "$auth" ]]; then
+            echo "No auth.json present; nothing to persist."
+            exit 0
+          fi
+
+          # Refuse to overwrite the secret unless the bundle is still well-formed
+          # and carries a refresh token, so a corrupted file can never brick auth.
+          if ! python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); t=d.get("tokens") or {}; sys.exit(0 if t.get("refresh_token") else 1)' "$auth"; then
+            echo "auth.json is malformed or missing tokens.refresh_token; refusing to overwrite secret." >&2
+            exit 0
+          fi
+
+          # Only write when Codex actually rotated the bundle, to avoid churning the
+          # secret (and its audit log) and to minimise collisions between concurrent
+          # PR runs that share this secret.
+          if [[ -f "$ORIG_AUTH_PATH" ]] && cmp -s "$auth" "$ORIG_AUTH_PATH"; then
+            echo "Codex did not rotate the token bundle; secret unchanged."
+            exit 0
+          fi
+
+          echo "Codex rotated the token bundle; updating CODEX_AUTH_JSON secret."
+          gh secret set CODEX_AUTH_JSON --repo "$GITHUB_REPOSITORY" < "$auth"
 
       - name: Upload Codex review result
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
