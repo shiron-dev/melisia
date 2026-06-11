@@ -72,10 +72,6 @@ func defaultDir() string {
 	return filepath.Join(dataHome, "cmt", "locks")
 }
 
-func (l *Locker) filePath(hostName string) string {
-	return filepath.Join(l.dir, hostName+".lock")
-}
-
 // Acquire atomically creates a lock for hostName. Returns ErrLocked if already held.
 func (l *Locker) Acquire(hostName, operation string) (*Info, error) {
 	err := os.MkdirAll(l.dir, lockDirPerms)
@@ -119,24 +115,6 @@ func (l *Locker) Acquire(hostName, operation string) (*Info, error) {
 	}
 
 	return info, nil
-}
-
-func (l *Locker) lockedError(hostName string) error {
-	existing, readErr := l.Read(hostName)
-	if readErr != nil {
-		return fmt.Errorf(
-			"%w for host %q (lock file exists but could not be read: %w)\n\nTo force-unlock: cmt force-unlock %s",
-			ErrLocked, hostName, readErr, hostName,
-		)
-	}
-
-	return fmt.Errorf(
-		lockedInfoFmt,
-		ErrLocked, hostName,
-		existing.ID, existing.Operation, existing.Who,
-		existing.Created.Format(time.RFC3339),
-		hostName,
-	)
 }
 
 // Release removes the lock for hostName if the ID matches the one in the lock file.
@@ -197,6 +175,28 @@ func (l *Locker) IsLocked(hostName string) bool {
 	_, err := os.Stat(l.filePath(hostName))
 
 	return err == nil
+}
+
+func (l *Locker) filePath(hostName string) string {
+	return filepath.Join(l.dir, hostName+".lock")
+}
+
+func (l *Locker) lockedError(hostName string) error {
+	existing, readErr := l.Read(hostName)
+	if readErr != nil {
+		return fmt.Errorf(
+			"%w for host %q (lock file exists but could not be read: %w)\n\nTo force-unlock: cmt force-unlock %s",
+			ErrLocked, hostName, readErr, hostName,
+		)
+	}
+
+	return fmt.Errorf(
+		lockedInfoFmt,
+		ErrLocked, hostName,
+		existing.ID, existing.Operation, existing.Who,
+		existing.Created.Format(time.RFC3339),
+		hostName,
+	)
 }
 
 func generateID() string {

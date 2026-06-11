@@ -34,21 +34,27 @@ Use --force to skip the confirmation prompt.`
 func runForceUnlock(hostName string, force bool) error {
 	locker := lock.New()
 
-	info, err := locker.Read(hostName)
-	if err != nil {
-		if errors.Is(err, lock.ErrLockNotFound) {
-			return err
+	info, readErr := locker.Read(hostName)
+	if readErr != nil {
+		if errors.Is(readErr, lock.ErrLockNotFound) {
+			return readErr
 		}
 
-		return fmt.Errorf("reading lock for %q: %w", hostName, err)
+		if !force {
+			return fmt.Errorf("reading lock for %q: %w", hostName, readErr)
+		}
+
+		_, _ = fmt.Fprintf(os.Stderr, "Warning: could not read lock for %q (%v); removing anyway.\n", hostName, readErr)
 	}
 
-	_, _ = fmt.Fprintf(os.Stdout, "Lock info for host %q:\n", hostName)
-	_, _ = fmt.Fprintf(os.Stdout, "  ID:        %s\n", info.ID)
-	_, _ = fmt.Fprintf(os.Stdout, "  Operation: %s\n", info.Operation)
-	_, _ = fmt.Fprintf(os.Stdout, "  Who:       %s\n", info.Who)
-	_, _ = fmt.Fprintf(os.Stdout, "  Created:   %s\n", info.Created.Format(time.RFC3339))
-	_, _ = fmt.Fprintln(os.Stdout)
+	if info != nil {
+		_, _ = fmt.Fprintf(os.Stdout, "Lock info for host %q:\n", hostName)
+		_, _ = fmt.Fprintf(os.Stdout, "  ID:        %s\n", info.ID)
+		_, _ = fmt.Fprintf(os.Stdout, "  Operation: %s\n", info.Operation)
+		_, _ = fmt.Fprintf(os.Stdout, "  Who:       %s\n", info.Who)
+		_, _ = fmt.Fprintf(os.Stdout, "  Created:   %s\n", info.Created.Format(time.RFC3339))
+		_, _ = fmt.Fprintln(os.Stdout)
+	}
 
 	if !force && !confirmForceUnlock(hostName) {
 		_, _ = fmt.Fprintln(os.Stdout, "Force-unlock cancelled.")
@@ -56,7 +62,7 @@ func runForceUnlock(hostName string, force bool) error {
 		return nil
 	}
 
-	err = locker.ForceUnlock(hostName)
+	err := locker.ForceUnlock(hostName)
 	if err != nil {
 		return err
 	}

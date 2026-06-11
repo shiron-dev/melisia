@@ -84,14 +84,18 @@ func runPlanCmd(
 	if exitCode {
 		// os.Exit bypasses defer, so release locks explicitly first.
 		release()
-		if plan.HasChanges() {
-			os.Exit(exitCodeHasChanges)
-		}
-
-		os.Exit(exitCodeNoChanges)
+		exitWithPlanCode(plan)
 	}
 
 	return nil
+}
+
+func exitWithPlanCode(plan *syncer.SyncPlan) {
+	if plan.HasChanges() {
+		os.Exit(exitCodeHasChanges)
+	}
+
+	os.Exit(exitCodeNoChanges)
 }
 
 func bindPlanFlags(
