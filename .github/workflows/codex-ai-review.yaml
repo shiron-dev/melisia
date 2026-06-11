@@ -518,7 +518,14 @@ jobs:
           # shared, single-use credential. The field is kept (empty) so Codex can
           # still deserialize the bundle, and if the access token has somehow
           # expired the review simply fails instead of rotating the shared token.
-          python3 - <<'PY'
+          #
+          # This runs with the PR head checked out and CODEX_AUTH_JSON in the env.
+          # Run it from $RUNNER_TEMP and with `-P` (PYTHONSAFEPATH) so the PR
+          # workspace is NOT on Python's import path — otherwise a PR-supplied
+          # `json.py`/`os.py` at the repo root could execute (with the secret in
+          # env) during `import`, before the token is blanked.
+          cd "$RUNNER_TEMP"
+          python3 -P - <<'PY'
           import json
           import os
           import sys
