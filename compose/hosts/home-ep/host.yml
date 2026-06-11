@@ -3,6 +3,8 @@
 sshConfig: ssh_config
 
 projects:
+  host-monitor: {}
+
   network-monitor:
     removeOrphans: true
     postSyncCommand: chmod 0644 blackbox.yml cloudflare-speedtest-exporter.py

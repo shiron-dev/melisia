@@ -91,6 +91,20 @@ scrape_configs:
         replacement: '$1'
       - target_label: __address__
         replacement: blackbox_exporter:9115
+  - job_name: 'home_ep_node'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    scheme: https
+    http_headers:
+      CF-Access-Client-Id:
+        secrets: ["{{ .cloudflare_access_e2e_client_id }}"]
+      CF-Access-Client-Secret:
+        secrets: ["{{ .cloudflare_access_e2e_client_secret }}"]
+    static_configs:
+      - targets:
+          - home-ep-node.melisia.net
+        labels:
+          probe_server: home-ep
   - job_name: 'home_ep_icmp'
     scrape_interval: 30s
     scrape_timeout: 10s
