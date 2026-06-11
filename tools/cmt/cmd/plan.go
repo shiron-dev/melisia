@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/shiron-dev/melisia/tools/cmt/internal/config"
+	"github.com/shiron-dev/melisia/tools/cmt/internal/lock"
 	"github.com/shiron-dev/melisia/tools/cmt/internal/syncer"
 
 	"github.com/spf13/cobra"
@@ -51,6 +52,17 @@ func runPlanCmd(
 	digestFile string,
 	dependencies syncer.PlanDependencies,
 ) error {
+	return runPlanCmdWithLocker(lock.New(), configPath, hostFilter, projectFilter, exitCode, digestFile, dependencies)
+}
+
+func runPlanCmdWithLocker(
+	locker *lock.Locker,
+	configPath string,
+	hostFilter, projectFilter []string,
+	exitCode bool,
+	digestFile string,
+	dependencies syncer.PlanDependencies,
+) error {
 	cfg, err := config.LoadCmtConfig(configPath)
 	if err != nil {
 		return err
@@ -58,7 +70,7 @@ func runPlanCmd(
 
 	hosts := config.FilterHosts(cfg.Hosts, hostFilter)
 
-	release, err := acquireHostLocks(hosts, "plan", os.Stdout)
+	release, err := acquireHostLocks(locker, hosts, "plan", os.Stdout)
 	if err != nil {
 		return err
 	}

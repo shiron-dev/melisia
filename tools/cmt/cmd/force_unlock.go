@@ -32,8 +32,10 @@ Use --force to skip the confirmation prompt.`
 }
 
 func runForceUnlock(hostName string, force bool) error {
-	locker := lock.New()
+	return runForceUnlockWithLocker(lock.New(), hostName, force)
+}
 
+func runForceUnlockWithLocker(locker *lock.Locker, hostName string, force bool) error {
 	info, readErr := locker.Read(hostName)
 	if readErr != nil {
 		if errors.Is(readErr, lock.ErrLockNotFound) {

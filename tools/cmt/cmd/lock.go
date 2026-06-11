@@ -13,9 +13,7 @@ type acquiredLock struct {
 	lockID   string
 }
 
-func acquireHostLocks(hosts []config.HostEntry, operation string, w io.Writer) (func(), error) {
-	locker := lock.New()
-
+func acquireHostLocks(locker *lock.Locker, hosts []config.HostEntry, operation string, w io.Writer) (func(), error) {
 	var acquired []acquiredLock
 
 	releaseFn := func() {

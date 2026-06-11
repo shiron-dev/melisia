@@ -2,6 +2,7 @@ package lock_test
 
 import (
 	"errors"
+	"os"
 	"testing"
 
 	"github.com/shiron-dev/melisia/tools/cmt/internal/lock"
@@ -173,6 +174,51 @@ func TestIsLocked(t *testing.T) {
 
 	if !locker.IsLocked("test-host") {
 		t.Error("expected host to be locked after acquire")
+	}
+}
+
+func TestAcquireCorruptedLockFile(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	locker := lock.NewWithDir(dir)
+
+	err := os.WriteFile(dir+"/test-host.lock", []byte("invalid-json"), 0o600)
+	if err != nil {
+		t.Fatalf("unexpected error writing corrupted lock: %v", err)
+	}
+
+	_, err = locker.Acquire("test-host", "plan")
+	if err == nil {
+		t.Fatal("expected error when lock file already exists")
+	}
+
+	if !errors.Is(err, lock.ErrLocked) {
+		t.Errorf("expected ErrLocked wrapping, got %v", err)
+	}
+}
+
+func TestNewAndDir(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	locker := lock.NewWithDir(dir)
+
+	if locker.Dir() != dir {
+		t.Errorf("Dir() = %q, want %q", locker.Dir(), dir)
+	}
+}
+
+func TestNew(t *testing.T) {
+	t.Parallel()
+
+	locker := lock.New()
+	if locker == nil {
+		t.Error("New() returned nil")
+	}
+
+	if locker.Dir() == "" {
+		t.Error("expected non-empty Dir() from New()")
 	}
 }
 

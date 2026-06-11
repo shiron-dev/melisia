@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/shiron-dev/melisia/tools/cmt/internal/config"
+	"github.com/shiron-dev/melisia/tools/cmt/internal/lock"
 	"github.com/shiron-dev/melisia/tools/cmt/internal/syncer"
 
 	"github.com/spf13/cobra"
@@ -38,7 +39,7 @@ func newApplyCmd(configPath *string) *cobra.Command {
 
 		hosts := config.FilterHosts(cfg.Hosts, hostFilter)
 
-		release, err := acquireHostLocks(hosts, "apply", os.Stdout)
+		release, err := acquireHostLocks(lock.New(), hosts, "apply", os.Stdout)
 		if err != nil {
 			return err
 		}
