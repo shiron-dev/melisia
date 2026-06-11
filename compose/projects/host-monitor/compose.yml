@@ -1,0 +1,40 @@
+services:
+  node_exporter:
+    image: quay.io/prometheus/node-exporter:v1.10.2@sha256:337ff1d356b68d39cef853e8c6345de11ce7556bb34cda8bd205bcf2ed30b565
+    container_name: home_ep_node_exporter
+    command:
+      - "--path.rootfs=/host"
+    ports:
+      - "127.0.0.1:9100:9100"
+    networks:
+      - home-automation
+    volumes:
+      # kics-scan ignore-line
+      - "/:/host:ro,rslave,noexec,nosuid,nodev"
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # kics-scan ignore-line
+    cap_add:
+      - SYS_ADMIN
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:9100/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  home-automation:
+    external: true
+    name: home-assistant_home-automation
