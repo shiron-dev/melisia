@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -206,11 +207,11 @@ func TestRunForceUnlockWithLockerCancelConfirm(t *testing.T) { //nolint:parallel
 	}
 
 	_, _ = w.WriteString("n\n")
-	w.Close()
+	_ = w.Close()
 
 	oldStdin := os.Stdin
 	os.Stdin = r
-	t.Cleanup(func() { os.Stdin = oldStdin; r.Close() })
+	t.Cleanup(func() { os.Stdin = oldStdin; _ = r.Close() })
 
 	err = runForceUnlockWithLocker(locker, "test-host", false)
 	if err != nil {
@@ -230,11 +231,11 @@ func TestConfirmForceUnlockYes(t *testing.T) { //nolint:paralleltest
 		}
 
 		_, _ = w.WriteString(answer)
-		w.Close()
+		_ = w.Close()
 
 		oldStdin := os.Stdin
 		os.Stdin = r
-		t.Cleanup(func() { os.Stdin = oldStdin; r.Close() })
+		t.Cleanup(func() { os.Stdin = oldStdin; _ = r.Close() })
 
 		if !confirmForceUnlock("host") {
 			t.Errorf("expected confirmForceUnlock to return true for %q", answer)
@@ -249,11 +250,11 @@ func TestConfirmForceUnlockNo(t *testing.T) { //nolint:paralleltest
 	}
 
 	_, _ = w.WriteString("n\n")
-	w.Close()
+	_ = w.Close()
 
 	oldStdin := os.Stdin
 	os.Stdin = r
-	t.Cleanup(func() { os.Stdin = oldStdin; r.Close() })
+	t.Cleanup(func() { os.Stdin = oldStdin; _ = r.Close() })
 
 	if confirmForceUnlock("host") {
 		t.Error("expected confirmForceUnlock to return false for 'n'")
@@ -298,7 +299,7 @@ func TestRunPlanCmdWithLockerLockFail(t *testing.T) {
 	}
 }
 
-func TestRunForceUnlockWrapperNotFound(t *testing.T) { //nolint:paralleltest
+func TestRunForceUnlockWrapperNotFound(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", dir)
 
@@ -308,13 +309,70 @@ func TestRunForceUnlockWrapperNotFound(t *testing.T) { //nolint:paralleltest
 	}
 }
 
-func TestRunPlanCmdWrapperConfigNotFound(t *testing.T) { //nolint:paralleltest
+func TestRunPlanCmdWrapperConfigNotFound(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", dir)
 
 	err := runPlanCmd("/nonexistent/config.yml", nil, nil, false, "", syncer.PlanDependencies{})
 	if err == nil {
 		t.Fatal("expected error for nonexistent config")
+	}
+}
+
+func TestNewForceUnlockCmdExecution(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dir)
+
+	cmd := newForceUnlockCmd()
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"no-such-host", "--force"})
+
+	err := cmd.Execute()
+	if !errors.Is(err, lock.ErrLockNotFound) {
+		t.Errorf("expected ErrLockNotFound, got %v", err)
+	}
+}
+
+func TestNewApplyCmdLockFail(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dir)
+
+	lockDir := filepath.Join(dir, "cmt", "locks")
+
+	err := os.MkdirAll(lockDir, 0o700)
+	if err != nil {
+		t.Fatalf("unexpected error creating lock dir: %v", err)
+	}
+
+	locker := lock.NewWithDir(lockDir)
+
+	info, err := locker.Acquire("test-host", "existing-op")
+	if err != nil {
+		t.Fatalf("unexpected error pre-acquiring lock: %v", err)
+	}
+
+	defer func() { _ = locker.Release("test-host", info.ID) }()
+
+	configPath := filepath.Join(dir, "cmt.yml")
+	configContent := "basePath: ./\nhosts:\n  - name: test-host\n    host: localhost\n    user: root\n    port: 22\n"
+
+	err = os.WriteFile(configPath, []byte(configContent), 0o600)
+	if err != nil {
+		t.Fatalf("unexpected error writing config file: %v", err)
+	}
+
+	cmd := newApplyCmd(&configPath)
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+
+	err = cmd.Execute()
+	if !errors.Is(err, lock.ErrLocked) {
+		t.Errorf("expected ErrLocked, got %v", err)
 	}
 }
 
@@ -337,7 +395,7 @@ func TestWritePlanDigestFile(t *testing.T) {
 		t.Fatalf("unexpected error writing digest file: %v", err)
 	}
 
-	data, err := os.ReadFile(digestPath)
+	data, err := os.ReadFile(digestPath) //nolint:gosec
 	if err != nil {
 		t.Fatalf("unexpected error reading digest file: %v", err)
 	}
