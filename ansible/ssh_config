@@ -2,15 +2,18 @@ Match host arm-srv.shiron.dev exec "cloudflared access ssh-gen --hostname %h"
 ProxyCommand cloudflared access ssh --hostname %h
 IdentityFile ~/.cloudflared/%h-cf_key
 CertificateFile ~/.cloudflared/%h-cf_key-cert.pub
+IdentityAgent none
 
 Host home-ep
   HostName 192.168.1.61
   User ansible_user
   IdentityFile ../.local/ssh/home_ep_key
   IdentitiesOnly yes
+  IdentityAgent none
 
 Host storage-srv
   HostName storage-srv.network.melisia.net
   User melisia_ops
   IdentityFile ../.local/ssh/storage_srv_key
   IdentitiesOnly yes
+  IdentityAgent none

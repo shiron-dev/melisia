@@ -5,3 +5,4 @@ Host home-ep
   User shiron
   IdentityFile .local/ssh/home_ep_key
   IdentitiesOnly yes
+  IdentityAgent none
