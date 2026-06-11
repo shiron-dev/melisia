@@ -79,9 +79,9 @@ notification_policy = {
 Grafana 自体はメトリクスを保存しない。Prometheus や類似のスクレイパーが収集したデータを永続化する専用ストレージ（VictoriaMetrics など）を別途立ち上げ、Grafana のデータソースはそこを向けること。
 
 - ✅ 正しい構成: Prometheus → **VictoriaMetrics** → Grafana データソース
-- ❌ 避けるべき構成: Prometheus（インメモリのみ）→ Grafana データソース
+- ❌ 避けるべき構成: Prometheus（永続 volume なし）→ Grafana データソース
 
-Prometheus のデフォルト保持期間は短期間（15 日）であり、コンテナ再起動でデータが失われる。VictoriaMetrics のような長期ストレージを挟むことで、再起動・障害・移行をまたいでメトリクスを保持できる。
+Prometheus はローカル TSDB にデータを書き込むが、永続 volume をマウントしていない場合はコンテナの再作成・削除でデータが失われる。またデフォルトの保持期間は 15 日と短い。VictoriaMetrics のような長期ストレージを挟むことで、コンテナのライフサイクルや障害・移行をまたいでメトリクスを保持できる。
 
 このリポジトリでは `victoriametrics` コンテナ（`compose/projects/grafana/compose.yml`）が永続ストレージの役割を担い、Grafana データソース UID `P95B22FBE6FE890D0` がそこを参照している。新しいデータソースを追加する場合も、必ず永続化バックエンドを経由させること。
 
