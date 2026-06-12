@@ -41,11 +41,32 @@ locals {
       }
     ]
   }
+
+  # vm-write.shiron.dev 専用ポリシー。home-ep の vmagent が remote_write 時に
+  # 使う専用 service token のみを許可する (e2e / 人間ログインは通さない)。
+  cloudflare_access_vm_write_policy_ref = {
+    name       = "Allow VM Write Service Token"
+    decision   = "non_identity"
+    precedence = 1
+    include = [
+      {
+        service_token = {
+          token_id = cloudflare_zero_trust_access_service_token.vm_write.id
+        }
+      }
+    ]
+  }
 }
 
 resource "cloudflare_zero_trust_access_service_token" "e2e" {
   account_id = local.cloudflare_account_id
   name       = "e2e${local.cloudflare_resource_name_suffix}"
+  duration   = "8760h"
+}
+
+resource "cloudflare_zero_trust_access_service_token" "vm_write" {
+  account_id = local.cloudflare_account_id
+  name       = "vm-write${local.cloudflare_resource_name_suffix}"
   duration   = "8760h"
 }
 

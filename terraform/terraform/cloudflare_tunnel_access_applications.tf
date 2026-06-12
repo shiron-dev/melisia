@@ -1,7 +1,7 @@
 resource "cloudflare_zero_trust_access_application" "extra_tunnel_ingress" {
   for_each = {
     for k, v in local.extra_tunnel_ingress_map : k => v
-    if length(v.policies) > 0 && lookup(v, "manage_access_application", true)
+    if length(v.policies) > 0 && lookup(v, "manage_access_application", true) && !v.skip_e2e_policy
   }
 
   account_id                = local.cloudflare_account_id
@@ -12,6 +12,24 @@ resource "cloudflare_zero_trust_access_application" "extra_tunnel_ingress" {
   service_auth_401_redirect = false
 
   policies = concat([local.cloudflare_access_e2e_policy_ref], each.value.policies)
+}
+
+# skip_e2e_policy = true の ingress (vm-write 等) 用。共通の e2e ポリシーを付与せず、
+# ingress 側で指定した専用ポリシーだけで許可を絞る。
+resource "cloudflare_zero_trust_access_application" "extra_tunnel_ingress_no_e2e" {
+  for_each = {
+    for k, v in local.extra_tunnel_ingress_map : k => v
+    if length(v.policies) > 0 && lookup(v, "manage_access_application", true) && v.skip_e2e_policy
+  }
+
+  account_id                = local.cloudflare_account_id
+  name                      = "${each.key}${local.cloudflare_resource_name_suffix}"
+  domain                    = each.value.hostname
+  type                      = "self_hosted"
+  session_duration          = "24h"
+  service_auth_401_redirect = false
+
+  policies = each.value.policies
 }
 
 resource "cloudflare_zero_trust_access_application" "this" {

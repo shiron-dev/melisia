@@ -7,6 +7,18 @@ resource "local_sensitive_file" "cloudflare_access_e2e_secret" {
   })
 }
 
+# home-ep の vmagent が vm-write.shiron.dev (Access 保護) へ remote_write する際の
+# CF-Access service token。書き込み経路専用の vm_write token を配布し、e2e token は
+# 共有しない (漏洩時の影響を書き込みパスのみに限定する)。
+resource "local_sensitive_file" "cloudflare_vm_write_secret_home_ep" {
+  filename = "${path.module}/../../compose/hosts/home-ep/network-monitor/vm-write.secrets.yml"
+  content = yamlencode({
+    cloudflare_vm_write_client_id = cloudflare_zero_trust_access_service_token.vm_write.client_id
+    # kics-scan ignore-line
+    cloudflare_vm_write_client_secret = cloudflare_zero_trust_access_service_token.vm_write.client_secret
+  })
+}
+
 removed {
   from = local_sensitive_file.cloudflare_tunnel_secret
 

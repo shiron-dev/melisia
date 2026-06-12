@@ -7,11 +7,18 @@ locals {
       secret_yaml_dir = "${path.module}/../../compose/hosts/arm-srv/grafana"
       policies        = local.cloudflare_access_policy_refs.shiron
       extra_ingress = [
+        # influxdb は退役済み (メトリクス永続化は VictoriaMetrics に一本化)。
+        # コンテナ削除に伴い公開 tunnel ingress と e2e probe 対象も撤去した。
+        # home-ep の vmagent が remote_write (push) する書き込みエンドポイント。
+        # vmauth が /api/v1/write のみを VictoriaMetrics へ転送し、query/admin API
+        # には到達させない。Access は専用 service token (vm_write) のみ許可し、
+        # 共通 e2e ポリシーや人間ログインは通さない (skip_e2e_policy)。
         {
-          hostname  = "influxdb.shiron.dev"
-          zone_name = "shiron.dev"
-          service   = "http://influxdb:8086"
-          policies  = local.cloudflare_access_policy_refs.shiron
+          hostname        = "vm-write.shiron.dev"
+          zone_name       = "shiron.dev"
+          service         = "http://vmauth:8427"
+          policies        = [local.cloudflare_access_vm_write_policy_ref]
+          skip_e2e_policy = true
         }
       ]
     }
@@ -55,25 +62,10 @@ locals {
           zone_name = "melisia.net"
           service   = "http://esphome:6052"
           policies  = local.cloudflare_access_policy_refs.shiron
-        },
-        {
-          hostname  = "home-ep-node.melisia.net"
-          zone_name = "melisia.net"
-          service   = "http://host.docker.internal:9100"
-          policies  = local.cloudflare_access_policy_refs.shiron
-        },
-        {
-          hostname  = "home-ep-blackbox.melisia.net"
-          zone_name = "melisia.net"
-          service   = "http://home_ep_blackbox_exporter:9115"
-          policies  = local.cloudflare_access_policy_refs.shiron
-        },
-        {
-          hostname  = "home-ep-cloudflare-speedtest.melisia.net"
-          zone_name = "melisia.net"
-          service   = "http://home_ep_cloudflare_speedtest_exporter:9798"
-          policies  = local.cloudflare_access_policy_refs.shiron
         }
+        # home-ep の exporter (node / blackbox / cloudflare-speedtest) は
+        # vmagent によるローカルスクレイプ + arm-srv VM への push に移行したため、
+        # 外部公開する tunnel ingress は廃止した。
       ]
     }
   }
@@ -87,6 +79,7 @@ locals {
           zone_name                 = ingress.zone_name
           service                   = ingress.service
           policies                  = lookup(ingress, "policies", [])
+          skip_e2e_policy           = lookup(ingress, "skip_e2e_policy", false)
           manage_access_application = lookup(ingress, "manage_access_application", true)
           dangerously_allow_public_without_access_policy = lookup(
             ingress,
