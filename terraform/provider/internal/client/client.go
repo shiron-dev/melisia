@@ -67,6 +67,8 @@ type AppConfig struct {
 var (
 	createDatasetParentRetryAttempts = 20
 	createDatasetParentRetryDelay    = 500 * time.Millisecond
+	jobWaitPollInterval              = 2 * time.Second
+	jobWaitTimeout                   = 30 * time.Minute
 )
 
 type apiError struct {
@@ -235,14 +237,22 @@ func (c *Client) UpdateAppsConfig(ctx context.Context, config AppsConfig) (AppsC
 		"nvidia":               config.Nvidia,
 		"address_pools":        addressPoolsToAPI(config.AddressPools),
 	}
-	if err := c.do(ctx, http.MethodPut, "/api/v2.0/docker", dockerBody, nil); err != nil {
+	var dockerJob any
+	if err := c.do(ctx, http.MethodPut, "/api/v2.0/docker", dockerBody, &dockerJob); err != nil {
+		return AppsConfig{}, err
+	}
+	if err := c.waitForJobResponse(ctx, "docker.update", dockerJob); err != nil {
 		return AppsConfig{}, err
 	}
 
 	catalogBody := map[string]any{
 		"preferred_trains": config.PreferredTrains,
 	}
-	if err := c.do(ctx, http.MethodPut, "/api/v2.0/catalog", catalogBody, nil); err != nil {
+	var catalogJob any
+	if err := c.do(ctx, http.MethodPut, "/api/v2.0/catalog", catalogBody, &catalogJob); err != nil {
+		return AppsConfig{}, err
+	}
+	if err := c.waitForJobResponse(ctx, "catalog.update", catalogJob); err != nil {
 		return AppsConfig{}, err
 	}
 
@@ -276,11 +286,68 @@ func (c *Client) UpdateAppConfig(ctx context.Context, config AppConfig) (AppConf
 	body := map[string]any{
 		"values": values,
 	}
-	if err := c.doEscaped(ctx, http.MethodPut, "/api/v2.0/app/id/"+config.Name, "/api/v2.0/app/id/"+url.PathEscape(config.Name), body, nil); err != nil {
+	var appJob any
+	if err := c.doEscaped(ctx, http.MethodPut, "/api/v2.0/app/id/"+config.Name, "/api/v2.0/app/id/"+url.PathEscape(config.Name), body, &appJob); err != nil {
+		return AppConfig{}, err
+	}
+	if err := c.waitForJobResponse(ctx, "app.update", appJob); err != nil {
 		return AppConfig{}, err
 	}
 
 	return c.GetAppConfig(ctx, config.Name)
+}
+
+func (c *Client) waitForJobResponse(ctx context.Context, method string, rawJob any) error {
+	jobID, ok := jobID(rawJob)
+	if !ok {
+		return nil
+	}
+
+	return c.waitForJob(ctx, method, jobID)
+}
+
+func (c *Client) waitForJob(ctx context.Context, method string, id int64) error {
+	ctx, cancel := context.WithTimeout(ctx, jobWaitTimeout)
+	defer cancel()
+
+	for {
+		job, err := c.getJob(ctx, id)
+		if err != nil {
+			return err
+		}
+
+		state := strings.ToUpper(stringValue(job["state"]))
+		switch state {
+		case "SUCCESS":
+			return nil
+		case "FAILED", "ABORTED":
+			message := firstNonEmpty(stringValue(job["error"]), stringValue(job["exception"]))
+			if message == "" {
+				message = "job did not complete successfully"
+			}
+			return fmt.Errorf("%s job %d %s: %s", method, id, state, message)
+		}
+
+		timer := time.NewTimer(jobWaitPollInterval)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
+func (c *Client) getJob(ctx context.Context, id int64) (map[string]any, error) {
+	var jobs []map[string]any
+	if err := c.do(ctx, http.MethodGet, fmt.Sprintf("/api/v2.0/core/get_jobs?limit=1&id=%d", id), nil, &jobs); err != nil {
+		return nil, err
+	}
+	if len(jobs) == 0 {
+		return map[string]any{}, nil
+	}
+
+	return jobs[0], nil
 }
 
 func (c *Client) doDatasetID(ctx context.Context, method, id string, body any, out any) error {
@@ -346,7 +413,17 @@ func (c *Client) doEscaped(ctx context.Context, method, path, rawPath string, bo
 }
 
 func (c *Client) requestURL(path, rawPath string) *url.URL {
-	return c.baseURL.ResolveReference(&url.URL{Path: path, RawPath: rawPath})
+	requestPath, rawQuery, _ := strings.Cut(path, "?")
+	requestRawPath, _, _ := strings.Cut(rawPath, "?")
+	if rawPath == "" {
+		requestRawPath = ""
+	}
+
+	return c.baseURL.ResolveReference(&url.URL{
+		Path:     requestPath,
+		RawPath:  requestRawPath,
+		RawQuery: rawQuery,
+	})
 }
 
 func datasetFromAPI(raw map[string]any) Dataset {
@@ -534,4 +611,36 @@ func int64Value(value any) int64 {
 	default:
 		return 0
 	}
+}
+
+func jobID(value any) (int64, bool) {
+	switch typed := value.(type) {
+	case float64:
+		return int64(typed), typed > 0
+	case int64:
+		return typed, typed > 0
+	case int:
+		return int64(typed), typed > 0
+	case json.Number:
+		parsed, err := typed.Int64()
+		return parsed, err == nil && parsed > 0
+	case string:
+		var parsed json.Number = json.Number(typed)
+		id, err := parsed.Int64()
+		return id, err == nil && id > 0
+	case map[string]any:
+		return jobID(typed["id"])
+	default:
+		return 0, false
+	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+
+	return ""
 }
