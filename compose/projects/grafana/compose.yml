@@ -101,7 +101,7 @@ services:
   # 認証は Cloudflare Access (専用 service token) が担い、vmauth はパス制限のみ。
   vmauth:
     container_name: vmauth
-    image: victoriametrics/vmauth:v1.144.0@sha256:a9e7baea67f554394aea405d9325591816f86ebe7f7c62b5df255852fca9c739
+    image: victoriametrics/vmauth:v1.145.0@sha256:c816c52c4d9187566c3dc23298dbd7c273352bfbacc811c353ff6e7f41921e10
     ports:
       - "127.0.0.1:8427:8427"
     volumes:
