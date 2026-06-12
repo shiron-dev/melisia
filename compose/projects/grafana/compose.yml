@@ -146,6 +146,9 @@ services:
       - "--promscrape.config=/etc/vmagent/scrape.yml"
       - "--remoteWrite.url=http://victoriametrics:8428/api/v1/write"
       - "--remoteWrite.tmpDataPath=/vmagent-remotewrite-data"
+      # victoriametrics 断時にバッファが arm-srv のディスクを食い潰さないよう
+      # 上限を設ける。超過分は古いものから破棄される。
+      - "--remoteWrite.maxDiskUsagePerURL=1GB"
       - "--httpListenAddr=:8429"
     restart: always
     security_opt:
