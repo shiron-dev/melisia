@@ -60,8 +60,11 @@ Managed application service settings:
   explicit `truenas_app_config` resources in `apps.tf`. Non-secret app settings
   are written as readable Terraform objects and passed through
   `truenas_app_config_document` data sources; only passwords and tokens are kept
-  in `terraform.secrets.tfvars.sops`. The resources read `/api/v2.0/app/config`
-  during refresh, so plan reports drift before apply.
+  in `terraform.secrets.tfvars.sops` in the working tree. The generated
+  `config_json` value is sensitive in Terraform output, but Terraform still
+  stores it in state, so the GCS state bucket must be treated as containing app
+  secrets. The resources read `/api/v2.0/app/config` during refresh, so plan
+  reports drift before apply.
 - Installed app lifecycle, catalog app versions, workloads, and app data are not
   managed in this Terraform root.
 
