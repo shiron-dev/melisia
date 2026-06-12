@@ -44,6 +44,26 @@ type Dataset struct {
 	Sync          string
 }
 
+type AppsConfig struct {
+	ID                 string
+	EnableImageUpdates bool
+	Pool               string
+	Nvidia             bool
+	AddressPools       []AppsAddressPool
+	PreferredTrains    []string
+}
+
+type AppsAddressPool struct {
+	Base string
+	Size int64
+}
+
+type AppConfig struct {
+	ID     string
+	Name   string
+	Values json.RawMessage
+}
+
 var (
 	createDatasetParentRetryAttempts = 20
 	createDatasetParentRetryDelay    = 500 * time.Millisecond
@@ -194,6 +214,75 @@ func (c *Client) DeleteDataset(ctx context.Context, id string) error {
 	return c.doDatasetID(ctx, http.MethodDelete, id, nil, nil)
 }
 
+func (c *Client) GetAppsConfig(ctx context.Context) (AppsConfig, error) {
+	var dockerRaw map[string]any
+	if err := c.do(ctx, http.MethodGet, "/api/v2.0/docker", nil, &dockerRaw); err != nil {
+		return AppsConfig{}, err
+	}
+
+	var catalogRaw map[string]any
+	if err := c.do(ctx, http.MethodGet, "/api/v2.0/catalog", nil, &catalogRaw); err != nil {
+		return AppsConfig{}, err
+	}
+
+	return appsConfigFromAPI(dockerRaw, catalogRaw), nil
+}
+
+func (c *Client) UpdateAppsConfig(ctx context.Context, config AppsConfig) (AppsConfig, error) {
+	dockerBody := map[string]any{
+		"enable_image_updates": config.EnableImageUpdates,
+		"pool":                 config.Pool,
+		"nvidia":               config.Nvidia,
+		"address_pools":        addressPoolsToAPI(config.AddressPools),
+	}
+	if err := c.do(ctx, http.MethodPut, "/api/v2.0/docker", dockerBody, nil); err != nil {
+		return AppsConfig{}, err
+	}
+
+	catalogBody := map[string]any{
+		"preferred_trains": config.PreferredTrains,
+	}
+	if err := c.do(ctx, http.MethodPut, "/api/v2.0/catalog", catalogBody, nil); err != nil {
+		return AppsConfig{}, err
+	}
+
+	return c.GetAppsConfig(ctx)
+}
+
+func (c *Client) GetAppConfig(ctx context.Context, name string) (AppConfig, error) {
+	var raw json.RawMessage
+	if err := c.do(ctx, http.MethodPost, "/api/v2.0/app/config", name, &raw); err != nil {
+		return AppConfig{}, err
+	}
+
+	canonical, err := canonicalJSON(raw)
+	if err != nil {
+		return AppConfig{}, err
+	}
+
+	return AppConfig{
+		ID:     name,
+		Name:   name,
+		Values: canonical,
+	}, nil
+}
+
+func (c *Client) UpdateAppConfig(ctx context.Context, config AppConfig) (AppConfig, error) {
+	var values any
+	if err := json.Unmarshal(config.Values, &values); err != nil {
+		return AppConfig{}, fmt.Errorf("decode app config values: %w", err)
+	}
+
+	body := map[string]any{
+		"values": values,
+	}
+	if err := c.doEscaped(ctx, http.MethodPut, "/api/v2.0/app/id/"+config.Name, "/api/v2.0/app/id/"+url.PathEscape(config.Name), body, nil); err != nil {
+		return AppConfig{}, err
+	}
+
+	return c.GetAppConfig(ctx, config.Name)
+}
+
 func (c *Client) doDatasetID(ctx context.Context, method, id string, body any, out any) error {
 	return c.doEscaped(ctx, method, "/api/v2.0/pool/dataset/id/"+id, "/api/v2.0/pool/dataset/id/"+url.PathEscape(id), body, out)
 }
@@ -282,6 +371,78 @@ func datasetFromAPI(raw map[string]any) Dataset {
 	}
 }
 
+func appsConfigFromAPI(dockerRaw map[string]any, catalogRaw map[string]any) AppsConfig {
+	return AppsConfig{
+		ID:                 "apps",
+		EnableImageUpdates: boolValue(dockerRaw["enable_image_updates"]),
+		Pool:               stringValue(dockerRaw["pool"]),
+		Nvidia:             boolValue(dockerRaw["nvidia"]),
+		AddressPools:       addressPoolsFromAPI(dockerRaw["address_pools"]),
+		PreferredTrains:    stringSliceValue(catalogRaw["preferred_trains"]),
+	}
+}
+
+func addressPoolsFromAPI(value any) []AppsAddressPool {
+	rawPools, ok := value.([]any)
+	if !ok {
+		return nil
+	}
+
+	pools := make([]AppsAddressPool, 0, len(rawPools))
+	for _, rawPool := range rawPools {
+		pool, ok := rawPool.(map[string]any)
+		if !ok {
+			continue
+		}
+		pools = append(pools, AppsAddressPool{
+			Base: stringValue(pool["base"]),
+			Size: int64Value(pool["size"]),
+		})
+	}
+
+	return pools
+}
+
+func addressPoolsToAPI(pools []AppsAddressPool) []map[string]any {
+	rawPools := make([]map[string]any, 0, len(pools))
+	for _, pool := range pools {
+		rawPools = append(rawPools, map[string]any{
+			"base": pool.Base,
+			"size": pool.Size,
+		})
+	}
+
+	return rawPools
+}
+
+func stringSliceValue(value any) []string {
+	rawValues, ok := value.([]any)
+	if !ok {
+		return nil
+	}
+
+	values := make([]string, 0, len(rawValues))
+	for _, rawValue := range rawValues {
+		values = append(values, stringValue(rawValue))
+	}
+
+	return values
+}
+
+func canonicalJSON(raw json.RawMessage) (json.RawMessage, error) {
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return nil, fmt.Errorf("decode json: %w", err)
+	}
+
+	canonical, err := json.Marshal(value)
+	if err != nil {
+		return nil, fmt.Errorf("encode canonical json: %w", err)
+	}
+
+	return canonical, nil
+}
+
 func isParentDatasetMissing(err error) bool {
 	var apiErr *apiError
 	if !errors.As(err, &apiErr) {
@@ -343,6 +504,11 @@ func recordsizeString(value any) string {
 	default:
 		return valueString
 	}
+}
+
+func boolValue(value any) bool {
+	v, _ := value.(bool)
+	return v
 }
 
 func stringValue(value any) string {
