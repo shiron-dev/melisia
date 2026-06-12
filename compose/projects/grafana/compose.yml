@@ -58,12 +58,13 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-  # influxdb はメトリクス永続化を VictoriaMetrics に一本化したため停止した。
+  # influxdb はメトリクス永続化を VictoriaMetrics に一本化したため退役した。
   # コンテナ定義のみ外し、データ (bind mount の ./influxdb_data / ./influxdb_config)
   # は据え置く。postSyncCommand の `docker compose up -d --remove-orphans` により
   # 既存コンテナはオーファンとして停止・削除される。
-  # influxdb.shiron.dev の Cloudflare Tunnel と prometheus の e2e プローブは
-  # snipeit と同様、停止済みサービスでも残置する慣例に合わせて据え置く。
+  # origin が消えるため、influxdb.shiron.dev の Cloudflare Tunnel ingress と
+  # e2e probe 対象 (vmagent.yml の cloudflare_tunnel_e2e / access_block_e2e) も
+  # 併せて撤去した (2xx probe が常時失敗し critical alert が発火するのを防ぐ)。
 
   victoriametrics:
     container_name: victoriametrics

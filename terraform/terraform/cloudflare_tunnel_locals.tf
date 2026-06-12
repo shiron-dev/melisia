@@ -7,12 +7,8 @@ locals {
       secret_yaml_dir = "${path.module}/../../compose/hosts/arm-srv/grafana"
       policies        = local.cloudflare_access_policy_refs.shiron
       extra_ingress = [
-        {
-          hostname  = "influxdb.shiron.dev"
-          zone_name = "shiron.dev"
-          service   = "http://influxdb:8086"
-          policies  = local.cloudflare_access_policy_refs.shiron
-        },
+        # influxdb は退役済み (メトリクス永続化は VictoriaMetrics に一本化)。
+        # コンテナ削除に伴い公開 tunnel ingress と e2e probe 対象も撤去した。
         # home-ep の vmagent が remote_write (push) する書き込みエンドポイント。
         # vmauth が /api/v1/write のみを VictoriaMetrics へ転送し、query/admin API
         # には到達させない。Access は専用 service token (vm_write) のみ許可し、
