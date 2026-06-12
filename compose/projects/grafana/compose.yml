@@ -134,7 +134,7 @@ services:
   # 永続化は VictoriaMetrics 側に集約される。
   vmagent:
     container_name: vmagent
-    image: victoriametrics/vmagent:v1.144.0@sha256:f685e6900aea67d079b136eda07dc53ca8a1099710aef889ab17b8da814496ef
+    image: victoriametrics/vmagent:v1.145.0@sha256:71f19af5c80bec6ea955c171bab0aae01314a80016b3600412c2b4bbb8d95d70
     ports:
       - "127.0.0.1:8429:8429"
     volumes:
