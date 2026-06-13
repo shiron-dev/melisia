@@ -5,7 +5,7 @@
 basePath: ../compose   # relative to this config file's directory
 
 defaults:
-  remotePath: /opt/compose
+  remotePath: /opt/compose       # plan/apply create a per-project lock at <remotePath>/<project>/.cmt.lock
   composeAction: up              # up|down|ignore (default: up)
 
 hosts:

@@ -7,28 +7,38 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
+	"path"
 	"strconv"
+	"strings"
 	"time"
+
+	"github.com/shiron-dev/melisia/tools/cmt/internal/config"
+	"github.com/shiron-dev/melisia/tools/cmt/internal/remote"
 )
 
 const (
-	lockDirPerms  = 0o700
-	lockFilePerms = 0o600
-	lockIDBytes   = 16
+	// LockFileName is the per-project lock file created inside each project's
+	// remote directory (e.g. /opt/compose/<project>/.cmt.lock).
+	LockFileName = ".cmt.lock"
+
+	lockIDBytes = 16
+	markerOK    = "CMT_LOCK_OK"
+	markerHeld  = "CMT_LOCK_HELD"
+	markerNoDir = "CMT_LOCK_NODIR"
 )
 
-const lockedInfoFmt = "%w for host %q:" +
+const lockedInfoFmt = "%w for %s:" +
 	"\n  ID:        %s" +
 	"\n  Operation: %s" +
 	"\n  Who:       %s" +
 	"\n  Created:   %s" +
-	"\n\nTo force-unlock: cmt force-unlock %s"
+	"\n\nTo force-unlock: cmt force-unlock %s %s"
 
 var (
-	ErrLocked         = errors.New("host is locked by another operation")
-	ErrLockNotFound   = errors.New("lock not found")
-	ErrLockIDMismatch = errors.New("lock ID mismatch")
+	ErrLocked                  = errors.New("host is locked by another operation")
+	ErrLockNotFound            = errors.New("lock not found")
+	ErrLockIDMismatch          = errors.New("lock ID mismatch")
+	errUnexpectedAcquireOutput = errors.New("unexpected lock acquire output")
 )
 
 // Info contains metadata about an active lock.
@@ -38,181 +48,328 @@ type Info struct {
 	Who       string    `json:"who"`
 	Created   time.Time `json:"created"`
 	Path      string    `json:"path"`
+
+	// CreatedDir reports whether acquiring the lock created the project's remote
+	// directory (apply only). It is not persisted; callers use it to roll back
+	// the directory on release if nothing was written. json:"-"
+	CreatedDir bool `json:"-"`
 }
 
-// Locker manages per-host lock files in a configured directory.
-type Locker struct {
-	dir string
+// Target identifies a per-project lock living on a remote host.
+type Target struct {
+	Host      config.HostEntry
+	Project   string
+	RemoteDir string
+	LockPath  string
 }
 
-// New returns a Locker that uses the XDG-standard lock directory.
-func New() *Locker {
-	return &Locker{dir: defaultDir()}
-}
-
-// NewWithDir returns a Locker that stores lock files in dir.
-func NewWithDir(dir string) *Locker {
-	return &Locker{dir: dir}
-}
-
-// Dir returns the directory where lock files are stored.
-func (l *Locker) Dir() string { return l.dir }
-
-func defaultDir() string {
-	dataHome := os.Getenv("XDG_DATA_HOME")
-	if dataHome == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return filepath.Join(".", ".cmt", "locks")
-		}
-
-		dataHome = filepath.Join(home, ".local", "share")
+func (t Target) lockPath() string {
+	if t.LockPath != "" {
+		return t.LockPath
 	}
 
-	return filepath.Join(dataHome, "cmt", "locks")
+	return path.Join(t.RemoteDir, LockFileName)
 }
 
-// Acquire atomically creates a lock for hostName. Returns ErrLocked if already held.
-func (l *Locker) Acquire(hostName, operation string) (*Info, error) {
-	err := os.MkdirAll(l.dir, lockDirPerms)
+func (t Target) label() string {
+	return t.Host.Name + "/" + t.Project
+}
+
+// RemoteLocker manages per-project lock files on remote hosts over SSH.
+type RemoteLocker struct {
+	factory remote.ClientFactory
+}
+
+// NewRemote returns a RemoteLocker that connects through the given factory.
+func NewRemote(factory remote.ClientFactory) *RemoteLocker {
+	return &RemoteLocker{factory: factory}
+}
+
+// Acquire atomically creates the lock file for target on the remote host.
+// Returns ErrLocked if a lock is already held.
+//
+// When ensureDir is true (apply), the project's remote directory is created if
+// missing so the lock can be placed before any files are synced. When false
+// (plan), no directory is created: if the project directory does not exist yet
+// there is no remote state to protect, so Acquire returns (nil, nil) to signal
+// the lock was skipped.
+func (l *RemoteLocker) Acquire(target Target, operation string, ensureDir bool) (*Info, error) {
+	client, err := l.factory.NewClient(target.Host)
 	if err != nil {
-		return nil, fmt.Errorf("creating lock directory: %w", err)
+		return nil, fmt.Errorf("connecting to %q: %w", target.Host.Name, err)
 	}
 
-	lockPath := l.filePath(hostName)
-
-	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, lockFilePerms) //nolint:gosec
-	if err != nil {
-		if os.IsExist(err) {
-			return nil, l.lockedError(hostName)
-		}
-
-		return nil, fmt.Errorf("acquiring lock for %q: %w", hostName, err)
-	}
-
-	defer func() { _ = f.Close() }()
+	defer func() { _ = client.Close() }()
 
 	info := &Info{
-		ID:        generateID(),
-		Operation: operation,
-		Who:       whoString(),
-		Created:   time.Now().UTC(),
-		Path:      lockPath,
+		ID:         generateID(),
+		Operation:  operation,
+		Who:        whoString(),
+		Created:    time.Now().UTC(),
+		Path:       target.lockPath(),
+		CreatedDir: false,
 	}
 
-	data, err := json.MarshalIndent(info, "", "  ")
+	data, err := json.Marshal(info)
 	if err != nil {
-		_ = os.Remove(lockPath)
-
 		return nil, fmt.Errorf("encoding lock info: %w", err)
 	}
 
-	_, err = f.Write(data)
+	out, err := client.RunCommand("", buildAcquireScript(target, data, ensureDir))
 	if err != nil {
-		_ = os.Remove(lockPath)
-
-		return nil, fmt.Errorf("writing lock file: %w", err)
+		return nil, fmt.Errorf("acquiring lock for %s: %w", target.label(), err)
 	}
 
-	return info, nil
+	return parseAcquireOutput(target, info, out)
 }
 
-// Release removes the lock for hostName if the ID matches the one in the lock file.
-func (l *Locker) Release(hostName, lockID string) error {
-	existing, err := l.Read(hostName)
+func buildAcquireScript(target Target, jsonData []byte, ensureDir bool) string {
+	dir := shellQuote(target.RemoteDir)
+	lockFile := shellQuote(target.lockPath())
+	payload := shellQuote(string(jsonData))
+
+	// Attempt the atomic create. On success print "<markerOK> <created>". If it
+	// fails ONLY because the lock already exists, print <markerHeld>; any other
+	// failure (permission, bad parent path) exits non-zero so the caller sees
+	// the real error instead of treating it as a conflict.
+	takeLock := fmt.Sprintf(
+		"if ( set -C; printf '%%s' %s > %s ) 2>/dev/null; then echo %s $created; "+
+			"elif [ -e %s ]; then echo %s; cat %s 2>/dev/null || true; else exit 1; fi",
+		payload, lockFile, markerOK, lockFile, markerHeld, lockFile,
+	)
+
+	if ensureDir {
+		// apply: create the project directory if missing (a mkdir failure exits
+		// non-zero), recording whether we created it so release can roll it back.
+		return fmt.Sprintf(
+			"created=0; if [ ! -d %s ]; then mkdir -p %s || exit 1; created=1; fi; %s",
+			dir, dir, takeLock,
+		)
+	}
+
+	// plan: never create directories. If the project directory is absent there
+	// is nothing to lock yet.
+	return fmt.Sprintf("created=0; if [ -d %s ]; then %s; else echo %s; fi", dir, takeLock, markerNoDir)
+}
+
+func parseAcquireOutput(target Target, info *Info, out string) (*Info, error) {
+	trimmed := strings.TrimSpace(out)
+
+	switch {
+	case strings.HasPrefix(trimmed, markerOK):
+		fields := strings.Fields(trimmed)
+		info.CreatedDir = len(fields) > 1 && fields[1] == "1"
+
+		return info, nil
+	case strings.HasPrefix(trimmed, markerNoDir):
+		// Project not deployed yet; nothing to lock.
+		return nil, nil //nolint:nilnil
+	case strings.HasPrefix(trimmed, markerHeld):
+		holderJSON := strings.TrimSpace(strings.TrimPrefix(trimmed, markerHeld))
+
+		return nil, lockedError(target, holderJSON)
+	default:
+		return nil, fmt.Errorf("%w for %s: %q", errUnexpectedAcquireOutput, target.label(), trimmed)
+	}
+}
+
+func lockedError(target Target, holderJSON string) error {
+	var existing Info
+
+	if holderJSON != "" && json.Unmarshal([]byte(holderJSON), &existing) == nil {
+		return fmt.Errorf(
+			lockedInfoFmt,
+			ErrLocked, target.label(),
+			existing.ID, existing.Operation, existing.Who,
+			existing.Created.Format(time.RFC3339),
+			target.Host.Name, target.Project,
+		)
+	}
+
+	return fmt.Errorf(
+		"%w for %s\n\nTo force-unlock: cmt force-unlock %s %s",
+		ErrLocked, target.label(), target.Host.Name, target.Project,
+	)
+}
+
+// Release removes the lock for target when the ID matches the one in the file.
+func (l *RemoteLocker) Release(target Target, lockID string) error {
+	client, err := l.factory.NewClient(target.Host)
+	if err != nil {
+		return fmt.Errorf("connecting to %q: %w", target.Host.Name, err)
+	}
+
+	defer func() { _ = client.Close() }()
+
+	existing, err := readWithClient(client, target)
 	if err != nil {
 		if errors.Is(err, ErrLockNotFound) {
 			return nil
 		}
 
-		return fmt.Errorf("reading lock for %q: %w", hostName, err)
+		return fmt.Errorf("reading lock for %s: %w", target.label(), err)
 	}
 
 	if existing.ID != lockID {
-		return fmt.Errorf("%w for host %q: own %s but file has %s", ErrLockIDMismatch, hostName, lockID, existing.ID)
+		return fmt.Errorf("%w for %s: own %s but file has %s", ErrLockIDMismatch, target.label(), lockID, existing.ID)
 	}
 
-	return os.Remove(l.filePath(hostName))
+	err = client.Remove(target.lockPath())
+	if err != nil {
+		return fmt.Errorf("removing lock for %s: %w", target.label(), err)
+	}
+
+	return nil
 }
 
-// Read returns the current lock info for hostName. Returns ErrLockNotFound if none exists.
-func (l *Locker) Read(hostName string) (*Info, error) {
-	data, err := os.ReadFile(l.filePath(hostName))
+// Read returns the current lock info for target. Returns ErrLockNotFound if none exists.
+func (l *RemoteLocker) Read(target Target) (*Info, error) {
+	client, err := l.factory.NewClient(target.Host)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("%w: host %q", ErrLockNotFound, hostName)
-		}
+		return nil, fmt.Errorf("connecting to %q: %w", target.Host.Name, err)
+	}
 
-		return nil, err
+	defer func() { _ = client.Close() }()
+
+	return readWithClient(client, target)
+}
+
+func readWithClient(client remote.RemoteClient, target Target) (*Info, error) {
+	// Distinguish a genuinely absent lock from a read failure (SSH/permission):
+	// only the former is ErrLockNotFound, so Release/force-unlock don't treat a
+	// transient error as "no lock" and silently leave it behind.
+	exists, err := existsWithClient(client, target)
+	if err != nil {
+		return nil, fmt.Errorf("checking lock for %s: %w", target.label(), err)
+	}
+
+	if !exists {
+		return nil, fmt.Errorf("%w: %s", ErrLockNotFound, target.label())
+	}
+
+	data, err := client.ReadFile(target.lockPath())
+	if err != nil {
+		return nil, fmt.Errorf("reading lock for %s: %w", target.label(), err)
 	}
 
 	var info Info
 
 	err = json.Unmarshal(data, &info)
 	if err != nil {
-		return nil, fmt.Errorf("parsing lock file for %q: %w", hostName, err)
+		return nil, fmt.Errorf("parsing lock file for %s: %w", target.label(), err)
 	}
 
 	return &info, nil
 }
 
-// ForceUnlock removes the lock for hostName regardless of who holds it.
-func (l *Locker) ForceUnlock(hostName string) error {
-	err := os.Remove(l.filePath(hostName))
+// ForceUnlock removes the lock for target regardless of who holds it.
+func (l *RemoteLocker) ForceUnlock(target Target) error {
+	client, err := l.factory.NewClient(target.Host)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("%w: host %q", ErrLockNotFound, hostName)
-		}
+		return fmt.Errorf("connecting to %q: %w", target.Host.Name, err)
+	}
 
-		return fmt.Errorf("removing lock for %q: %w", hostName, err)
+	defer func() { _ = client.Close() }()
+
+	exists, err := existsWithClient(client, target)
+	if err != nil {
+		return fmt.Errorf("checking lock for %s: %w", target.label(), err)
+	}
+
+	if !exists {
+		return fmt.Errorf("%w: %s", ErrLockNotFound, target.label())
+	}
+
+	err = client.Remove(target.lockPath())
+	if err != nil {
+		return fmt.Errorf("removing lock for %s: %w", target.label(), err)
 	}
 
 	return nil
 }
 
-// ForceUnlockWithID removes the lock for hostName only when the current lock ID
+// ForceUnlockWithID removes the lock for target only when the current lock ID
 // still matches expectedID. Returns ErrLockIDMismatch if the lock was replaced
 // between the time it was displayed and the time the user confirmed.
-func (l *Locker) ForceUnlockWithID(hostName, expectedID string) error {
-	current, err := l.Read(hostName)
+func (l *RemoteLocker) ForceUnlockWithID(target Target, expectedID string) error {
+	client, err := l.factory.NewClient(target.Host)
+	if err != nil {
+		return fmt.Errorf("connecting to %q: %w", target.Host.Name, err)
+	}
+
+	defer func() { _ = client.Close() }()
+
+	current, err := readWithClient(client, target)
 	if err != nil {
 		return err
 	}
 
 	if current.ID != expectedID {
-		return fmt.Errorf("%w for host %q: expected %s but found %s", ErrLockIDMismatch, hostName, expectedID, current.ID)
+		return fmt.Errorf("%w for %s: expected %s but found %s", ErrLockIDMismatch, target.label(), expectedID, current.ID)
 	}
 
-	return l.ForceUnlock(hostName)
-}
-
-// IsLocked reports whether a lock file exists for hostName.
-func (l *Locker) IsLocked(hostName string) bool {
-	_, err := os.Stat(l.filePath(hostName))
-
-	return err == nil
-}
-
-func (l *Locker) filePath(hostName string) string {
-	return filepath.Join(l.dir, hostName+".lock")
-}
-
-func (l *Locker) lockedError(hostName string) error {
-	existing, readErr := l.Read(hostName)
-	if readErr != nil {
-		return fmt.Errorf(
-			"%w for host %q (lock file exists but could not be read: %w)\n\nTo force-unlock: cmt force-unlock %s",
-			ErrLocked, hostName, readErr, hostName,
-		)
+	err = client.Remove(target.lockPath())
+	if err != nil {
+		return fmt.Errorf("removing lock for %s: %w", target.label(), err)
 	}
 
-	return fmt.Errorf(
-		lockedInfoFmt,
-		ErrLocked, hostName,
-		existing.ID, existing.Operation, existing.Who,
-		existing.Created.Format(time.RFC3339),
-		hostName,
+	return nil
+}
+
+// RemoveEmptyDir removes target's project directory if it is empty. It is used
+// to roll back a directory that lock acquisition created when an apply ends
+// without writing anything. A non-empty directory (a real deployment) is left
+// untouched.
+func (l *RemoteLocker) RemoveEmptyDir(target Target) error {
+	client, err := l.factory.NewClient(target.Host)
+	if err != nil {
+		return fmt.Errorf("connecting to %q: %w", target.Host.Name, err)
+	}
+
+	defer func() { _ = client.Close() }()
+
+	// rmdir only succeeds on an empty directory; ignore failure otherwise.
+	_, err = client.RunCommand("", "rmdir "+shellQuote(target.RemoteDir)+" 2>/dev/null || true")
+	if err != nil {
+		return fmt.Errorf("removing empty dir for %s: %w", target.label(), err)
+	}
+
+	return nil
+}
+
+// IsLocked reports whether a lock file exists for target.
+func (l *RemoteLocker) IsLocked(target Target) (bool, error) {
+	client, err := l.factory.NewClient(target.Host)
+	if err != nil {
+		return false, fmt.Errorf("connecting to %q: %w", target.Host.Name, err)
+	}
+
+	defer func() { _ = client.Close() }()
+
+	return existsWithClient(client, target)
+}
+
+func existsWithClient(client remote.RemoteClient, target Target) (bool, error) {
+	lockFile := shellQuote(target.lockPath())
+	dir := shellQuote(target.RemoteDir)
+
+	// `[ -e ]` returns false both when the lock is genuinely absent and when the
+	// parent directory is not searchable (e.g. apply changed its owner/perms).
+	// Treat the latter as undetermined (exit non-zero) rather than "not found",
+	// so Release/force-unlock don't drop a lock they simply cannot see.
+	cmd := fmt.Sprintf(
+		"if [ -e %s ]; then echo Y; "+
+			"elif [ -e %s ] && { [ ! -r %s ] || [ ! -x %s ]; }; then exit 1; "+
+			"else echo N; fi",
+		lockFile, dir, dir, dir,
 	)
+
+	out, err := client.RunCommand("", cmd)
+	if err != nil {
+		return false, err
+	}
+
+	return strings.TrimSpace(out) == "Y", nil
 }
 
 func generateID() string {
@@ -237,4 +394,8 @@ func whoString() string {
 	pid := strconv.Itoa(os.Getpid())
 
 	return fmt.Sprintf("%s@%s (PID %s)", user, hostname, pid)
+}
+
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }

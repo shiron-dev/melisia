@@ -52,30 +52,40 @@ func runPlanCmd(
 	digestFile string,
 	dependencies syncer.PlanDependencies,
 ) error {
-	return runPlanCmdWithLocker(lock.New(), configPath, hostFilter, projectFilter, exitCode, digestFile, dependencies)
+	locker := remoteLocker(dependencies.ClientFactory)
+
+	return runPlanCmdWithLocker(locker, configPath, hostFilter, projectFilter, exitCode, digestFile, dependencies)
 }
 
 func runPlanCmdWithLocker(
-	locker *lock.Locker,
+	locker *lock.RemoteLocker,
 	configPath string,
 	hostFilter, projectFilter []string,
 	exitCode bool,
 	digestFile string,
 	dependencies syncer.PlanDependencies,
-) error {
+) (retErr error) {
 	cfg, err := config.LoadCmtConfig(configPath)
 	if err != nil {
 		return err
 	}
 
-	hosts := config.FilterHosts(cfg.Hosts, hostFilter)
-
-	release, err := acquireHostLocks(locker, hosts, "plan", os.Stdout)
+	targets, err := syncer.ResolveLockTargets(cfg, hostFilter, projectFilter, dependencies)
 	if err != nil {
 		return err
 	}
 
-	defer release()
+	release, err := acquireRemoteLocks(locker, targets, "plan", false, os.Stdout)
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		releaseErr := release()
+		if releaseErr != nil && retErr == nil {
+			retErr = releaseErr
+		}
+	}()
 
 	plan, err := syncer.BuildPlanWithDeps(cfg, hostFilter, projectFilter, dependencies)
 	if err != nil {
@@ -94,10 +104,25 @@ func runPlanCmdWithLocker(
 	}
 
 	if exitCode {
-		// os.Exit bypasses defer, so release locks explicitly first.
-		release()
-		exitWithPlanCode(plan)
+		// os.Exit bypasses defer, so release locks explicitly first and stop the
+		// deferred release from running again.
+		releaseErr := release()
+		release = func() error { return nil }
+
+		return exitWithPlanCodeOrReleaseErr(plan, releaseErr)
 	}
+
+	return nil
+}
+
+// exitWithPlanCodeOrReleaseErr fails the command when releasing the lock failed
+// (so a leaked remote lock doesn't exit 0/2), otherwise exits with the plan code.
+func exitWithPlanCodeOrReleaseErr(plan *syncer.SyncPlan, releaseErr error) error {
+	if releaseErr != nil {
+		return releaseErr
+	}
+
+	exitWithPlanCode(plan)
 
 	return nil
 }
