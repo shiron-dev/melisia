@@ -45,6 +45,29 @@ Removed storage resources:
 - `tank/apps` and its former Nextcloud child datasets were deleted from TrueNAS
   and removed from Terraform state on 2026-06-07.
 
+Managed application service settings:
+
+- Apps Docker settings are declared in `apps.tf` and applied to the TrueNAS
+  REST API `/api/v2.0/docker` endpoint. This covers the apps pool, Docker image
+  update checks, NVIDIA support, and Docker address pools.
+- Apps catalog settings are declared in `apps.tf` and applied to the TrueNAS
+  REST API `/api/v2.0/catalog` endpoint. This covers preferred application
+  trains. The declared value matches the current TrueNAS setting:
+  `community` and `stable`.
+- The local `truenas_apps_config` resource reads both endpoints during refresh,
+  so plan reports drift in these managed settings before apply.
+- Installed app configuration for `nextcloud` and `cloudflared` is declared as
+  explicit `truenas_app_config` resources in `apps.tf`. Non-secret app settings
+  are written as readable Terraform objects and passed through
+  `truenas_app_config_document` data sources; only passwords and tokens are kept
+  in `terraform.secrets.tfvars.sops` in the working tree. The generated
+  `config_json` value is sensitive in Terraform output, but Terraform still
+  stores it in state, so the GCS state bucket must be treated as containing app
+  secrets. The resources read `/api/v2.0/app/config` during refresh, so plan
+  reports drift before apply.
+- Installed app lifecycle, catalog app versions, workloads, and app data are not
+  managed in this Terraform root.
+
 Tracked but not imported as pool resources:
 
 - `apps` and `tank` pools are queried with `data.truenas_pool.pools`.
