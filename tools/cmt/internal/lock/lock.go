@@ -35,9 +35,10 @@ const lockedInfoFmt = "%w for %s:" +
 	"\n\nTo force-unlock: cmt force-unlock %s %s"
 
 var (
-	ErrLocked         = errors.New("host is locked by another operation")
-	ErrLockNotFound   = errors.New("lock not found")
-	ErrLockIDMismatch = errors.New("lock ID mismatch")
+	ErrLocked                  = errors.New("host is locked by another operation")
+	ErrLockNotFound            = errors.New("lock not found")
+	ErrLockIDMismatch          = errors.New("lock ID mismatch")
+	errUnexpectedAcquireOutput = errors.New("unexpected lock acquire output")
 )
 
 // Info contains metadata about an active lock.
@@ -127,19 +128,21 @@ func buildAcquireScript(target Target, jsonData []byte, ensureDir bool) string {
 	lockFile := shellQuote(target.lockPath())
 	payload := shellQuote(string(jsonData))
 
-	// On success prints "<markerOK> <created>" where <created> is 1 if this call
-	// created the project directory, else 0.
+	// Attempt the atomic create. On success print "<markerOK> <created>". If it
+	// fails ONLY because the lock already exists, print <markerHeld>; any other
+	// failure (permission, bad parent path) exits non-zero so the caller sees
+	// the real error instead of treating it as a conflict.
 	takeLock := fmt.Sprintf(
-		"if ( set -C; printf '%%s' %s > %s ) 2>/dev/null; "+
-			"then echo %s $created; else echo %s; cat %s 2>/dev/null || true; fi",
-		payload, lockFile, markerOK, markerHeld, lockFile,
+		"if ( set -C; printf '%%s' %s > %s ) 2>/dev/null; then echo %s $created; "+
+			"elif [ -e %s ]; then echo %s; cat %s 2>/dev/null || true; else exit 1; fi",
+		payload, lockFile, markerOK, lockFile, markerHeld, lockFile,
 	)
 
 	if ensureDir {
-		// apply: create the project directory if missing, recording whether we
-		// created it so release can roll it back when nothing was written.
+		// apply: create the project directory if missing (a mkdir failure exits
+		// non-zero), recording whether we created it so release can roll it back.
 		return fmt.Sprintf(
-			"created=0; if [ ! -d %s ]; then mkdir -p %s 2>/dev/null && created=1; fi; %s",
+			"created=0; if [ ! -d %s ]; then mkdir -p %s || exit 1; created=1; fi; %s",
 			dir, dir, takeLock,
 		)
 	}
@@ -161,10 +164,12 @@ func parseAcquireOutput(target Target, info *Info, out string) (*Info, error) {
 	case strings.HasPrefix(trimmed, markerNoDir):
 		// Project not deployed yet; nothing to lock.
 		return nil, nil //nolint:nilnil
-	default:
+	case strings.HasPrefix(trimmed, markerHeld):
 		holderJSON := strings.TrimSpace(strings.TrimPrefix(trimmed, markerHeld))
 
 		return nil, lockedError(target, holderJSON)
+	default:
+		return nil, fmt.Errorf("%w for %s: %q", errUnexpectedAcquireOutput, target.label(), trimmed)
 	}
 }
 
@@ -230,9 +235,21 @@ func (l *RemoteLocker) Read(target Target) (*Info, error) {
 }
 
 func readWithClient(client remote.RemoteClient, target Target) (*Info, error) {
+	// Distinguish a genuinely absent lock from a read failure (SSH/permission):
+	// only the former is ErrLockNotFound, so Release/force-unlock don't treat a
+	// transient error as "no lock" and silently leave it behind.
+	exists, err := existsWithClient(client, target)
+	if err != nil {
+		return nil, fmt.Errorf("checking lock for %s: %w", target.label(), err)
+	}
+
+	if !exists {
+		return nil, fmt.Errorf("%w: %s", ErrLockNotFound, target.label())
+	}
+
 	data, err := client.ReadFile(target.lockPath())
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrLockNotFound, target.label())
+		return nil, fmt.Errorf("reading lock for %s: %w", target.label(), err)
 	}
 
 	var info Info

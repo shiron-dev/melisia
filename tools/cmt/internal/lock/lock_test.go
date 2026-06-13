@@ -226,6 +226,83 @@ func TestRunCommandErrorsPropagate(t *testing.T) {
 	checkConnErr(t, "IsLocked", isLockedErr)
 
 	checkConnErr(t, "ForceUnlock", locker.ForceUnlock(target))
+
+	// A read/SSH failure must NOT be reported as "lock not found", so Release
+	// surfaces the error instead of silently treating the lock as gone.
+	_, readErr := locker.Read(target)
+	checkConnErr(t, "Read", readErr)
+
+	if errors.Is(readErr, lock.ErrLockNotFound) {
+		t.Error("Read: SSH error must not be reported as ErrLockNotFound")
+	}
+
+	releaseErr := locker.Release(target, "id")
+	checkConnErr(t, "Release", releaseErr)
+}
+
+// existsUnreadableClient reports the lock exists but cannot read it (e.g.
+// permission denied on an existing file).
+type existsUnreadableClient struct{ fakeClient }
+
+func (existsUnreadableClient) RunCommand(_, command string) (string, error) {
+	if strings.HasPrefix(command, "if [ -e ") {
+		return "Y\n", nil
+	}
+
+	return "", nil
+}
+
+func (existsUnreadableClient) ReadFile(string) ([]byte, error) {
+	return nil, errNotSupported
+}
+
+type existsUnreadableFactory struct{}
+
+func (existsUnreadableFactory) NewClient(config.HostEntry) (remote.RemoteClient, error) {
+	return &existsUnreadableClient{fakeClient{files: map[string]string{}, dirs: map[string]bool{}}}, nil
+}
+
+func TestReadExistsButUnreadable(t *testing.T) {
+	t.Parallel()
+
+	locker := lock.NewRemote(existsUnreadableFactory{})
+
+	_, err := locker.Read(testTarget())
+	if err == nil {
+		t.Fatal("expected error reading an existing but unreadable lock")
+	}
+
+	if errors.Is(err, lock.ErrLockNotFound) {
+		t.Error("an unreadable existing lock must not be reported as ErrLockNotFound")
+	}
+}
+
+// garbageAcquireClient returns output the acquire parser does not recognise.
+type garbageAcquireClient struct{ fakeClient }
+
+func (garbageAcquireClient) RunCommand(_, _ string) (string, error) {
+	return "unexpected output\n", nil
+}
+
+type garbageAcquireFactory struct{}
+
+func (garbageAcquireFactory) NewClient(config.HostEntry) (remote.RemoteClient, error) {
+	return &garbageAcquireClient{fakeClient{files: map[string]string{}, dirs: map[string]bool{}}}, nil
+}
+
+func TestAcquireUnexpectedOutputIsNotLocked(t *testing.T) {
+	t.Parallel()
+
+	locker := lock.NewRemote(garbageAcquireFactory{})
+
+	_, err := locker.Acquire(testTarget(), "apply", true)
+	if err == nil {
+		t.Fatal("expected error for unexpected acquire output")
+	}
+
+	if errors.Is(err, lock.ErrLocked) {
+		t.Error("unexpected acquire output must not be reported as ErrLocked")
+	}
 }
 
 func testTarget() lock.Target {
