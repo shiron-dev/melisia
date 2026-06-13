@@ -8,7 +8,7 @@ locals {
 
     records = {
       home_ep = {
-        hostname        = "home-ep.network.melisia.net"
+        hostname        = "home-ep.mesh.network.melisia.net"
         zone_name       = "melisia.net"
         secret_yaml_dir = "${path.module}/../../ansible/group_vars/home_ep"
       }
