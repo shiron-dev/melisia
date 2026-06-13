@@ -67,10 +67,12 @@ def _parse_binary_data(content: str, source: str) -> dict:
         result[key] = value
     if not result and content.strip():
         print(
-            f"WARNING: {source}: binary SOPS content could not be parsed as "
-            "key=value pairs; secrets in this file are not checked.",
+            f"ERROR: {source}: binary SOPS content could not be parsed as "
+            "key=value pairs. Add this file to the CI exclusion glob or "
+            "handle its format explicitly.",
             file=sys.stderr,
         )
+        sys.exit(1)
     return result
 
 

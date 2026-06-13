@@ -11,12 +11,13 @@ resource "google_iam_workload_identity_pool_provider" "github_actions" {
   description                        = "Trust token.actions.githubusercontent.com"
 
   attribute_mapping = {
-    "google.subject"       = "assertion.sub"
-    "attribute.repository" = "assertion.repository"
-    "attribute.ref"        = "assertion.ref"
+    "google.subject"        = "assertion.sub"
+    "attribute.repository"  = "assertion.repository"
+    "attribute.ref"         = "assertion.ref"
+    "attribute.event_name"  = "assertion.event_name"
   }
 
-  attribute_condition = "assertion.sub == 'repo:shiron-dev/melisia:ref:refs/heads/main' || assertion.sub == 'repo:shiron-dev/melisia:environment:production-plan' || assertion.sub == 'repo:shiron-dev/melisia:environment:production'"
+  attribute_condition = "assertion.sub == 'repo:shiron-dev/melisia:ref:refs/heads/main' || assertion.sub == 'repo:shiron-dev/melisia:environment:production-plan' || assertion.sub == 'repo:shiron-dev/melisia:environment:production' || (attribute.repository == 'shiron-dev/melisia' && attribute.event_name == 'merge_group')"
 
   oidc {
     issuer_uri = "https://token.actions.githubusercontent.com"
