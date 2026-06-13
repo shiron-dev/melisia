@@ -6,7 +6,7 @@ projects:
   grafana:
     remotePath: /var
     composeAction: ignore
-    postSyncCommand: chmod 0644 docker-compose-exporter.py vmagent.yml vmauth.yml && docker compose up -d --remove-orphans && docker compose restart blackbox_exporter vmagent vmauth
+    postSyncCommand: chmod 0644 docker-compose-exporter.py vmagent.yml vmauth.yml loki.yml promtail.yml && docker compose up -d --remove-orphans && docker compose restart blackbox_exporter vmagent vmauth loki promtail
     dirs:
       - grafana_storage:
         owner: 472
@@ -27,6 +27,14 @@ projects:
         group: 1000
         become: true
       - vmdata:
+        owner: 0
+        group: 0
+        become: true
+      - loki_data:
+        owner: 10001
+        group: 10001
+        become: true
+      - promtail_positions:
         owner: 0
         group: 0
         become: true

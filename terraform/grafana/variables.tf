@@ -49,6 +49,14 @@ variable "datasources" {
         }
       JSON
     }
+    loki_localhost = {
+      name        = "Loki"
+      type        = "loki"
+      uid         = "loki_localhost"
+      url         = "http://loki:3100"
+      access_mode = "proxy"
+      is_default  = false
+    }
   }
 }
 
