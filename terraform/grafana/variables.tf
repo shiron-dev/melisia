@@ -37,15 +37,15 @@ variable "datasources" {
       name              = "Prometheus-vm_localhost"
       type              = "prometheus"
       uid               = "P95B22FBE6FE890D0"
-      url               = "http://victoriametrics:8428"
+      url               = "http://mimir:9009/prometheus"
       access_mode       = "proxy"
       is_default        = false
       json_data_encoded = <<-JSON
         {
           "httpMethod": "POST",
           "manageAlerts": true,
-          "prometheusType": "Prometheus",
-          "prometheusVersion": "2.24.0"
+          "prometheusType": "Mimir",
+          "prometheusVersion": "2.9.0"
         }
       JSON
     }

@@ -1,13 +1,13 @@
 # vm-write.shiron.dev (Cloudflare Access 保護) から受けたリクエストのうち、
-# remote_write の書き込みパスと Loki push パスのみを各バックエンドへ転送する。
+# Mimir への remote_write パスと Loki push パスのみを各バックエンドへ転送する。
 # url_map に一致しないパス (query / admin / delete 系) はルート無しで拒否される。
 # 認証は edge の Cloudflare Access が担うため、vmauth 側では unauthorized_user で
 # パス制限のみ行う。
 unauthorized_user:
   url_map:
     - src_paths:
-        - "/api/v1/write"
-      url_prefix: "http://victoriametrics:8428"
+        - "/api/v1/push"
+      url_prefix: "http://mimir:9009"
     - src_paths:
         - "/loki/api/v1/push"
       url_prefix: "http://loki:3100"
