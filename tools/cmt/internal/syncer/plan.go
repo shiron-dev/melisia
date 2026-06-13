@@ -21,6 +21,7 @@ import (
 	"sync"
 
 	"github.com/shiron-dev/melisia/tools/cmt/internal/config"
+	"github.com/shiron-dev/melisia/tools/cmt/internal/lock"
 	"github.com/shiron-dev/melisia/tools/cmt/internal/remote"
 
 	"github.com/pmezard/go-difflib/difflib"
@@ -199,6 +200,13 @@ type MaskHint struct {
 }
 
 const manifestFile = ".cmt-manifest.json"
+
+// isReservedRemoteFile reports whether relPath is a cmt-managed metadata file
+// (the manifest or the lock file) that must never be synced, recorded in the
+// manifest, or deleted — otherwise apply could clobber its own lock.
+func isReservedRemoteFile(relPath string) bool {
+	return relPath == manifestFile || relPath == lock.LockFileName
+}
 
 func (p *SyncPlan) Stats() (int, int, int, int, int, int) {
 	hostCount := len(p.HostPlans)
@@ -1574,6 +1582,11 @@ func buildFilePlans(
 	localSet := make(map[string]bool, len(localFiles))
 
 	for relPath, localPath := range localFiles {
+		if isReservedRemoteFile(relPath) {
+			// Never sync a local file that collides with cmt's own metadata.
+			continue
+		}
+
 		localSet[relPath] = true
 
 		filePlan, err := buildLocalFilePlan(
@@ -1673,7 +1686,7 @@ func buildDeleteFilePlans(
 	deletePlans := make([]FilePlan, 0)
 
 	for _, managedFile := range manifest.ManagedFiles {
-		if managedFile == manifestFile || localSet[managedFile] || preserveSet[managedFile] {
+		if isReservedRemoteFile(managedFile) || localSet[managedFile] || preserveSet[managedFile] {
 			continue
 		}
 
@@ -1741,7 +1754,12 @@ func BuildManifest(localFiles map[string]string) Manifest {
 
 func BuildManifestWithMaskHints(localFiles map[string]string, maskHints map[string][]MaskHint) Manifest {
 	var manifest Manifest
+
 	for rel := range localFiles {
+		if isReservedRemoteFile(rel) {
+			continue
+		}
+
 		manifest.ManagedFiles = append(manifest.ManagedFiles, rel)
 	}
 
