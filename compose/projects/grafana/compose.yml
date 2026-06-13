@@ -58,7 +58,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-  # influxdb はメトリクス永続化を VictoriaMetrics に一本化したため退役した。
+  # influxdb はメトリクス永続化を Mimir に一本化したため退役した。
   # コンテナ定義のみ外し、データ (bind mount の ./influxdb_data / ./influxdb_config)
   # は据え置く。postSyncCommand の `docker compose up -d --remove-orphans` により
   # 既存コンテナはオーファンとして停止・削除される。
@@ -66,16 +66,16 @@ services:
   # e2e probe 対象 (vmagent.yml の cloudflare_tunnel_e2e / access_block_e2e) も
   # 併せて撤去した (2xx probe が常時失敗し critical alert が発火するのを防ぐ)。
 
-  victoriametrics:
-    container_name: victoriametrics
-    image: victoriametrics/victoria-metrics:v1.145.0@sha256:c014fb5a711d38cb24fd0673197592cd1394bb903dbb16aea565620c9c8a3d70
+  mimir:
+    container_name: mimir
+    image: grafana/mimir:2.15.0
     ports:
-      - "127.0.0.1:8428:8428"
+      - "127.0.0.1:9009:9009"
     volumes:
-      - ./vmdata:/storage
+      - "./mimir.yml:/etc/mimir/mimir.yml:ro"
+      - "./mimirdata:/data/mimir"
     command:
-      - "--storageDataPath=/storage"
-      - "--httpListenAddr=:8428"
+      - "--config.file=/etc/mimir/mimir.yml"
     restart: always
     security_opt:
       - no-new-privileges:true
@@ -90,15 +90,14 @@ services:
           cpus: '0.25'
           memory: 256M
     healthcheck:
-      test: ["CMD", "sh", "-c", "netstat -ln | grep :8428 || ss -ln | grep :8428"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:9009/ready"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
-  # vmauth は remote_write の書き込みパスのみを VictoriaMetrics へ転送する
-  # リバースプロキシ。home-ep からの push (vm-write.shiron.dev) はこの vmauth を
-  # 経由させ、/api/v1/write 以外 (query / admin API) には到達させない。
-  # 認証は Cloudflare Access (専用 service token) が担い、vmauth はパス制限のみ。
+      start_period: 60s
+  # vmauth は vm-write.shiron.dev (Cloudflare Tunnel + Access) 経由で受けた
+  # リクエストのうち、Mimir への /api/v1/push と Loki への /loki/api/v1/push
+  # のみを転送するリバースプロキシ。それ以外のパスはルート無しで拒否される。
   vmauth:
     container_name: vmauth
     image: victoriametrics/vmauth:v1.145.0@sha256:c816c52c4d9187566c3dc23298dbd7c273352bfbacc811c353ff6e7f41921e10
@@ -130,8 +129,8 @@ services:
       start_period: 20s
   # メトリクス収集は vmagent に一本化した (旧 prometheus を置換)。
   # vmagent はローカル exporter と e2e blackbox プローブをスクレイプし、
-  # 同居の victoriametrics へ remote_write する。ローカル TSDB は持たず、
-  # 永続化は VictoriaMetrics 側に集約される。
+  # 同居の mimir へ remote_write する。ローカル TSDB は持たず、
+  # 永続化は Mimir 側に集約される。
   vmagent:
     container_name: vmagent
     image: victoriametrics/vmagent:v1.145.0@sha256:71f19af5c80bec6ea955c171bab0aae01314a80016b3600412c2b4bbb8d95d70
@@ -144,9 +143,9 @@ services:
       - "host.docker.internal:host-gateway"
     command:
       - "--promscrape.config=/etc/vmagent/scrape.yml"
-      - "--remoteWrite.url=http://victoriametrics:8428/api/v1/write"
+      - "--remoteWrite.url=http://mimir:9009/api/v1/push"
       - "--remoteWrite.tmpDataPath=/vmagent-remotewrite-data"
-      # victoriametrics 断時にバッファが arm-srv のディスクを食い潰さないよう
+      # mimir 断時にバッファが arm-srv のディスクを食い潰さないよう
       # 上限を設ける。超過分は古いものから破棄される。
       - "--remoteWrite.maxDiskUsagePerURL=1GB"
       - "--httpListenAddr=:8429"

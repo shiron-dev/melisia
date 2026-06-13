@@ -76,71 +76,53 @@ notification_policy = {
 
 **メトリクスの永続化バックエンドは必ず用意すること。**
 
-Grafana 自体はメトリクスを保存しない。Prometheus や類似のスクレイパーが収集したデータを永続化する専用ストレージ（VictoriaMetrics など）を別途立ち上げ、Grafana のデータソースはそこを向けること。
+Grafana 自体はメトリクスを保存しない。Prometheus や類似のスクレイパーが収集したデータを永続化する専用ストレージ（Grafana Mimir など）を別途立ち上げ、Grafana のデータソースはそこを向けること。
 
-- ✅ 正しい構成: Prometheus → **VictoriaMetrics** → Grafana データソース
+- ✅ 正しい構成: vmagent → **Mimir** → Grafana データソース
 - ❌ 避けるべき構成: Prometheus（永続 volume なし）→ Grafana データソース
 
-Prometheus はローカル TSDB にデータを書き込むが、永続 volume をマウントしていない場合はコンテナの再作成・削除でデータが失われる。またデフォルトの保持期間は 15 日と短い。VictoriaMetrics のような長期ストレージを挟むことで、コンテナのライフサイクルや障害・移行をまたいでメトリクスを保持できる。
+Prometheus はローカル TSDB にデータを書き込むが、永続 volume をマウントしていない場合はコンテナの再作成・削除でデータが失われる。またデフォルトの保持期間は 15 日と短い。Mimir のような長期ストレージを挟むことで、コンテナのライフサイクルや障害・移行をまたいでメトリクスを保持できる。
 
-このリポジトリでは `victoriametrics` コンテナ（`compose/projects/grafana/compose.yml`）が永続ストレージの役割を担い、Grafana データソース UID `P95B22FBE6FE890D0` がそこを参照している。新しいデータソースを追加する場合も、必ず永続化バックエンドを経由させること。
+このリポジトリでは `mimir` コンテナ（`compose/projects/grafana/compose.yml`）が永続ストレージの役割を担い、Grafana データソース UID `P95B22FBE6FE890D0` がそこを参照している。新しいデータソースを追加する場合も、必ず永続化バックエンドを経由させること。
 
 ### 収集トポロジ (vmagent push)
 
 メトリクス収集は **vmagent** に統一し、各ホストでローカルスクレイプして
-arm-srv の VictoriaMetrics へ remote_write (push) する。永続化は arm-srv の
-`victoriametrics` 一箇所に集約される。
+arm-srv の Mimir へ remote_write (push) する。永続化は arm-srv の
+`mimir` 一箇所に集約される。
 
 ```text
-arm-srv:  local exporters / e2e blackbox ──► vmagent ──► victoriametrics ◄── Grafana
-home-ep:  node / icmp-ping / speedtest ────► vmagent ──(HTTPS push)─► vmauth ─┘
-                                                       vm-write.shiron.dev   (/api/v1/write のみ)
+arm-srv:  local exporters / e2e blackbox ──► vmagent ──► mimir ◄── Grafana
+home-ep:  node / icmp-ping / speedtest ────► vmagent ──(HTTPS push)────────┘
+                                                       vm-write.shiron.dev
                                                        (Tunnel + Access: vm_write token)
 ```
 
 - arm-srv: `vmagent` (`compose/projects/grafana`) がローカル exporter と
-  e2e blackbox プローブをスクレイプし、同居の `victoriametrics` へ remote_write。
+  e2e blackbox プローブをスクレイプし、同居の `mimir` へ remote_write。
+  書き込みエンドポイント: `http://mimir:9009/api/v1/push`
 - home-ep: `vmagent` (`compose/projects/network-monitor`) がローカルの node /
   icmp-ping (8.8.8.8 へ 10 分ごとに 5 発 ping) / cloudflare-speedtest exporter を
   スクレイプし、`vm-write.shiron.dev` 経由で arm-srv へ push。
+  書き込みエンドポイント: `https://vm-write.shiron.dev/api/v1/push`
 - node exporter は全ホストで `job="node"` に統一し、対象ホストの識別には
   `host` ラベル (`home-ep`, `arm-srv` など) を使う。`instance` は
   `host.docker.internal:9100` のような scrape 接続先を表すため、dashboard の
   ホスト選択には使わない。
 - これにより各 exporter を外部公開してスクレイプさせる必要がなくなり、CF-Access
   認証は「スクレイプ経路」から「remote_write 経路」へ移動した。
-- 旧 InfluxDB は停止し、永続化バックエンドは VictoriaMetrics に一本化した。
+- 旧 InfluxDB は停止し、永続化バックエンドは Mimir に一本化した。
 
-#### 書き込み経路の権限境界
+#### 書き込み経路の認証
 
-`vm-write.shiron.dev` は VictoriaMetrics を直接公開せず、`vmauth`
-(`compose/projects/grafana`、`/api/v1/write` のみ転送する設定 `vmauth.yml`)を
-前段に置く。これにより、認証情報が漏れても query / admin / delete 系 API には
-到達できない (vmauth が `missing route` で拒否)。
-
+`vm-write.shiron.dev` は Cloudflare Tunnel 経由で `mimir:9009` に直接転送する。
 認証は書き込み専用の Cloudflare Access service token (`vm_write`) のみで、
 arm-srv 内部の blackbox e2e 用 `e2e` token とは分離している。vm-write の Access
 application には共通 e2e ポリシーを付与しない (`skip_e2e_policy = true`)。
 
-#### 適用順序
-
-経路の張り替えを伴うため、以下の順で適用する。
-
-1. `make terraform-apply TERRAFORM_TARGET=terraform`
-   - `vm-write.shiron.dev` の tunnel ingress (vmauth 宛) / Access app / `vm_write`
-     service token を作成
-   - arm-srv に e2e secret 平文、home-ep に vm_write secret 平文を出力
-   - 不要になった home-ep exporter の公開 ingress を削除
-2. `make sops-encrypt` で生成された平文 secret を再暗号化してコミット
-3. `make cmt-apply CMT_OPT=--host=home-ep` → home-ep vmagent を起動し push を確認
-4. `make cmt-apply CMT_OPT=--host=arm-srv` → arm-srv の prometheus を vmagent へ置換
-
-home-ep vmagent は `vmagent_data` にオンディスクバッファを持つため、arm-srv 側
-適用中の短時間の VM 断はバッファされ取りこぼさない。
-
 ## Existing Resources
 
-The existing VictoriaMetrics-backed Prometheus data source has a deterministic UID in cmt provisioning:
+The existing Mimir-backed Prometheus data source has a deterministic UID in cmt provisioning:
 
 ```text
 P95B22FBE6FE890D0

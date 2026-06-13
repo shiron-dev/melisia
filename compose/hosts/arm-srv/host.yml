@@ -6,7 +6,7 @@ projects:
   grafana:
     remotePath: /var
     composeAction: ignore
-    postSyncCommand: chmod 0644 docker-compose-exporter.py vmagent.yml vmauth.yml loki.yml promtail.yml && docker compose up -d --remove-orphans && docker compose restart blackbox_exporter vmagent vmauth loki promtail
+    postSyncCommand: chmod 0644 docker-compose-exporter.py vmagent.yml vmauth.yml mimir.yml loki.yml promtail.yml && docker compose up -d --remove-orphans && docker compose restart blackbox_exporter vmagent vmauth loki promtail
     dirs:
       - grafana_storage:
         owner: 472
@@ -16,7 +16,7 @@ projects:
         owner: 0
         group: 0
         become: true
-      # influxdb は停止済み (メトリクス永続化は VictoriaMetrics に一本化)。
+      # influxdb は停止済み (メトリクス永続化は Mimir に一本化)。
       # コンテナ定義は compose から外したが、過去データは据え置くため dir は残す。
       - influxdb_data:
         owner: 1000
@@ -26,7 +26,7 @@ projects:
         owner: 1000
         group: 1000
         become: true
-      - vmdata:
+      - mimirdata:
         owner: 0
         group: 0
         become: true

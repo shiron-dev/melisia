@@ -7,12 +7,13 @@ locals {
       secret_yaml_dir = "${path.module}/../../compose/hosts/arm-srv/grafana"
       policies        = local.cloudflare_access_policy_refs.shiron
       extra_ingress = [
-        # influxdb は退役済み (メトリクス永続化は VictoriaMetrics に一本化)。
+        # influxdb は退役済み (メトリクス永続化は Mimir に一本化)。
         # コンテナ削除に伴い公開 tunnel ingress と e2e probe 対象も撤去した。
         # home-ep の vmagent が remote_write (push) する書き込みエンドポイント。
-        # vmauth が /api/v1/write のみを VictoriaMetrics へ転送し、query/admin API
-        # には到達させない。Access は専用 service token (vm_write) のみ許可し、
-        # 共通 e2e ポリシーや人間ログインは通さない (skip_e2e_policy)。
+        # vmauth が /api/v1/push を Mimir へ、/loki/api/v1/push を Loki へ転送し、
+        # それ以外のパスは拒否する。Access は専用 service token
+        # (vm_write) のみ許可し、共通 e2e ポリシーや人間ログインは通さない
+        # (skip_e2e_policy)。
         {
           hostname        = "vm-write.shiron.dev"
           zone_name       = "shiron.dev"
