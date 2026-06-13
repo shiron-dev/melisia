@@ -90,11 +90,7 @@ services:
           cpus: '0.25'
           memory: 256M
     healthcheck:
-      test: ["CMD", "sh", "-c", "netstat -ln 2>/dev/null | grep :9009 || ss -tln 2>/dev/null | grep -q :9009"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
+      disable: true
   # vmauth は vm-write.shiron.dev (Cloudflare Tunnel + Access) 経由で受けた
   # リクエストのうち、Mimir への /api/v1/push と Loki への /loki/api/v1/push
   # のみを転送するリバースプロキシ。それ以外のパスはルート無しで拒否される。
