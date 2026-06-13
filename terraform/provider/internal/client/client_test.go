@@ -445,6 +445,137 @@ func TestUpdateDatasetSendsOnlyMutablePropertiesAndFallsBackToRead(t *testing.T)
 	}
 }
 
+func TestUpdateAppsConfigWaitsForDockerJobBeforeRead(t *testing.T) {
+	restoreJobSettings := setJobSettings(t, time.Millisecond, time.Second)
+	defer restoreJobSettings()
+
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		switch requests {
+		case 1:
+			requireMethodPath(t, r, http.MethodPut, "/api/v2.0/docker")
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`123`))
+		case 2:
+			requireMethodPath(t, r, http.MethodGet, "/api/v2.0/core/get_jobs")
+			if r.URL.Query().Get("id") != "123" {
+				t.Fatalf("got job id query %q, want 123", r.URL.RawQuery)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`[{"id":123,"state":"RUNNING"}]`))
+		case 3:
+			requireMethodPath(t, r, http.MethodGet, "/api/v2.0/core/get_jobs")
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`[{"id":123,"state":"SUCCESS"}]`))
+		case 4:
+			requireMethodPath(t, r, http.MethodPut, "/api/v2.0/catalog")
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{}`))
+		case 5:
+			requireMethodPath(t, r, http.MethodGet, "/api/v2.0/docker")
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"enable_image_updates":true,"pool":"apps","nvidia":false,"address_pools":[]}`))
+		case 6:
+			requireMethodPath(t, r, http.MethodGet, "/api/v2.0/catalog")
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"preferred_trains":["community","stable"]}`))
+		default:
+			t.Fatalf("unexpected request %d %s", requests, r.URL.String())
+		}
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	got, err := client.UpdateAppsConfig(context.Background(), AppsConfig{
+		EnableImageUpdates: true,
+		Pool:               "apps",
+		PreferredTrains:    []string{"community", "stable"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if requests != 6 {
+		t.Fatalf("got %d requests, want 6", requests)
+	}
+	if got.Pool != "apps" {
+		t.Fatalf("got pool %q, want apps", got.Pool)
+	}
+}
+
+func TestUpdateAppConfigWaitsForJobBeforeRead(t *testing.T) {
+	restoreJobSettings := setJobSettings(t, time.Millisecond, time.Second)
+	defer restoreJobSettings()
+
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		switch requests {
+		case 1:
+			requireMethodPath(t, r, http.MethodPut, "/api/v2.0/app/id/nextcloud")
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatal(err)
+			}
+			if _, ok := body["values"]; !ok {
+				t.Fatal("update body must include values")
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"id":456}`))
+		case 2:
+			requireMethodPath(t, r, http.MethodGet, "/api/v2.0/core/get_jobs")
+			if r.URL.Query().Get("id") != "456" {
+				t.Fatalf("got job id query %q, want 456", r.URL.RawQuery)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`[{"id":456,"state":"SUCCESS"}]`))
+		case 3:
+			requireMethodPath(t, r, http.MethodPost, "/api/v2.0/app/config")
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"release_name":"nextcloud"}`))
+		default:
+			t.Fatalf("unexpected request %d %s", requests, r.URL.String())
+		}
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	got, err := client.UpdateAppConfig(context.Background(), AppConfig{
+		Name:   "nextcloud",
+		Values: json.RawMessage(`{"release_name":"nextcloud"}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if requests != 3 {
+		t.Fatalf("got %d requests, want 3", requests)
+	}
+	if got.Name != "nextcloud" {
+		t.Fatalf("got name %q, want nextcloud", got.Name)
+	}
+}
+
+func TestWaitForJobReturnsFailure(t *testing.T) {
+	restoreJobSettings := setJobSettings(t, time.Millisecond, time.Second)
+	defer restoreJobSettings()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requireMethodPath(t, r, http.MethodGet, "/api/v2.0/core/get_jobs")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"id":789,"state":"FAILED","error":"update failed"}]`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	err := client.waitForJob(context.Background(), "app.update", 789)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "app.update job 789 FAILED: update failed") {
+		t.Fatalf("got error %q", err.Error())
+	}
+}
+
 func TestDeleteDatasetUsesEscapedID(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requireMethodPath(t, r, http.MethodDelete, "/api/v2.0/pool/dataset/id/tank/users/shiron")
@@ -691,5 +822,19 @@ func setRetrySettings(t *testing.T, attempts int, delay time.Duration) func() {
 	return func() {
 		createDatasetParentRetryAttempts = previousAttempts
 		createDatasetParentRetryDelay = previousDelay
+	}
+}
+
+func setJobSettings(t *testing.T, interval, timeout time.Duration) func() {
+	t.Helper()
+
+	previousInterval := jobWaitPollInterval
+	previousTimeout := jobWaitTimeout
+	jobWaitPollInterval = interval
+	jobWaitTimeout = timeout
+
+	return func() {
+		jobWaitPollInterval = previousInterval
+		jobWaitTimeout = previousTimeout
 	}
 }

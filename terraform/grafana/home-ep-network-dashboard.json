@@ -94,7 +94,7 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "probe_success{job=\"home_ep_icmp\", instance=\"8.8.8.8\"}",
+          "expr": "home_ep_icmp_ping_success{job=\"home_ep_icmp\"}",
           "instant": true,
           "legendFormat": "8.8.8.8",
           "range": false,
@@ -395,7 +395,7 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "probe_duration_seconds{job=\"home_ep_icmp\", instance=\"8.8.8.8\"} * 1000",
+          "expr": "home_ep_icmp_ping_rtt_avg_seconds{job=\"home_ep_icmp\"} * 1000",
           "legendFormat": "8.8.8.8 ping",
           "range": true,
           "refId": "A"
@@ -623,7 +623,7 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "probe_success{job=\"home_ep_icmp\", instance=\"8.8.8.8\"}",
+          "expr": "home_ep_icmp_ping_success{job=\"home_ep_icmp\"}",
           "legendFormat": "icmp",
           "range": true,
           "refId": "A"
@@ -704,7 +704,7 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "avg_over_time(probe_success{job=\"home_ep_icmp\", instance=\"8.8.8.8\"}[24h]) * 100",
+          "expr": "avg_over_time(home_ep_icmp_ping_success{job=\"home_ep_icmp\"}[24h]) * 100",
           "instant": true,
           "legendFormat": "24h",
           "range": false,
