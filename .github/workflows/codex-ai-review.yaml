@@ -998,7 +998,7 @@ jobs:
       # fixed key and replay it on the next run.
       - name: Restore Codex CLI cache
         id: codex_cli_cache
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ~/.codex-cli
           # -h2 suffix: bumped after the cache-hardening fixes so head never
@@ -1035,7 +1035,7 @@ jobs:
       # serena would fail to start. ~/.local/share/uv covers tools + python.
       - name: Restore Serena tool cache
         id: serena_cache
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
             ~/.local/share/uv
@@ -1060,7 +1060,7 @@ jobs:
       # PR-supplied symlink can get a tampered binary persisted under the key.
       - name: Save Codex CLI cache
         if: steps.codex_cli_cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ~/.codex-cli
           # -h2 suffix: bumped after the cache-hardening fixes so head never
@@ -1070,7 +1070,7 @@ jobs:
 
       - name: Save Serena tool cache
         if: steps.serena_cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
             ~/.local/share/uv
