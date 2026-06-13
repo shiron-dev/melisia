@@ -350,7 +350,19 @@ func (l *RemoteLocker) IsLocked(target Target) (bool, error) {
 }
 
 func existsWithClient(client remote.RemoteClient, target Target) (bool, error) {
-	cmd := fmt.Sprintf("if [ -e %s ]; then echo Y; else echo N; fi", shellQuote(target.lockPath()))
+	lockFile := shellQuote(target.lockPath())
+	dir := shellQuote(target.RemoteDir)
+
+	// `[ -e ]` returns false both when the lock is genuinely absent and when the
+	// parent directory is not searchable (e.g. apply changed its owner/perms).
+	// Treat the latter as undetermined (exit non-zero) rather than "not found",
+	// so Release/force-unlock don't drop a lock they simply cannot see.
+	cmd := fmt.Sprintf(
+		"if [ -e %s ]; then echo Y; "+
+			"elif [ -e %s ] && { [ ! -r %s ] || [ ! -x %s ]; }; then exit 1; "+
+			"else echo N; fi",
+		lockFile, dir, dir, dir,
+	)
 
 	out, err := client.RunCommand("", cmd)
 	if err != nil {

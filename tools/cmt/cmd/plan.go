@@ -64,7 +64,7 @@ func runPlanCmdWithLocker(
 	exitCode bool,
 	digestFile string,
 	dependencies syncer.PlanDependencies,
-) error {
+) (retErr error) {
 	cfg, err := config.LoadCmtConfig(configPath)
 	if err != nil {
 		return err
@@ -80,7 +80,12 @@ func runPlanCmdWithLocker(
 		return err
 	}
 
-	defer release()
+	defer func() {
+		releaseErr := release()
+		if releaseErr != nil && retErr == nil {
+			retErr = releaseErr
+		}
+	}()
 
 	plan, err := syncer.BuildPlanWithDeps(cfg, hostFilter, projectFilter, dependencies)
 	if err != nil {
@@ -99,8 +104,10 @@ func runPlanCmdWithLocker(
 	}
 
 	if exitCode {
-		// os.Exit bypasses defer, so release locks explicitly first.
-		release()
+		// os.Exit bypasses defer, so release locks explicitly first. A release
+		// failure is already warned about inside release().
+		_ = release()
+
 		exitWithPlanCode(plan)
 	}
 

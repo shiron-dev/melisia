@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/shiron-dev/melisia/tools/cmt/internal/lock"
 )
@@ -13,18 +14,31 @@ type acquiredLock struct {
 	createdDir bool
 }
 
+// acquireRemoteLocks takes the locks for all targets. The returned release
+// function removes them and reports the first release failure — a leaked remote
+// lock blocks later operations, so callers must surface it rather than ignore it.
 func acquireRemoteLocks(
 	locker *lock.RemoteLocker,
 	targets []lock.Target,
 	operation string,
 	ensureDir bool,
 	w io.Writer,
-) (func(), error) {
+) (func() error, error) {
 	var acquired []acquiredLock
 
-	releaseFn := func() {
+	releaseFn := func() error {
+		var firstErr error
+
 		for _, a := range acquired {
-			_ = locker.Release(a.target, a.lockID)
+			err := locker.Release(a.target, a.lockID)
+			if err != nil {
+				_, _ = fmt.Fprintf(os.Stderr, "Warning: failed to release lock %s/%s: %v\n",
+					a.target.Host.Name, a.target.Project, err)
+
+				if firstErr == nil {
+					firstErr = err
+				}
+			}
 
 			// Roll back a directory that acquisition created if the operation
 			// left it empty (e.g. apply cancelled before writing anything).
@@ -32,14 +46,16 @@ func acquireRemoteLocks(
 				_ = locker.RemoveEmptyDir(a.target)
 			}
 		}
+
+		return firstErr
 	}
 
 	for _, target := range targets {
 		info, err := locker.Acquire(target, operation, ensureDir)
 		if err != nil {
-			releaseFn()
+			_ = releaseFn()
 
-			return func() {}, err
+			return func() error { return nil }, err
 		}
 
 		if info == nil {

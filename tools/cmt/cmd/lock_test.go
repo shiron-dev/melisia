@@ -20,8 +20,9 @@ var (
 // fakeClient is an in-memory remote.RemoteClient emulating the lock script
 // behaviour (atomic create via `set -C`, cat, rm -f, `[ -e ]`).
 type fakeClient struct {
-	files map[string]string
-	dirs  map[string]bool
+	files     map[string]string
+	dirs      map[string]bool
+	removeErr error
 }
 
 var _ remote.RemoteClient = (*fakeClient)(nil)
@@ -89,6 +90,10 @@ func (c *fakeClient) ReadFile(remotePath string) ([]byte, error) {
 }
 
 func (c *fakeClient) Remove(remotePath string) error {
+	if c.removeErr != nil {
+		return c.removeErr
+	}
+
 	delete(c.files, remotePath)
 
 	return nil
@@ -193,7 +198,7 @@ func TestAcquireRemoteLocksSuccess(t *testing.T) {
 		}
 	}
 
-	release()
+	_ = release()
 
 	for _, target := range targets {
 		locked, _ := locker.IsLocked(target)
@@ -223,7 +228,7 @@ func TestAcquireRemoteLocksRollsBackCreatedEmptyDir(t *testing.T) {
 	}
 
 	// Release with nothing written => the created empty dir is rolled back.
-	release()
+	_ = release()
 
 	if client.dirs["/opt/compose/grafana"] {
 		t.Error("expected created empty dir to be rolled back on release")
@@ -247,10 +252,32 @@ func TestAcquireRemoteLocksKeepsDirWithFiles(t *testing.T) {
 	// Simulate apply writing a file before release.
 	client.files["/opt/compose/grafana/compose.yml"] = "services: {}"
 
-	release()
+	_ = release()
 
 	if !client.dirs["/opt/compose/grafana"] {
 		t.Error("expected dir with files to be kept after release")
+	}
+}
+
+func TestAcquireRemoteLocksReleaseSurfacesError(t *testing.T) {
+	t.Parallel()
+
+	client := &fakeClient{files: make(map[string]string), dirs: make(map[string]bool), removeErr: errNotSupported}
+	locker := lock.NewRemote(fakeFactory{client: client})
+	targets := lockTargets("grafana")
+
+	var buf strings.Builder
+
+	release, err := acquireRemoteLocks(locker, targets, "apply", true, &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Release fails to remove the lock file => the failure must be reported,
+	// not swallowed.
+	releaseErr := release()
+	if releaseErr == nil {
+		t.Error("expected release() to surface the lock-release failure")
 	}
 }
 
@@ -269,7 +296,8 @@ func TestAcquireRemoteLocksAlreadyLocked(t *testing.T) {
 
 	release, err := acquireRemoteLocks(locker, targets, "plan", true, &buf)
 	if err == nil {
-		release()
+		_ = release()
+
 		t.Fatal("expected error when target is already locked")
 	}
 
@@ -315,7 +343,7 @@ func TestAcquireRemoteLocksEmpty(t *testing.T) {
 		t.Fatalf("unexpected error for empty target list: %v", err)
 	}
 
-	release()
+	_ = release()
 }
 
 func TestRunForceUnlockWithLockerNotFound(t *testing.T) {

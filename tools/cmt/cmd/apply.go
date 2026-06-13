@@ -56,30 +56,23 @@ func runApplyCmd(
 	refreshManifestOnNoop bool,
 	expectedPlanSHA256 string,
 	applyDependencies syncer.ApplyDependencies,
-) error {
+) (retErr error) {
 	cfg, err := config.LoadCmtConfig(configPath)
 	if err != nil {
 		return err
 	}
 
-	lockDeps := syncer.PlanDependencies{
-		ClientFactory:  applyDependencies.ClientFactory,
-		SSHResolver:    applyDependencies.SSHResolver,
-		LocalRunner:    nil,
-		ProgressWriter: nil,
-	}
-
-	targets, err := syncer.ResolveLockTargets(cfg, hostFilter, projectFilter, lockDeps)
+	release, err := acquireApplyLocks(cfg, hostFilter, projectFilter, applyDependencies)
 	if err != nil {
 		return err
 	}
 
-	release, err := acquireRemoteLocks(remoteLocker(applyDependencies.ClientFactory), targets, "apply", true, os.Stdout)
-	if err != nil {
-		return err
-	}
-
-	defer release()
+	defer func() {
+		releaseErr := release()
+		if releaseErr != nil && retErr == nil {
+			retErr = releaseErr
+		}
+	}()
 
 	planDependencies := new(syncer.PlanDependencies)
 	planDependencies.ClientFactory = applyDependencies.ClientFactory
@@ -106,6 +99,27 @@ func runApplyCmd(
 		os.Stdout,
 		applyDependencies,
 	)
+}
+
+// acquireApplyLocks resolves the apply targets and takes their remote locks.
+func acquireApplyLocks(
+	cfg *config.CmtConfig,
+	hostFilter, projectFilter []string,
+	applyDependencies syncer.ApplyDependencies,
+) (func() error, error) {
+	lockDeps := syncer.PlanDependencies{
+		ClientFactory:  applyDependencies.ClientFactory,
+		SSHResolver:    applyDependencies.SSHResolver,
+		LocalRunner:    nil,
+		ProgressWriter: nil,
+	}
+
+	targets, err := syncer.ResolveLockTargets(cfg, hostFilter, projectFilter, lockDeps)
+	if err != nil {
+		return nil, err
+	}
+
+	return acquireRemoteLocks(remoteLocker(applyDependencies.ClientFactory), targets, "apply", true, os.Stdout)
 }
 
 // remoteLocker builds a RemoteLocker, defaulting to a real SSH client factory.
