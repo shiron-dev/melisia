@@ -8,6 +8,7 @@ import (
 
 	"github.com/shiron-dev/melisia/tools/cmt/internal/config"
 	"github.com/shiron-dev/melisia/tools/cmt/internal/lock"
+	"github.com/shiron-dev/melisia/tools/cmt/internal/remote"
 	"github.com/shiron-dev/melisia/tools/cmt/internal/syncer"
 
 	"github.com/spf13/cobra"
@@ -32,43 +33,13 @@ func newApplyCmd(configPath *string) *cobra.Command {
 	applyCommand.Use = "apply"
 	applyCommand.Short = "Sync files to remote hosts (with confirmation unless --auto-approve)"
 	applyCommand.RunE = func(_ *cobra.Command, _ []string) error {
-		cfg, err := config.LoadCmtConfig(*configPath)
-		if err != nil {
-			return err
-		}
-
-		hosts := config.FilterHosts(cfg.Hosts, hostFilter)
-
-		release, err := acquireHostLocks(lock.New(), hosts, "apply", os.Stdout)
-		if err != nil {
-			return err
-		}
-
-		defer release()
-
-		planDependencies := new(syncer.PlanDependencies)
-		planDependencies.ClientFactory = applyDependencies.ClientFactory
-		planDependencies.SSHResolver = nil
-		planDependencies.ProgressWriter = os.Stdout
-
-		plan, err := syncer.BuildPlanWithDeps(cfg, hostFilter, projectFilter, *planDependencies)
-		if err != nil {
-			return err
-		}
-
-		err = verifyExpectedPlanSHA256(plan, expectedPlanSHA256)
-		if err != nil {
-			return err
-		}
-
-		applyDependencies.ConfigPath = *configPath
-
-		return syncer.ApplyWithDeps(
-			cfg,
-			plan,
+		return runApplyCmd(
+			*configPath,
+			hostFilter,
+			projectFilter,
 			autoApprove,
 			refreshManifestOnNoop,
-			os.Stdout,
+			expectedPlanSHA256,
 			applyDependencies,
 		)
 	}
@@ -76,6 +47,74 @@ func newApplyCmd(configPath *string) *cobra.Command {
 	bindApplyFlags(applyCommand, &hostFilter, &projectFilter, &autoApprove, &refreshManifestOnNoop, &expectedPlanSHA256)
 
 	return applyCommand
+}
+
+func runApplyCmd(
+	configPath string,
+	hostFilter, projectFilter []string,
+	autoApprove bool,
+	refreshManifestOnNoop bool,
+	expectedPlanSHA256 string,
+	applyDependencies syncer.ApplyDependencies,
+) error {
+	cfg, err := config.LoadCmtConfig(configPath)
+	if err != nil {
+		return err
+	}
+
+	lockDeps := syncer.PlanDependencies{
+		ClientFactory:  applyDependencies.ClientFactory,
+		SSHResolver:    applyDependencies.SSHResolver,
+		LocalRunner:    nil,
+		ProgressWriter: nil,
+	}
+
+	targets, err := syncer.ResolveLockTargets(cfg, hostFilter, projectFilter, lockDeps)
+	if err != nil {
+		return err
+	}
+
+	release, err := acquireRemoteLocks(remoteLocker(applyDependencies.ClientFactory), targets, "apply", os.Stdout)
+	if err != nil {
+		return err
+	}
+
+	defer release()
+
+	planDependencies := new(syncer.PlanDependencies)
+	planDependencies.ClientFactory = applyDependencies.ClientFactory
+	planDependencies.SSHResolver = applyDependencies.SSHResolver
+	planDependencies.ProgressWriter = os.Stdout
+
+	plan, err := syncer.BuildPlanWithDeps(cfg, hostFilter, projectFilter, *planDependencies)
+	if err != nil {
+		return err
+	}
+
+	err = verifyExpectedPlanSHA256(plan, expectedPlanSHA256)
+	if err != nil {
+		return err
+	}
+
+	applyDependencies.ConfigPath = configPath
+
+	return syncer.ApplyWithDeps(
+		cfg,
+		plan,
+		autoApprove,
+		refreshManifestOnNoop,
+		os.Stdout,
+		applyDependencies,
+	)
+}
+
+// remoteLocker builds a RemoteLocker, defaulting to a real SSH client factory.
+func remoteLocker(factory remote.ClientFactory) *lock.RemoteLocker {
+	if factory == nil {
+		factory = remote.DefaultClientFactory{Runner: nil}
+	}
+
+	return lock.NewRemote(factory)
 }
 
 func bindApplyFlags(

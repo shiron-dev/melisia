@@ -52,11 +52,13 @@ func runPlanCmd(
 	digestFile string,
 	dependencies syncer.PlanDependencies,
 ) error {
-	return runPlanCmdWithLocker(lock.New(), configPath, hostFilter, projectFilter, exitCode, digestFile, dependencies)
+	locker := remoteLocker(dependencies.ClientFactory)
+
+	return runPlanCmdWithLocker(locker, configPath, hostFilter, projectFilter, exitCode, digestFile, dependencies)
 }
 
 func runPlanCmdWithLocker(
-	locker *lock.Locker,
+	locker *lock.RemoteLocker,
 	configPath string,
 	hostFilter, projectFilter []string,
 	exitCode bool,
@@ -68,9 +70,12 @@ func runPlanCmdWithLocker(
 		return err
 	}
 
-	hosts := config.FilterHosts(cfg.Hosts, hostFilter)
+	targets, err := syncer.ResolveLockTargets(cfg, hostFilter, projectFilter, dependencies)
+	if err != nil {
+		return err
+	}
 
-	release, err := acquireHostLocks(locker, hosts, "plan", os.Stdout)
+	release, err := acquireRemoteLocks(locker, targets, "plan", os.Stdout)
 	if err != nil {
 		return err
 	}

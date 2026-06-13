@@ -117,3 +117,9 @@ password = {{ .smtp_password }}
 
 Syncing is handled by the **Compose Manage Tool** (`/tools/cmt`).  
 See [`/tools/cmt/README.md`](/tools/cmt/README.md) for usage.
+
+`cmt plan` / `cmt apply` take a per-project lock on the remote host at
+`<remotePath>/<project>/.cmt.lock` (e.g. `/opt/compose/<project>/.cmt.lock`), so
+concurrent operations from different machines are mutually excluded while
+targeting different projects (`--target`) never conflict. Clear a stuck lock with
+`cmt force-unlock <host> <project>`.

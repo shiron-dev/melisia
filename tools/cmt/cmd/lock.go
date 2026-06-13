@@ -4,34 +4,38 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/shiron-dev/melisia/tools/cmt/internal/config"
 	"github.com/shiron-dev/melisia/tools/cmt/internal/lock"
 )
 
 type acquiredLock struct {
-	hostName string
-	lockID   string
+	target lock.Target
+	lockID string
 }
 
-func acquireHostLocks(locker *lock.Locker, hosts []config.HostEntry, operation string, w io.Writer) (func(), error) {
+func acquireRemoteLocks(
+	locker *lock.RemoteLocker,
+	targets []lock.Target,
+	operation string,
+	w io.Writer,
+) (func(), error) {
 	var acquired []acquiredLock
 
 	releaseFn := func() {
-		for _, l := range acquired {
-			_ = locker.Release(l.hostName, l.lockID)
+		for _, a := range acquired {
+			_ = locker.Release(a.target, a.lockID)
 		}
 	}
 
-	for _, host := range hosts {
-		info, err := locker.Acquire(host.Name, operation)
+	for _, target := range targets {
+		info, err := locker.Acquire(target, operation)
 		if err != nil {
 			releaseFn()
 
 			return func() {}, err
 		}
 
-		_, _ = fmt.Fprintf(w, "Lock acquired: %s\n", host.Name)
-		acquired = append(acquired, acquiredLock{hostName: host.Name, lockID: info.ID})
+		_, _ = fmt.Fprintf(w, "Lock acquired: %s/%s\n", target.Host.Name, target.Project)
+		acquired = append(acquired, acquiredLock{target: target, lockID: info.ID})
 	}
 
 	return releaseFn, nil

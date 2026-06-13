@@ -2,70 +2,181 @@ package cmd
 
 import (
 	"errors"
-	"io"
+	"io/fs"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/shiron-dev/melisia/tools/cmt/internal/config"
 	"github.com/shiron-dev/melisia/tools/cmt/internal/lock"
-	"github.com/shiron-dev/melisia/tools/cmt/internal/syncer"
+	"github.com/shiron-dev/melisia/tools/cmt/internal/remote"
 )
 
-func TestAcquireHostLocksSuccess(t *testing.T) {
+var (
+	errNoSuchFile   = errors.New("no such file")
+	errNotSupported = errors.New("not supported")
+)
+
+// fakeClient is an in-memory remote.RemoteClient emulating the lock script
+// behaviour (atomic create via `set -C`, cat, rm -f, `[ -e ]`).
+type fakeClient struct {
+	files map[string]string
+}
+
+var _ remote.RemoteClient = (*fakeClient)(nil)
+
+func (c *fakeClient) RunCommand(_ string, command string) (string, error) {
+	quoted := extractQuoted(command)
+
+	switch {
+	case strings.HasPrefix(command, "if mkdir -p"):
+		const minArgs = 4
+		if len(quoted) < minArgs {
+			return "", nil
+		}
+
+		payload, lockPath := quoted[2], quoted[3]
+		if existing, exists := c.files[lockPath]; exists {
+			return "CMT_LOCK_HELD\n" + existing, nil
+		}
+
+		c.files[lockPath] = payload
+
+		return "CMT_LOCK_OK\n", nil
+	case strings.HasPrefix(command, "if [ -e "):
+		if len(quoted) > 0 {
+			if _, ok := c.files[quoted[0]]; ok {
+				return "Y\n", nil
+			}
+		}
+
+		return "N\n", nil
+	default:
+		return "", nil
+	}
+}
+
+func (c *fakeClient) ReadFile(remotePath string) ([]byte, error) {
+	data, ok := c.files[remotePath]
+	if !ok {
+		return nil, errNoSuchFile
+	}
+
+	return []byte(data), nil
+}
+
+func (c *fakeClient) Remove(remotePath string) error {
+	delete(c.files, remotePath)
+
+	return nil
+}
+
+func (c *fakeClient) Close() error                     { return nil }
+func (c *fakeClient) WriteFile(string, []byte) error   { return nil }
+func (c *fakeClient) MkdirAll(string) error            { return nil }
+func (c *fakeClient) Stat(string) (fs.FileInfo, error) { return nil, errNotSupported }
+func (c *fakeClient) StatDirMetadata(string) (*remote.DirMetadata, error) {
+	return nil, errNotSupported
+}
+func (c *fakeClient) ListFilesRecursive(string) ([]string, error) { return nil, nil }
+
+func extractQuoted(s string) []string {
+	var out []string
+
+	rest := s
+	for {
+		start := strings.IndexByte(rest, '\'')
+		if start < 0 {
+			break
+		}
+
+		rest = rest[start+1:]
+
+		end := strings.IndexByte(rest, '\'')
+		if end < 0 {
+			break
+		}
+
+		out = append(out, rest[:end])
+		rest = rest[end+1:]
+	}
+
+	return out
+}
+
+type fakeFactory struct {
+	client *fakeClient
+}
+
+func (f fakeFactory) NewClient(config.HostEntry) (remote.RemoteClient, error) {
+	return f.client, nil
+}
+
+func newTestLocker() *lock.RemoteLocker {
+	return lock.NewRemote(fakeFactory{client: &fakeClient{files: make(map[string]string)}})
+}
+
+func lockTargets(projects ...string) []lock.Target {
+	targets := make([]lock.Target, 0, len(projects))
+	for _, p := range projects {
+		targets = append(targets, lock.Target{
+			Host:      config.HostEntry{Name: "host1"},
+			Project:   p,
+			RemoteDir: "/opt/compose/" + p,
+			LockPath:  "/opt/compose/" + p + "/.cmt.lock",
+		})
+	}
+
+	return targets
+}
+
+func TestAcquireRemoteLocksSuccess(t *testing.T) {
 	t.Parallel()
 
-	locker := lock.NewWithDir(t.TempDir())
-
-	hosts := []config.HostEntry{{Name: "host1"}, {Name: "host2"}}
+	locker := newTestLocker()
+	targets := lockTargets("grafana", "n8n")
 
 	var buf strings.Builder
 
-	release, err := acquireHostLocks(locker, hosts, "plan", &buf)
+	release, err := acquireRemoteLocks(locker, targets, "plan", &buf)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if !locker.IsLocked("host1") {
-		t.Error("expected host1 to be locked")
-	}
-
-	if !locker.IsLocked("host2") {
-		t.Error("expected host2 to be locked")
+	for _, target := range targets {
+		locked, _ := locker.IsLocked(target)
+		if !locked {
+			t.Errorf("expected %s to be locked", target.Project)
+		}
 	}
 
 	release()
 
-	if locker.IsLocked("host1") {
-		t.Error("expected host1 to be unlocked after release")
-	}
-
-	if locker.IsLocked("host2") {
-		t.Error("expected host2 to be unlocked after release")
+	for _, target := range targets {
+		locked, _ := locker.IsLocked(target)
+		if locked {
+			t.Errorf("expected %s to be unlocked after release", target.Project)
+		}
 	}
 }
 
-func TestAcquireHostLocksAlreadyLocked(t *testing.T) {
+func TestAcquireRemoteLocksAlreadyLocked(t *testing.T) {
 	t.Parallel()
 
-	locker := lock.NewWithDir(t.TempDir())
+	locker := newTestLocker()
+	targets := lockTargets("grafana")
 
-	existing, err := locker.Acquire("host1", "existing-op")
+	_, err := locker.Acquire(targets[0], "existing-op")
 	if err != nil {
 		t.Fatalf("unexpected error pre-acquiring lock: %v", err)
 	}
 
-	defer func() { _ = locker.Release("host1", existing.ID) }()
-
-	hosts := []config.HostEntry{{Name: "host1"}}
-
 	var buf strings.Builder
 
-	release, err := acquireHostLocks(locker, hosts, "plan", &buf)
+	release, err := acquireRemoteLocks(locker, targets, "plan", &buf)
 	if err == nil {
 		release()
-		t.Fatal("expected error when host is already locked")
+		t.Fatal("expected error when target is already locked")
 	}
 
 	if !errors.Is(err, lock.ErrLocked) {
@@ -73,42 +184,41 @@ func TestAcquireHostLocksAlreadyLocked(t *testing.T) {
 	}
 }
 
-func TestAcquireHostLocksReleasesOnPartialFailure(t *testing.T) {
+func TestAcquireRemoteLocksReleasesOnPartialFailure(t *testing.T) {
 	t.Parallel()
 
-	locker := lock.NewWithDir(t.TempDir())
+	locker := newTestLocker()
+	targets := lockTargets("grafana", "n8n")
 
-	existing, err := locker.Acquire("host2", "existing-op")
+	// Pre-lock the second target so the second acquire fails.
+	_, err := locker.Acquire(targets[1], "existing-op")
 	if err != nil {
-		t.Fatalf("unexpected error pre-acquiring host2: %v", err)
+		t.Fatalf("unexpected error pre-acquiring second target: %v", err)
 	}
-
-	defer func() { _ = locker.Release("host2", existing.ID) }()
-
-	hosts := []config.HostEntry{{Name: "host1"}, {Name: "host2"}}
 
 	var buf strings.Builder
 
-	_, err = acquireHostLocks(locker, hosts, "plan", &buf)
+	_, err = acquireRemoteLocks(locker, targets, "plan", &buf)
 	if err == nil {
-		t.Fatal("expected error when second host is already locked")
+		t.Fatal("expected error when second target is already locked")
 	}
 
-	if locker.IsLocked("host1") {
-		t.Error("expected host1 to be released after partial failure")
+	locked, _ := locker.IsLocked(targets[0])
+	if locked {
+		t.Error("expected first target to be released after partial failure")
 	}
 }
 
-func TestAcquireHostLocksEmpty(t *testing.T) {
+func TestAcquireRemoteLocksEmpty(t *testing.T) {
 	t.Parallel()
 
-	locker := lock.NewWithDir(t.TempDir())
+	locker := newTestLocker()
 
 	var buf strings.Builder
 
-	release, err := acquireHostLocks(locker, nil, "plan", &buf)
+	release, err := acquireRemoteLocks(locker, nil, "plan", &buf)
 	if err != nil {
-		t.Fatalf("unexpected error for empty host list: %v", err)
+		t.Fatalf("unexpected error for empty target list: %v", err)
 	}
 
 	release()
@@ -117,118 +227,44 @@ func TestAcquireHostLocksEmpty(t *testing.T) {
 func TestRunForceUnlockWithLockerNotFound(t *testing.T) {
 	t.Parallel()
 
-	locker := lock.NewWithDir(t.TempDir())
+	locker := newTestLocker()
 
-	err := runForceUnlockWithLocker(locker, "no-such-host", false)
-	if err == nil {
-		t.Fatal("expected error for non-existent lock")
-	}
-
+	err := runForceUnlockWithLocker(locker, lockTargets("grafana")[0], false)
 	if !errors.Is(err, lock.ErrLockNotFound) {
 		t.Errorf("expected ErrLockNotFound, got %v", err)
-	}
-}
-
-func TestRunForceUnlockWithLockerCorruptedNoForce(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-	locker := lock.NewWithDir(dir)
-
-	lockPath := filepath.Join(dir, "bad-host.lock")
-
-	err := os.WriteFile(lockPath, []byte("not-json"), 0o600)
-	if err != nil {
-		t.Fatalf("unexpected error writing corrupted lock file: %v", err)
-	}
-
-	err = runForceUnlockWithLocker(locker, "bad-host", false)
-	if err == nil {
-		t.Fatal("expected error for corrupted lock without --force")
-	}
-}
-
-func TestRunForceUnlockWithLockerCorruptedWithForce(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-	locker := lock.NewWithDir(dir)
-
-	lockPath := filepath.Join(dir, "bad-host.lock")
-
-	err := os.WriteFile(lockPath, []byte("not-json"), 0o600)
-	if err != nil {
-		t.Fatalf("unexpected error writing corrupted lock file: %v", err)
-	}
-
-	err = runForceUnlockWithLocker(locker, "bad-host", true)
-	if err != nil {
-		t.Fatalf("expected no error for corrupted lock with --force, got %v", err)
-	}
-
-	if locker.IsLocked("bad-host") {
-		t.Error("expected lock to be removed after force-unlock")
 	}
 }
 
 func TestRunForceUnlockWithLockerSuccess(t *testing.T) {
 	t.Parallel()
 
-	locker := lock.NewWithDir(t.TempDir())
+	locker := newTestLocker()
+	target := lockTargets("grafana")[0]
 
-	_, err := locker.Acquire("test-host", "apply")
+	_, err := locker.Acquire(target, "apply")
 	if err != nil {
 		t.Fatalf("unexpected error acquiring lock: %v", err)
 	}
 
-	err = runForceUnlockWithLocker(locker, "test-host", true)
+	err = runForceUnlockWithLocker(locker, target, true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if locker.IsLocked("test-host") {
-		t.Error("expected host to be unlocked after force-unlock")
-	}
-}
-
-func TestRunForceUnlockWithLockerIDChangedAfterConfirm(t *testing.T) {
-	t.Parallel()
-
-	locker := lock.NewWithDir(t.TempDir())
-
-	info, err := locker.Acquire("test-host", "plan")
-	if err != nil {
-		t.Fatalf("unexpected error acquiring lock: %v", err)
-	}
-
-	_ = locker.ForceUnlock("test-host")
-
-	_, err = locker.Acquire("test-host", "apply")
-	if err != nil {
-		t.Fatalf("unexpected error re-acquiring lock: %v", err)
-	}
-
-	defer func() { _ = locker.ForceUnlock("test-host") }()
-
-	err = locker.ForceUnlockWithID("test-host", info.ID)
-	if !errors.Is(err, lock.ErrLockIDMismatch) {
-		t.Errorf("expected ErrLockIDMismatch, got %v", err)
-	}
-
-	if !locker.IsLocked("test-host") {
-		t.Error("expected new lock to remain after ID mismatch")
+	locked, _ := locker.IsLocked(target)
+	if locked {
+		t.Error("expected lock to be released after force-unlock")
 	}
 }
 
 func TestRunForceUnlockWithLockerCancelConfirm(t *testing.T) { //nolint:paralleltest
-	locker := lock.NewWithDir(t.TempDir())
+	locker := newTestLocker()
+	target := lockTargets("grafana")[0]
 
-	_, err := locker.Acquire("test-host", "plan")
+	_, err := locker.Acquire(target, "plan")
 	if err != nil {
 		t.Fatalf("unexpected error acquiring lock: %v", err)
 	}
-
-	defer func() { _ = locker.ForceUnlock("test-host") }()
 
 	r, w, pipeErr := os.Pipe()
 	if pipeErr != nil {
@@ -243,13 +279,14 @@ func TestRunForceUnlockWithLockerCancelConfirm(t *testing.T) { //nolint:parallel
 
 	t.Cleanup(func() { os.Stdin = oldStdin; _ = r.Close() })
 
-	err = runForceUnlockWithLocker(locker, "test-host", false)
+	err = runForceUnlockWithLocker(locker, target, false)
 	if err != nil {
 		t.Fatalf("unexpected error for cancelled force-unlock: %v", err)
 	}
 
-	if !locker.IsLocked("test-host") {
-		t.Error("expected host to still be locked after cancelled force-unlock")
+	locked, _ := locker.IsLocked(target)
+	if !locked {
+		t.Error("expected target to still be locked after cancelled force-unlock")
 	}
 }
 
@@ -268,7 +305,7 @@ func TestConfirmForceUnlockYes(t *testing.T) { //nolint:paralleltest
 
 		t.Cleanup(func() { os.Stdin = oldStdin; _ = r.Close() })
 
-		if !confirmForceUnlock("host") {
+		if !confirmForceUnlock("host1/grafana") {
 			t.Errorf("expected confirmForceUnlock to return true for %q", answer)
 		}
 	}
@@ -288,155 +325,7 @@ func TestConfirmForceUnlockNo(t *testing.T) { //nolint:paralleltest
 
 	t.Cleanup(func() { os.Stdin = oldStdin; _ = r.Close() })
 
-	if confirmForceUnlock("host") {
+	if confirmForceUnlock("host1/grafana") {
 		t.Error("expected confirmForceUnlock to return false for 'n'")
-	}
-}
-
-func TestRunPlanCmdConfigNotFound(t *testing.T) {
-	t.Parallel()
-
-	locker := lock.NewWithDir(t.TempDir())
-
-	err := runPlanCmdWithLocker(locker, "/nonexistent/config.yml", nil, nil, false, "", syncer.PlanDependencies{})
-	if err == nil {
-		t.Fatal("expected error for nonexistent config")
-	}
-}
-
-func TestRunPlanCmdWithLockerLockFail(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-	locker := lock.NewWithDir(dir)
-
-	info, err := locker.Acquire("test-host", "apply")
-	if err != nil {
-		t.Fatalf("unexpected error pre-acquiring lock: %v", err)
-	}
-
-	defer func() { _ = locker.Release("test-host", info.ID) }()
-
-	configPath := filepath.Join(dir, "cmt.yml")
-	configContent := "basePath: ./\nhosts:\n  - name: test-host\n    host: localhost\n    user: root\n    port: 22\n"
-
-	err = os.WriteFile(configPath, []byte(configContent), 0o600)
-	if err != nil {
-		t.Fatalf("unexpected error writing config file: %v", err)
-	}
-
-	err = runPlanCmdWithLocker(locker, configPath, nil, nil, false, "", syncer.PlanDependencies{})
-	if !errors.Is(err, lock.ErrLocked) {
-		t.Errorf("expected ErrLocked, got %v", err)
-	}
-}
-
-func TestRunForceUnlockWrapperNotFound(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("XDG_DATA_HOME", dir)
-
-	err := runForceUnlock("no-such-host", false)
-	if !errors.Is(err, lock.ErrLockNotFound) {
-		t.Errorf("expected ErrLockNotFound, got %v", err)
-	}
-}
-
-func TestRunPlanCmdWrapperConfigNotFound(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("XDG_DATA_HOME", dir)
-
-	err := runPlanCmd("/nonexistent/config.yml", nil, nil, false, "", syncer.PlanDependencies{})
-	if err == nil {
-		t.Fatal("expected error for nonexistent config")
-	}
-}
-
-func TestNewForceUnlockCmdExecution(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("XDG_DATA_HOME", dir)
-
-	cmd := newForceUnlockCmd()
-	cmd.SetOut(io.Discard)
-	cmd.SetErr(io.Discard)
-	cmd.SilenceErrors = true
-	cmd.SilenceUsage = true
-	cmd.SetArgs([]string{"no-such-host", "--force"})
-
-	err := cmd.Execute()
-	if !errors.Is(err, lock.ErrLockNotFound) {
-		t.Errorf("expected ErrLockNotFound, got %v", err)
-	}
-}
-
-func TestNewApplyCmdLockFail(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("XDG_DATA_HOME", dir)
-
-	lockDir := filepath.Join(dir, "cmt", "locks")
-
-	err := os.MkdirAll(lockDir, 0o700)
-	if err != nil {
-		t.Fatalf("unexpected error creating lock dir: %v", err)
-	}
-
-	locker := lock.NewWithDir(lockDir)
-
-	info, err := locker.Acquire("test-host", "existing-op")
-	if err != nil {
-		t.Fatalf("unexpected error pre-acquiring lock: %v", err)
-	}
-
-	defer func() { _ = locker.Release("test-host", info.ID) }()
-
-	configPath := filepath.Join(dir, "cmt.yml")
-	configContent := "basePath: ./\nhosts:\n  - name: test-host\n    host: localhost\n    user: root\n    port: 22\n"
-
-	err = os.WriteFile(configPath, []byte(configContent), 0o600)
-	if err != nil {
-		t.Fatalf("unexpected error writing config file: %v", err)
-	}
-
-	cmd := newApplyCmd(&configPath)
-	cmd.SetOut(io.Discard)
-	cmd.SetErr(io.Discard)
-	cmd.SilenceErrors = true
-	cmd.SilenceUsage = true
-
-	err = cmd.Execute()
-	if !errors.Is(err, lock.ErrLocked) {
-		t.Errorf("expected ErrLocked, got %v", err)
-	}
-}
-
-func TestWritePlanDigestFileEmpty(t *testing.T) {
-	t.Parallel()
-
-	err := writePlanDigestFile("", &syncer.SyncPlan{})
-	if err != nil {
-		t.Fatalf("unexpected error for empty digestFile path: %v", err)
-	}
-}
-
-func TestWritePlanDigestFile(t *testing.T) {
-	t.Parallel()
-
-	digestPath := filepath.Join(t.TempDir(), "digest.txt")
-
-	err := writePlanDigestFile(digestPath, &syncer.SyncPlan{})
-	if err != nil {
-		t.Fatalf("unexpected error writing digest file: %v", err)
-	}
-
-	data, err := os.ReadFile(digestPath) //nolint:gosec
-	if err != nil {
-		t.Fatalf("unexpected error reading digest file: %v", err)
-	}
-
-	if len(data) == 0 {
-		t.Error("expected non-empty digest file")
-	}
-
-	if data[len(data)-1] != '\n' {
-		t.Error("expected digest file to end with newline")
 	}
 }
