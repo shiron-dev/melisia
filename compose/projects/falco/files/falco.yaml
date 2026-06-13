@@ -1,0 +1,44 @@
+# Falco configuration
+# https://falco.org/docs/configuration/
+
+# Use modern eBPF probe (CO-RE, no kernel module required)
+# Requires kernel >= 5.8 with BTF support (/sys/kernel/btf/vmlinux)
+engine:
+  kind: modern_ebpf
+
+# Rules files loaded in order; falco_rules.local.yaml for site-specific overrides
+rules_file:
+  - /etc/falco/falco_rules.yaml
+  - /etc/falco/falco_rules.local.yaml
+
+log_level: info
+log_stderr: true
+log_syslog: false
+
+# Minimum event priority to emit
+priority: debug
+
+# JSON output for structured ingestion
+json_output: true
+json_include_output_property: true
+json_include_tags_property: true
+
+buffered_outputs: false
+
+stdout_output:
+  enabled: true
+
+# Webserver exposes /healthz for container health checks
+webserver:
+  enabled: true
+  listen_port: 8765
+  k8s_healthz_endpoint: /healthz
+  ssl_enabled: false
+
+# HTTP output to Falcosidekick
+# Set enabled: true and uncomment the falcosidekick service in compose.yml
+# to forward events to Grafana Loki (or other outputs).
+http_output:
+  enabled: false
+  url: "http://falcosidekick:2801/"
+  user_agent: "falcosecurity/falco"
