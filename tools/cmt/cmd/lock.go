@@ -16,6 +16,7 @@ func acquireRemoteLocks(
 	locker *lock.RemoteLocker,
 	targets []lock.Target,
 	operation string,
+	ensureDir bool,
 	w io.Writer,
 ) (func(), error) {
 	var acquired []acquiredLock
@@ -27,11 +28,16 @@ func acquireRemoteLocks(
 	}
 
 	for _, target := range targets {
-		info, err := locker.Acquire(target, operation)
+		info, err := locker.Acquire(target, operation, ensureDir)
 		if err != nil {
 			releaseFn()
 
 			return func() {}, err
+		}
+
+		if info == nil {
+			// Lock skipped (e.g. plan on a not-yet-deployed project).
+			continue
 		}
 
 		_, _ = fmt.Fprintf(w, "Lock acquired: %s/%s\n", target.Host.Name, target.Project)

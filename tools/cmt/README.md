@@ -334,6 +334,9 @@ schema:
   別 project への操作とは**競合しません**。
 - ロックは操作終了時に自動解放されます。プロセスがクラッシュした等でロックが
   残った場合は `cmt force-unlock <host> <project>` で解除します。
+- `apply` はロック取得時に project ディレクトリを作成しますが、`plan` は読み取り
+  専用のためディレクトリを作成しません。未デプロイ（ディレクトリ未作成）の project
+  に対する `plan` はロックを取得せずにスキップします。
 
 ```bash
 cmt force-unlock arm-srv grafana            # 確認プロンプトあり

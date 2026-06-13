@@ -74,7 +74,7 @@ func runApplyCmd(
 		return err
 	}
 
-	release, err := acquireRemoteLocks(remoteLocker(applyDependencies.ClientFactory), targets, "apply", os.Stdout)
+	release, err := acquireRemoteLocks(remoteLocker(applyDependencies.ClientFactory), targets, "apply", true, os.Stdout)
 	if err != nil {
 		return err
 	}

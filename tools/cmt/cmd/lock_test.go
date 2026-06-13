@@ -21,29 +21,41 @@ var (
 // behaviour (atomic create via `set -C`, cat, rm -f, `[ -e ]`).
 type fakeClient struct {
 	files map[string]string
+	dirs  map[string]bool
 }
 
 var _ remote.RemoteClient = (*fakeClient)(nil)
 
 func (c *fakeClient) RunCommand(_ string, command string) (string, error) {
+	if c.dirs == nil {
+		c.dirs = make(map[string]bool)
+	}
+
 	quoted := extractQuoted(command)
 
+	// quoted segments for acquire: [dir, "%s" (from printf '%s'), payload, lockPath, lockPath]
+	const minArgs = 4
+
 	switch {
-	case strings.HasPrefix(command, "if mkdir -p"):
-		const minArgs = 4
+	case strings.HasPrefix(command, "mkdir -p"): // apply: create dir then lock
 		if len(quoted) < minArgs {
 			return "", nil
 		}
 
-		payload, lockPath := quoted[2], quoted[3]
-		if existing, exists := c.files[lockPath]; exists {
-			return "CMT_LOCK_HELD\n" + existing, nil
+		c.dirs[quoted[0]] = true
+
+		return c.tryCreate(quoted[3], quoted[2]), nil
+	case strings.HasPrefix(command, "if [ -d "): // plan: lock only if dir exists
+		if len(quoted) < minArgs {
+			return "", nil
 		}
 
-		c.files[lockPath] = payload
+		if !c.dirs[quoted[0]] {
+			return "CMT_LOCK_NODIR\n", nil
+		}
 
-		return "CMT_LOCK_OK\n", nil
-	case strings.HasPrefix(command, "if [ -e "):
+		return c.tryCreate(quoted[3], quoted[2]), nil
+	case strings.HasPrefix(command, "if [ -e "): // existence check
 		if len(quoted) > 0 {
 			if _, ok := c.files[quoted[0]]; ok {
 				return "Y\n", nil
@@ -79,6 +91,16 @@ func (c *fakeClient) StatDirMetadata(string) (*remote.DirMetadata, error) {
 	return nil, errNotSupported
 }
 func (c *fakeClient) ListFilesRecursive(string) ([]string, error) { return nil, nil }
+
+func (c *fakeClient) tryCreate(lockPath, payload string) string {
+	if existing, exists := c.files[lockPath]; exists {
+		return "CMT_LOCK_HELD\n" + existing
+	}
+
+	c.files[lockPath] = payload
+
+	return "CMT_LOCK_OK\n"
+}
 
 func extractQuoted(s string) []string {
 	var out []string
@@ -138,7 +160,7 @@ func TestAcquireRemoteLocksSuccess(t *testing.T) {
 
 	var buf strings.Builder
 
-	release, err := acquireRemoteLocks(locker, targets, "plan", &buf)
+	release, err := acquireRemoteLocks(locker, targets, "plan", true, &buf)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -166,14 +188,14 @@ func TestAcquireRemoteLocksAlreadyLocked(t *testing.T) {
 	locker := newTestLocker()
 	targets := lockTargets("grafana")
 
-	_, err := locker.Acquire(targets[0], "existing-op")
+	_, err := locker.Acquire(targets[0], "existing-op", true)
 	if err != nil {
 		t.Fatalf("unexpected error pre-acquiring lock: %v", err)
 	}
 
 	var buf strings.Builder
 
-	release, err := acquireRemoteLocks(locker, targets, "plan", &buf)
+	release, err := acquireRemoteLocks(locker, targets, "plan", true, &buf)
 	if err == nil {
 		release()
 		t.Fatal("expected error when target is already locked")
@@ -191,14 +213,14 @@ func TestAcquireRemoteLocksReleasesOnPartialFailure(t *testing.T) {
 	targets := lockTargets("grafana", "n8n")
 
 	// Pre-lock the second target so the second acquire fails.
-	_, err := locker.Acquire(targets[1], "existing-op")
+	_, err := locker.Acquire(targets[1], "existing-op", true)
 	if err != nil {
 		t.Fatalf("unexpected error pre-acquiring second target: %v", err)
 	}
 
 	var buf strings.Builder
 
-	_, err = acquireRemoteLocks(locker, targets, "plan", &buf)
+	_, err = acquireRemoteLocks(locker, targets, "plan", true, &buf)
 	if err == nil {
 		t.Fatal("expected error when second target is already locked")
 	}
@@ -216,7 +238,7 @@ func TestAcquireRemoteLocksEmpty(t *testing.T) {
 
 	var buf strings.Builder
 
-	release, err := acquireRemoteLocks(locker, nil, "plan", &buf)
+	release, err := acquireRemoteLocks(locker, nil, "plan", true, &buf)
 	if err != nil {
 		t.Fatalf("unexpected error for empty target list: %v", err)
 	}
@@ -241,7 +263,7 @@ func TestRunForceUnlockWithLockerSuccess(t *testing.T) {
 	locker := newTestLocker()
 	target := lockTargets("grafana")[0]
 
-	_, err := locker.Acquire(target, "apply")
+	_, err := locker.Acquire(target, "apply", true)
 	if err != nil {
 		t.Fatalf("unexpected error acquiring lock: %v", err)
 	}
@@ -261,7 +283,7 @@ func TestRunForceUnlockWithLockerCancelConfirm(t *testing.T) { //nolint:parallel
 	locker := newTestLocker()
 	target := lockTargets("grafana")[0]
 
-	_, err := locker.Acquire(target, "plan")
+	_, err := locker.Acquire(target, "plan", true)
 	if err != nil {
 		t.Fatalf("unexpected error acquiring lock: %v", err)
 	}

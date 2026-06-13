@@ -24,6 +24,7 @@ const (
 	lockIDBytes = 16
 	markerOK    = "CMT_LOCK_OK"
 	markerHeld  = "CMT_LOCK_HELD"
+	markerNoDir = "CMT_LOCK_NODIR"
 )
 
 const lockedInfoFmt = "%w for %s:" +
@@ -80,7 +81,13 @@ func NewRemote(factory remote.ClientFactory) *RemoteLocker {
 
 // Acquire atomically creates the lock file for target on the remote host.
 // Returns ErrLocked if a lock is already held.
-func (l *RemoteLocker) Acquire(target Target, operation string) (*Info, error) {
+//
+// When ensureDir is true (apply), the project's remote directory is created if
+// missing so the lock can be placed before any files are synced. When false
+// (plan), no directory is created: if the project directory does not exist yet
+// there is no remote state to protect, so Acquire returns (nil, nil) to signal
+// the lock was skipped.
+func (l *RemoteLocker) Acquire(target Target, operation string, ensureDir bool) (*Info, error) {
 	client, err := l.factory.NewClient(target.Host)
 	if err != nil {
 		return nil, fmt.Errorf("connecting to %q: %w", target.Host.Name, err)
@@ -101,7 +108,7 @@ func (l *RemoteLocker) Acquire(target Target, operation string) (*Info, error) {
 		return nil, fmt.Errorf("encoding lock info: %w", err)
 	}
 
-	out, err := client.RunCommand("", buildAcquireScript(target, data))
+	out, err := client.RunCommand("", buildAcquireScript(target, data, ensureDir))
 	if err != nil {
 		return nil, fmt.Errorf("acquiring lock for %s: %w", target.label(), err)
 	}
@@ -109,27 +116,40 @@ func (l *RemoteLocker) Acquire(target Target, operation string) (*Info, error) {
 	return parseAcquireOutput(target, info, out)
 }
 
-func buildAcquireScript(target Target, jsonData []byte) string {
+func buildAcquireScript(target Target, jsonData []byte, ensureDir bool) string {
 	dir := shellQuote(target.RemoteDir)
 	lockFile := shellQuote(target.lockPath())
 	payload := shellQuote(string(jsonData))
 
-	return fmt.Sprintf(
-		"if mkdir -p %s 2>/dev/null && ( set -C; printf '%%s' %s > %s ) 2>/dev/null; then "+
-			"echo %s; else echo %s; cat %s 2>/dev/null || true; fi",
-		dir, payload, lockFile, markerOK, markerHeld, lockFile,
+	createLock := fmt.Sprintf(
+		"if ( set -C; printf '%%s' %s > %s ) 2>/dev/null; then echo %s; else echo %s; cat %s 2>/dev/null || true; fi",
+		payload, lockFile, markerOK, markerHeld, lockFile,
 	)
+
+	if ensureDir {
+		// apply: create the project directory if missing, then take the lock.
+		return fmt.Sprintf("mkdir -p %s 2>/dev/null; %s", dir, createLock)
+	}
+
+	// plan: never create directories. If the project directory is absent there
+	// is nothing to lock yet.
+	return fmt.Sprintf("if [ -d %s ]; then %s; else echo %s; fi", dir, createLock, markerNoDir)
 }
 
 func parseAcquireOutput(target Target, info *Info, out string) (*Info, error) {
 	trimmed := strings.TrimSpace(out)
-	if strings.HasPrefix(trimmed, markerOK) {
+
+	switch {
+	case strings.HasPrefix(trimmed, markerOK):
 		return info, nil
+	case strings.HasPrefix(trimmed, markerNoDir):
+		// Project not deployed yet; nothing to lock.
+		return nil, nil //nolint:nilnil
+	default:
+		holderJSON := strings.TrimSpace(strings.TrimPrefix(trimmed, markerHeld))
+
+		return nil, lockedError(target, holderJSON)
 	}
-
-	holderJSON := strings.TrimSpace(strings.TrimPrefix(trimmed, markerHeld))
-
-	return nil, lockedError(target, holderJSON)
 }
 
 func lockedError(target Target, holderJSON string) error {

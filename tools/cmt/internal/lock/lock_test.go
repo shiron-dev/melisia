@@ -21,34 +21,45 @@ var (
 // rm -f and `[ -e ]`.
 type fakeClient struct {
 	files map[string]string
+	dirs  map[string]bool
 }
 
 func newFakeClient() *fakeClient {
-	return &fakeClient{files: make(map[string]string)}
+	return &fakeClient{files: make(map[string]string), dirs: make(map[string]bool)}
 }
 
 var _ remote.RemoteClient = (*fakeClient)(nil)
 
 func (c *fakeClient) RunCommand(_ string, command string) (string, error) {
+	if c.dirs == nil {
+		c.dirs = make(map[string]bool)
+	}
+
 	quoted := extractQuoted(command)
 
+	// quoted segments for acquire: [dir, "%s" (from printf '%s'), payload, lockPath, lockPath]
+	const minArgs = 4
+
 	switch {
-	case strings.HasPrefix(command, "if mkdir -p"):
-		// quoted segments: [dir, "%s" (from printf '%s'), payload, lockPath, lockPath]
-		const minArgs = 4
+	case strings.HasPrefix(command, "mkdir -p"): // apply: create dir then lock
 		if len(quoted) < minArgs {
 			return "", nil
 		}
 
-		payload, lockPath := quoted[2], quoted[3]
-		if existing, exists := c.files[lockPath]; exists {
-			return "CMT_LOCK_HELD\n" + existing, nil
+		c.dirs[quoted[0]] = true
+
+		return c.tryCreate(quoted[3], quoted[2]), nil
+	case strings.HasPrefix(command, "if [ -d "): // plan: lock only if dir exists
+		if len(quoted) < minArgs {
+			return "", nil
 		}
 
-		c.files[lockPath] = payload
+		if !c.dirs[quoted[0]] {
+			return "CMT_LOCK_NODIR\n", nil
+		}
 
-		return "CMT_LOCK_OK\n", nil
-	case strings.HasPrefix(command, "if [ -e "):
+		return c.tryCreate(quoted[3], quoted[2]), nil
+	case strings.HasPrefix(command, "if [ -e "): // existence check
 		if len(quoted) > 0 {
 			if _, ok := c.files[quoted[0]]; ok {
 				return "Y\n", nil
@@ -84,6 +95,16 @@ func (c *fakeClient) StatDirMetadata(string) (*remote.DirMetadata, error) {
 	return nil, errNotSupported
 }
 func (c *fakeClient) ListFilesRecursive(string) ([]string, error) { return nil, nil }
+
+func (c *fakeClient) tryCreate(lockPath, payload string) string {
+	if existing, exists := c.files[lockPath]; exists {
+		return "CMT_LOCK_HELD\n" + existing
+	}
+
+	c.files[lockPath] = payload
+
+	return "CMT_LOCK_OK\n"
+}
 
 // extractQuoted returns the contents of every single-quoted segment in s.
 func extractQuoted(s string) []string {
@@ -156,7 +177,7 @@ func TestConnectErrorsPropagate(t *testing.T) {
 	locker := lock.NewRemote(errFactory{})
 	target := testTarget()
 
-	_, acquireErr := locker.Acquire(target, "plan")
+	_, acquireErr := locker.Acquire(target, "plan", true)
 	checkConnErr(t, "Acquire", acquireErr)
 
 	checkConnErr(t, "Release", locker.Release(target, "id"))
@@ -177,7 +198,7 @@ func TestRunCommandErrorsPropagate(t *testing.T) {
 	locker := lock.NewRemote(errRunFactory{})
 	target := testTarget()
 
-	_, acquireErr := locker.Acquire(target, "plan")
+	_, acquireErr := locker.Acquire(target, "plan", true)
 	checkConnErr(t, "Acquire", acquireErr)
 
 	_, isLockedErr := locker.IsLocked(target)
@@ -207,7 +228,7 @@ func TestAcquireAndRelease(t *testing.T) {
 	locker, _ := newTestLocker()
 	target := testTarget()
 
-	info, err := locker.Acquire(target, "plan")
+	info, err := locker.Acquire(target, "plan", true)
 	if err != nil {
 		t.Fatalf("unexpected error acquiring lock: %v", err)
 	}
@@ -236,12 +257,12 @@ func TestAcquireAlreadyLocked(t *testing.T) {
 	locker, _ := newTestLocker()
 	target := testTarget()
 
-	_, err := locker.Acquire(target, "apply")
+	_, err := locker.Acquire(target, "apply", true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	_, err = locker.Acquire(target, "plan")
+	_, err = locker.Acquire(target, "plan", true)
 	if !errors.Is(err, lock.ErrLocked) {
 		t.Errorf("expected ErrLocked, got %v", err)
 	}
@@ -253,7 +274,7 @@ func TestReleaseNotOwned(t *testing.T) {
 	locker, _ := newTestLocker()
 	target := testTarget()
 
-	_, err := locker.Acquire(target, "plan")
+	_, err := locker.Acquire(target, "plan", true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -270,7 +291,7 @@ func TestForceUnlock(t *testing.T) {
 	locker, _ := newTestLocker()
 	target := testTarget()
 
-	_, err := locker.Acquire(target, "apply")
+	_, err := locker.Acquire(target, "apply", true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -303,7 +324,7 @@ func TestRead(t *testing.T) {
 	locker, _ := newTestLocker()
 	target := testTarget()
 
-	info, err := locker.Acquire(target, "plan")
+	info, err := locker.Acquire(target, "plan", true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -344,7 +365,7 @@ func TestIsLocked(t *testing.T) {
 		t.Error("expected target to be unlocked initially")
 	}
 
-	_, err := locker.Acquire(target, "plan")
+	_, err := locker.Acquire(target, "plan", true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -363,7 +384,7 @@ func TestAcquireCorruptedLockFile(t *testing.T) {
 
 	client.files[target.LockPath] = "invalid-json"
 
-	_, err := locker.Acquire(target, "plan")
+	_, err := locker.Acquire(target, "plan", true)
 	if !errors.Is(err, lock.ErrLocked) {
 		t.Errorf("expected ErrLocked wrapping, got %v", err)
 	}
@@ -375,7 +396,7 @@ func TestForceUnlockWithIDSuccess(t *testing.T) {
 	locker, _ := newTestLocker()
 	target := testTarget()
 
-	info, err := locker.Acquire(target, "plan")
+	info, err := locker.Acquire(target, "plan", true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -397,7 +418,7 @@ func TestForceUnlockWithIDMismatch(t *testing.T) {
 	locker, _ := newTestLocker()
 	target := testTarget()
 
-	_, err := locker.Acquire(target, "plan")
+	_, err := locker.Acquire(target, "plan", true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -419,7 +440,7 @@ func TestReleaseAlreadyGone(t *testing.T) {
 	locker, _ := newTestLocker()
 	target := testTarget()
 
-	info, err := locker.Acquire(target, "plan")
+	info, err := locker.Acquire(target, "plan", true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -429,5 +450,54 @@ func TestReleaseAlreadyGone(t *testing.T) {
 	err = locker.Release(target, info.ID)
 	if err != nil {
 		t.Errorf("expected no error when releasing already-gone lock, got %v", err)
+	}
+}
+
+func TestAcquireSkipsWhenDirAbsent(t *testing.T) {
+	t.Parallel()
+
+	locker, _ := newTestLocker()
+	target := testTarget()
+
+	// ensureDir=false (plan) and the project dir does not exist => skipped.
+	info, err := locker.Acquire(target, "plan", false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if info != nil {
+		t.Errorf("expected nil info (skipped), got %+v", info)
+	}
+
+	locked, _ := locker.IsLocked(target)
+	if locked {
+		t.Error("expected no lock file created when project dir is absent")
+	}
+}
+
+func TestAcquireWithoutEnsureDirWhenDirExists(t *testing.T) {
+	t.Parallel()
+
+	locker, _ := newTestLocker()
+	target := testTarget()
+
+	// Create the dir via an apply-style acquire, release, then plan-style acquire.
+	first, err := locker.Acquire(target, "apply", true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	err = locker.Release(target, first.ID)
+	if err != nil {
+		t.Fatalf("unexpected error releasing: %v", err)
+	}
+
+	info, err := locker.Acquire(target, "plan", false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if info == nil {
+		t.Fatal("expected lock to be acquired when project dir exists")
 	}
 }

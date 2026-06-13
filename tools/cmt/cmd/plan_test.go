@@ -81,7 +81,7 @@ func TestRunPlanCmdWithLockerLockFail(t *testing.T) {
 		Project:   "grafana",
 		RemoteDir: "/opt/compose/grafana",
 		LockPath:  "/opt/compose/grafana/.cmt.lock",
-	}, "existing-op")
+	}, "existing-op", true)
 	if err != nil {
 		t.Fatalf("unexpected error pre-acquiring lock: %v", err)
 	}
@@ -131,7 +131,7 @@ func TestRunApplyCmdLockFail(t *testing.T) {
 		Project:   "grafana",
 		RemoteDir: "/opt/compose/grafana",
 		LockPath:  "/opt/compose/grafana/.cmt.lock",
-	}, "existing-op")
+	}, "existing-op", true)
 	if err != nil {
 		t.Fatalf("unexpected error pre-acquiring lock: %v", err)
 	}
@@ -227,7 +227,7 @@ func TestRunForceUnlockWithLockerForceWithInfo(t *testing.T) {
 	locker := newTestLocker()
 	target := lockTargets("grafana")[0]
 
-	_, err := locker.Acquire(target, "apply")
+	_, err := locker.Acquire(target, "apply", true)
 	if err != nil {
 		t.Fatalf("unexpected error acquiring lock: %v", err)
 	}

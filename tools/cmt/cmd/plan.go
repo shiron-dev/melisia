@@ -75,7 +75,7 @@ func runPlanCmdWithLocker(
 		return err
 	}
 
-	release, err := acquireRemoteLocks(locker, targets, "plan", os.Stdout)
+	release, err := acquireRemoteLocks(locker, targets, "plan", false, os.Stdout)
 	if err != nil {
 		return err
 	}
