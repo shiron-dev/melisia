@@ -1,0 +1,8 @@
+[project]
+name = "secret-strength-linter"
+version = "0.1.0"
+description = "Check strength of secrets in SOPS-encrypted files"
+requires-python = ">=3.12"
+dependencies = [
+    "zxcvbn>=4.4.28",
+]

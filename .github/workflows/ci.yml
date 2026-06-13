@@ -36,6 +36,7 @@ jobs:
       - renovate-deps-comment
       - gitleaks
       - trufflehog
+      - secret-strength-linter
     if: ${{ always() }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -296,3 +297,70 @@ jobs:
           path: ./
           base: ${{ github.event.pull_request.base.sha || github.event.before }}
           head: ${{ github.event.pull_request.head.sha || github.sha }}
+
+  secret-strength-linter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'merge_group'
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_SERVICE_ACCOUNT: github-actions-melisia@shiron-dev.iam.gserviceaccount.com
+      GCP_WORKLOAD_IDENTITY_PROVIDER: projects/25543598735/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider
+      SOPS_VERSION: "3.13.1"
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+      - name: Detect changed SOPS files
+        id: detect
+        env:
+          BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event.merge_group.head_sha }}
+        run: |
+          set -euo pipefail
+          CHANGED=$(git diff --name-only "${BASE_SHA}..${HEAD_SHA}" -- '*.secrets.*.sops' '*.secrets.sops.*')
+          if [ -z "${CHANGED}" ]; then
+            echo "No SOPS files changed, skipping"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "SOPS files changed:"
+            echo "${CHANGED}"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            {
+              echo 'files<<EOF'
+              echo "${CHANGED}"
+              echo EOF
+            } >> "$GITHUB_OUTPUT"
+          fi
+      - name: Authenticate to GCP
+        if: steps.detect.outputs.skip == 'false'
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
+      - name: Install sops
+        if: steps.detect.outputs.skip == 'false'
+        run: |
+          set -euo pipefail
+          curl -sSfL \
+            -o /tmp/sops \
+            "https://github.com/getsops/sops/releases/download/v${SOPS_VERSION}/sops-v${SOPS_VERSION}.linux.amd64"
+          curl -sSfL \
+            "https://github.com/getsops/sops/releases/download/v${SOPS_VERSION}/sops-v${SOPS_VERSION}.checksums.txt" \
+            | grep "sops-v${SOPS_VERSION}.linux.amd64$" \
+            | sha256sum -c -
+          sudo install -m 0755 /tmp/sops /usr/local/bin/sops
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        if: steps.detect.outputs.skip == 'false'
+      - name: Run secret strength linter
+        if: steps.detect.outputs.skip == 'false'
+        env:
+          SOPS_FILES: ${{ steps.detect.outputs.files }}
+        run: |
+          set -euo pipefail
+          mapfile -t files <<< "${SOPS_FILES}"
+          uv run --project tools/secret-strength-linter \
+            python tools/secret-strength-linter/check.py \
+            "${files[@]}"
