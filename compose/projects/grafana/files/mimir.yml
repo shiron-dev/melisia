@@ -13,7 +13,7 @@ blocks_storage:
     dir: /data/mimir/blocks
   tsdb:
     dir: /data/mimir/tsdb
-    retention_period: 30d
+    retention_period: 720h
 
 ingester:
   ring:
