@@ -44,9 +44,31 @@ type Dataset struct {
 	Sync          string
 }
 
+type AppsConfig struct {
+	ID                 string
+	EnableImageUpdates bool
+	Pool               string
+	Nvidia             bool
+	AddressPools       []AppsAddressPool
+	PreferredTrains    []string
+}
+
+type AppsAddressPool struct {
+	Base string
+	Size int64
+}
+
+type AppConfig struct {
+	ID     string
+	Name   string
+	Values json.RawMessage
+}
+
 var (
 	createDatasetParentRetryAttempts = 20
 	createDatasetParentRetryDelay    = 500 * time.Millisecond
+	jobWaitPollInterval              = 2 * time.Second
+	jobWaitTimeout                   = 30 * time.Minute
 )
 
 type apiError struct {
@@ -194,6 +216,140 @@ func (c *Client) DeleteDataset(ctx context.Context, id string) error {
 	return c.doDatasetID(ctx, http.MethodDelete, id, nil, nil)
 }
 
+func (c *Client) GetAppsConfig(ctx context.Context) (AppsConfig, error) {
+	var dockerRaw map[string]any
+	if err := c.do(ctx, http.MethodGet, "/api/v2.0/docker", nil, &dockerRaw); err != nil {
+		return AppsConfig{}, err
+	}
+
+	var catalogRaw map[string]any
+	if err := c.do(ctx, http.MethodGet, "/api/v2.0/catalog", nil, &catalogRaw); err != nil {
+		return AppsConfig{}, err
+	}
+
+	return appsConfigFromAPI(dockerRaw, catalogRaw), nil
+}
+
+func (c *Client) UpdateAppsConfig(ctx context.Context, config AppsConfig) (AppsConfig, error) {
+	dockerBody := map[string]any{
+		"enable_image_updates": config.EnableImageUpdates,
+		"pool":                 config.Pool,
+		"nvidia":               config.Nvidia,
+		"address_pools":        addressPoolsToAPI(config.AddressPools),
+	}
+	var dockerJob any
+	if err := c.do(ctx, http.MethodPut, "/api/v2.0/docker", dockerBody, &dockerJob); err != nil {
+		return AppsConfig{}, err
+	}
+	if err := c.waitForJobResponse(ctx, "docker.update", dockerJob); err != nil {
+		return AppsConfig{}, err
+	}
+
+	catalogBody := map[string]any{
+		"preferred_trains": config.PreferredTrains,
+	}
+	var catalogJob any
+	if err := c.do(ctx, http.MethodPut, "/api/v2.0/catalog", catalogBody, &catalogJob); err != nil {
+		return AppsConfig{}, err
+	}
+	if err := c.waitForJobResponse(ctx, "catalog.update", catalogJob); err != nil {
+		return AppsConfig{}, err
+	}
+
+	return c.GetAppsConfig(ctx)
+}
+
+func (c *Client) GetAppConfig(ctx context.Context, name string) (AppConfig, error) {
+	var raw json.RawMessage
+	if err := c.do(ctx, http.MethodPost, "/api/v2.0/app/config", name, &raw); err != nil {
+		return AppConfig{}, err
+	}
+
+	canonical, err := canonicalJSON(raw)
+	if err != nil {
+		return AppConfig{}, err
+	}
+
+	return AppConfig{
+		ID:     name,
+		Name:   name,
+		Values: canonical,
+	}, nil
+}
+
+func (c *Client) UpdateAppConfig(ctx context.Context, config AppConfig) (AppConfig, error) {
+	var values any
+	if err := json.Unmarshal(config.Values, &values); err != nil {
+		return AppConfig{}, fmt.Errorf("decode app config values: %w", err)
+	}
+
+	body := map[string]any{
+		"values": values,
+	}
+	var appJob any
+	if err := c.doEscaped(ctx, http.MethodPut, "/api/v2.0/app/id/"+config.Name, "/api/v2.0/app/id/"+url.PathEscape(config.Name), body, &appJob); err != nil {
+		return AppConfig{}, err
+	}
+	if err := c.waitForJobResponse(ctx, "app.update", appJob); err != nil {
+		return AppConfig{}, err
+	}
+
+	return c.GetAppConfig(ctx, config.Name)
+}
+
+func (c *Client) waitForJobResponse(ctx context.Context, method string, rawJob any) error {
+	jobID, ok := jobID(rawJob)
+	if !ok {
+		return nil
+	}
+
+	return c.waitForJob(ctx, method, jobID)
+}
+
+func (c *Client) waitForJob(ctx context.Context, method string, id int64) error {
+	ctx, cancel := context.WithTimeout(ctx, jobWaitTimeout)
+	defer cancel()
+
+	for {
+		job, err := c.getJob(ctx, id)
+		if err != nil {
+			return err
+		}
+
+		state := strings.ToUpper(stringValue(job["state"]))
+		switch state {
+		case "SUCCESS":
+			return nil
+		case "FAILED", "ABORTED":
+			message := firstNonEmpty(stringValue(job["error"]), stringValue(job["exception"]))
+			if message == "" {
+				message = "job did not complete successfully"
+			}
+			return fmt.Errorf("%s job %d %s: %s", method, id, state, message)
+		}
+
+		timer := time.NewTimer(jobWaitPollInterval)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
+func (c *Client) getJob(ctx context.Context, id int64) (map[string]any, error) {
+	var jobs []map[string]any
+	if err := c.do(ctx, http.MethodGet, fmt.Sprintf("/api/v2.0/core/get_jobs?limit=1&id=%d", id), nil, &jobs); err != nil {
+		return nil, err
+	}
+	if len(jobs) == 0 {
+		return map[string]any{}, nil
+	}
+
+	return jobs[0], nil
+}
+
 func (c *Client) doDatasetID(ctx context.Context, method, id string, body any, out any) error {
 	return c.doEscaped(ctx, method, "/api/v2.0/pool/dataset/id/"+id, "/api/v2.0/pool/dataset/id/"+url.PathEscape(id), body, out)
 }
@@ -257,7 +413,17 @@ func (c *Client) doEscaped(ctx context.Context, method, path, rawPath string, bo
 }
 
 func (c *Client) requestURL(path, rawPath string) *url.URL {
-	return c.baseURL.ResolveReference(&url.URL{Path: path, RawPath: rawPath})
+	requestPath, rawQuery, _ := strings.Cut(path, "?")
+	requestRawPath, _, _ := strings.Cut(rawPath, "?")
+	if rawPath == "" {
+		requestRawPath = ""
+	}
+
+	return c.baseURL.ResolveReference(&url.URL{
+		Path:     requestPath,
+		RawPath:  requestRawPath,
+		RawQuery: rawQuery,
+	})
 }
 
 func datasetFromAPI(raw map[string]any) Dataset {
@@ -280,6 +446,78 @@ func datasetFromAPI(raw map[string]any) Dataset {
 		Snapdir:       propertyString(raw["snapdir"]),
 		Sync:          propertyString(raw["sync"]),
 	}
+}
+
+func appsConfigFromAPI(dockerRaw map[string]any, catalogRaw map[string]any) AppsConfig {
+	return AppsConfig{
+		ID:                 "apps",
+		EnableImageUpdates: boolValue(dockerRaw["enable_image_updates"]),
+		Pool:               stringValue(dockerRaw["pool"]),
+		Nvidia:             boolValue(dockerRaw["nvidia"]),
+		AddressPools:       addressPoolsFromAPI(dockerRaw["address_pools"]),
+		PreferredTrains:    stringSliceValue(catalogRaw["preferred_trains"]),
+	}
+}
+
+func addressPoolsFromAPI(value any) []AppsAddressPool {
+	rawPools, ok := value.([]any)
+	if !ok {
+		return nil
+	}
+
+	pools := make([]AppsAddressPool, 0, len(rawPools))
+	for _, rawPool := range rawPools {
+		pool, ok := rawPool.(map[string]any)
+		if !ok {
+			continue
+		}
+		pools = append(pools, AppsAddressPool{
+			Base: stringValue(pool["base"]),
+			Size: int64Value(pool["size"]),
+		})
+	}
+
+	return pools
+}
+
+func addressPoolsToAPI(pools []AppsAddressPool) []map[string]any {
+	rawPools := make([]map[string]any, 0, len(pools))
+	for _, pool := range pools {
+		rawPools = append(rawPools, map[string]any{
+			"base": pool.Base,
+			"size": pool.Size,
+		})
+	}
+
+	return rawPools
+}
+
+func stringSliceValue(value any) []string {
+	rawValues, ok := value.([]any)
+	if !ok {
+		return nil
+	}
+
+	values := make([]string, 0, len(rawValues))
+	for _, rawValue := range rawValues {
+		values = append(values, stringValue(rawValue))
+	}
+
+	return values
+}
+
+func canonicalJSON(raw json.RawMessage) (json.RawMessage, error) {
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return nil, fmt.Errorf("decode json: %w", err)
+	}
+
+	canonical, err := json.Marshal(value)
+	if err != nil {
+		return nil, fmt.Errorf("encode canonical json: %w", err)
+	}
+
+	return canonical, nil
 }
 
 func isParentDatasetMissing(err error) bool {
@@ -345,6 +583,11 @@ func recordsizeString(value any) string {
 	}
 }
 
+func boolValue(value any) bool {
+	v, _ := value.(bool)
+	return v
+}
+
 func stringValue(value any) string {
 	switch v := value.(type) {
 	case string:
@@ -368,4 +611,36 @@ func int64Value(value any) int64 {
 	default:
 		return 0
 	}
+}
+
+func jobID(value any) (int64, bool) {
+	switch typed := value.(type) {
+	case float64:
+		return int64(typed), typed > 0
+	case int64:
+		return typed, typed > 0
+	case int:
+		return int64(typed), typed > 0
+	case json.Number:
+		parsed, err := typed.Int64()
+		return parsed, err == nil && parsed > 0
+	case string:
+		var parsed json.Number = json.Number(typed)
+		id, err := parsed.Int64()
+		return id, err == nil && id > 0
+	case map[string]any:
+		return jobID(typed["id"])
+	default:
+		return 0, false
+	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+
+	return ""
 }

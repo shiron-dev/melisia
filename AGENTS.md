@@ -9,3 +9,7 @@
 ## Repository Documentation
 
 - If a directory you are working in contains a `README.md`, always read it before making changes in that directory.
+
+## cmt Execution
+
+- When asked to run `cmt apply` (or similar `cmt` commands), always scope execution to specific targets unless explicitly instructed to apply everything. Do not run `cmt` against all targets without an explicit instruction to do so.

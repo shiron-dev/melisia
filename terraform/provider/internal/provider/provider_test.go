@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -11,6 +12,7 @@ import (
 	providerschema "github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/shiron-dev/melisia/terraform-provider-truenas/internal/client"
 )
 
@@ -51,19 +53,106 @@ func TestProviderResourcesAndDataSources(t *testing.T) {
 	truenasProvider := &TrueNASProvider{}
 
 	resources := truenasProvider.Resources(context.Background())
-	if len(resources) != 1 {
-		t.Fatalf("got %d resources, want 1", len(resources))
+	if len(resources) != 3 {
+		t.Fatalf("got %d resources, want 3", len(resources))
 	}
-	if _, ok := resources[0]().(*datasetResource); !ok {
-		t.Fatalf("got resource %T, want *datasetResource", resources[0]())
+	if _, ok := resources[0]().(*appConfigResource); !ok {
+		t.Fatalf("got resource %T, want *appConfigResource", resources[0]())
+	}
+	if _, ok := resources[1]().(*appsConfigResource); !ok {
+		t.Fatalf("got resource %T, want *appsConfigResource", resources[1]())
+	}
+	if _, ok := resources[2]().(*datasetResource); !ok {
+		t.Fatalf("got resource %T, want *datasetResource", resources[2]())
 	}
 
 	dataSources := truenasProvider.DataSources(context.Background())
-	if len(dataSources) != 1 {
-		t.Fatalf("got %d data sources, want 1", len(dataSources))
+	if len(dataSources) != 2 {
+		t.Fatalf("got %d data sources, want 2", len(dataSources))
 	}
-	if _, ok := dataSources[0]().(*poolDataSource); !ok {
-		t.Fatalf("got data source %T, want *poolDataSource", dataSources[0]())
+	if _, ok := dataSources[0]().(*appConfigDocumentDataSource); !ok {
+		t.Fatalf("got data source %T, want *appConfigDocumentDataSource", dataSources[0]())
+	}
+	if _, ok := dataSources[1]().(*poolDataSource); !ok {
+		t.Fatalf("got data source %T, want *poolDataSource", dataSources[1]())
+	}
+}
+
+func TestAppConfigDocumentDataSourceMetadataAndSchema(t *testing.T) {
+	document := &appConfigDocumentDataSource{}
+
+	var metadataResp datasource.MetadataResponse
+	document.Metadata(context.Background(), datasource.MetadataRequest{ProviderTypeName: "truenas"}, &metadataResp)
+	if metadataResp.TypeName != "truenas_app_config_document" {
+		t.Fatalf("got type name %q, want truenas_app_config_document", metadataResp.TypeName)
+	}
+
+	var schemaResp datasource.SchemaResponse
+	document.Schema(context.Background(), datasource.SchemaRequest{}, &schemaResp)
+
+	config, ok := schemaResp.Schema.Attributes["config"]
+	if !ok {
+		t.Fatal("missing document config attribute")
+	}
+	if !config.IsRequired() {
+		t.Fatal("document config must be required")
+	}
+	if !config.IsSensitive() {
+		t.Fatal("document config must be sensitive")
+	}
+
+	json, ok := schemaResp.Schema.Attributes["json"]
+	if !ok {
+		t.Fatal("missing document json attribute")
+	}
+	if !json.IsComputed() {
+		t.Fatal("document json must be computed")
+	}
+	if !json.IsSensitive() {
+		t.Fatal("document json must be sensitive")
+	}
+}
+
+func TestTerraformValueToJSONValueEncodesNestedConfig(t *testing.T) {
+	configValue := tftypes.NewValue(tftypes.Object{
+		AttributeTypes: map[string]tftypes.Type{
+			"enabled": tftypes.Bool,
+			"name":    tftypes.String,
+			"port":    tftypes.Number,
+			"storage": tftypes.Object{
+				AttributeTypes: map[string]tftypes.Type{
+					"paths": tftypes.List{ElementType: tftypes.String},
+				},
+			},
+		},
+	}, map[string]tftypes.Value{
+		"enabled": tftypes.NewValue(tftypes.Bool, true),
+		"name":    tftypes.NewValue(tftypes.String, "nextcloud"),
+		"port":    tftypes.NewValue(tftypes.Number, 30027),
+		"storage": tftypes.NewValue(tftypes.Object{
+			AttributeTypes: map[string]tftypes.Type{
+				"paths": tftypes.List{ElementType: tftypes.String},
+			},
+		}, map[string]tftypes.Value{
+			"paths": tftypes.NewValue(tftypes.List{ElementType: tftypes.String}, []tftypes.Value{
+				tftypes.NewValue(tftypes.String, "/mnt/apps"),
+			}),
+		}),
+	})
+
+	converted, err := terraformValueToJSONValue(configValue)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	encoded, err := json.Marshal(converted)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := `{"enabled":true,"name":"nextcloud","port":30027,"storage":{"paths":["/mnt/apps"]}}`
+	if string(encoded) != want {
+		t.Fatalf("got JSON %s, want %s", encoded, want)
 	}
 }
 
