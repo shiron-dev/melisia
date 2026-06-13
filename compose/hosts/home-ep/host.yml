@@ -5,6 +5,15 @@ sshConfig: ssh_config
 projects:
   host-monitor: {}
 
+  log-collector:
+    removeOrphans: true
+    postSyncCommand: chmod 0644 promtail.yml
+    dirs:
+      - promtail_positions:
+        owner: 0
+        group: 0
+        become: true
+
   network-monitor:
     removeOrphans: true
     postSyncCommand: chmod 0644 icmp-ping-exporter.py cloudflare-speedtest-exporter.py vmagent.yml
