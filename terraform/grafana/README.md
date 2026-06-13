@@ -115,7 +115,9 @@ home-ep:  node / icmp-ping / speedtest ────► vmagent ──(HTTPS push
 
 #### 書き込み経路の認証
 
-`vm-write.shiron.dev` は Cloudflare Tunnel 経由で `mimir:9009` に直接転送する。
+`vm-write.shiron.dev` は Cloudflare Tunnel 経由で `vmauth:8427` に転送する。
+`vmauth` は `/api/v1/push` を `mimir:9009` へ、`/loki/api/v1/push` を `loki:3100` へ
+ルーティングし、それ以外のパス (query / admin 系) はルート無しで拒否する。
 認証は書き込み専用の Cloudflare Access service token (`vm_write`) のみで、
 arm-srv 内部の blackbox e2e 用 `e2e` token とは分離している。vm-write の Access
 application には共通 e2e ポリシーを付与しない (`skip_e2e_policy = true`)。
