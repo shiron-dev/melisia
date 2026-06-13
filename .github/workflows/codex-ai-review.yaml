@@ -478,8 +478,18 @@ jobs:
           until git merge-base "$BASE_SHA" "$HEAD_SHA" >/dev/null 2>&1; do
             depth=$((depth * 2))
             if [[ "$depth" -gt 1024 ]]; then
-              echo "Merge-base not found within depth $depth; falling back to full fetch." >&2
-              git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA"
+              # Deepening hit the cap without surfacing the merge-base. A plain
+              # fetch would leave the shallow boundary in place, so the
+              # subsequent three-dot diff could still fail with "no merge base".
+              # Fully unshallow instead, then confirm the merge-base really
+              # exists before continuing (fail loudly rather than later).
+              echo "Merge-base not found within depth $depth; unshallowing the repository." >&2
+              git fetch --no-tags --unshallow origin "$BASE_SHA" "$HEAD_SHA" ||
+                git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA"
+              if ! git merge-base "$BASE_SHA" "$HEAD_SHA" >/dev/null 2>&1; then
+                echo "Merge-base of $BASE_SHA and $HEAD_SHA still missing after a full fetch." >&2
+                exit 1
+              fi
               break
             fi
             git fetch --no-tags --deepen="$depth" origin "$BASE_SHA" "$HEAD_SHA"
@@ -981,9 +991,14 @@ jobs:
         with:
           node-version: "24.15.0"
 
-      - name: Cache Codex CLI
+      # Restore-only here; the cache is saved by an explicit step below that runs
+      # AFTER install but BEFORE the untrusted `codex exec`. With the default
+      # actions/cache the save happens in a post step, which would persist any
+      # tampering the no-sandbox Codex run made to the tool binaries under the
+      # fixed key and replay it on the next run.
+      - name: Restore Codex CLI cache
         id: codex_cli_cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.codex-cli
           key: codex-cli-0.124.0-node24.15.0
@@ -1001,9 +1016,9 @@ jobs:
           python-version: "3.13"
           enable-cache: true
 
-      - name: Cache Serena tool
+      - name: Restore Serena tool cache
         id: serena_cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/.local/share/uv/tools/serena-agent
@@ -1021,6 +1036,26 @@ jobs:
         env:
           TRUSTED_SERENA_PROJECT_PATH: ${{ runner.temp }}/trusted-serena-project.yml
         run: cp "$TRUSTED_SERENA_PROJECT_PATH" .serena/project.yml
+
+      # Persist the freshly installed tools now, while they are still trusted and
+      # before the no-sandbox `codex exec` below runs. Saving here (rather than in
+      # a post step) means a tampered binary can never be written back under the
+      # cache key.
+      - name: Save Codex CLI cache
+        if: steps.codex_cli_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.codex-cli
+          key: codex-cli-0.124.0-node24.15.0
+
+      - name: Save Serena tool cache
+        if: steps.serena_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.local/share/uv/tools/serena-agent
+            ~/.local/bin/serena
+          key: serena-1.1.2-py3.13
 
       - name: Run Codex review
         env:
