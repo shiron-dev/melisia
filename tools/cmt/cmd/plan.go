@@ -104,12 +104,25 @@ func runPlanCmdWithLocker(
 	}
 
 	if exitCode {
-		// os.Exit bypasses defer, so release locks explicitly first. A release
-		// failure is already warned about inside release().
-		_ = release()
+		// os.Exit bypasses defer, so release locks explicitly first and stop the
+		// deferred release from running again.
+		releaseErr := release()
+		release = func() error { return nil }
 
-		exitWithPlanCode(plan)
+		return exitWithPlanCodeOrReleaseErr(plan, releaseErr)
 	}
+
+	return nil
+}
+
+// exitWithPlanCodeOrReleaseErr fails the command when releasing the lock failed
+// (so a leaked remote lock doesn't exit 0/2), otherwise exits with the plan code.
+func exitWithPlanCodeOrReleaseErr(plan *syncer.SyncPlan, releaseErr error) error {
+	if releaseErr != nil {
+		return releaseErr
+	}
+
+	exitWithPlanCode(plan)
 
 	return nil
 }
