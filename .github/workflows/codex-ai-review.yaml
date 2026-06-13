@@ -996,27 +996,20 @@ jobs:
       # actions/cache the save happens in a post step, which would persist any
       # tampering the no-sandbox Codex run made to the tool binaries under the
       # fixed key and replay it on the next run.
-      - name: Restore Codex CLI cache
-        id: codex_cli_cache
+      - name: Restore tools cache
+        id: tools_cache
         uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
-          path: ~/.codex-cli
-          # -h2 suffix: bumped after the cache-hardening fixes so head never
-          # restores an entry that an earlier, vulnerable run on this PR could
-          # have poisoned under the old key.
-          key: codex-cli-0.124.0-node24.15.0-h2 # gitleaks:allow -- tool cache key, not a secret
+          path: .github/tools/node_modules
+          key: github-tools-${{ hashFiles('.github/tools/package-lock.json') }}-node24.15.0
 
-      # Install from $RUNNER_TEMP (outside the PR checkout) so npm's project
-      # .npmrc search never reaches the checkout, and pin the registry on the
-      # command line (which overrides any .npmrc), so a PR-supplied .npmrc cannot
-      # redirect npm to an attacker registry and poison the fixed-key cache.
-      - name: Install Codex CLI
-        if: steps.codex_cli_cache.outputs.cache-hit != 'true'
-        working-directory: ${{ runner.temp }}
-        run: npm install -g --prefix "$HOME/.codex-cli" --registry=https://registry.npmjs.org/ @openai/codex@0.124.0
+      - name: Install tools
+        if: steps.tools_cache.outputs.cache-hit != 'true'
+        working-directory: .github/tools
+        run: npm ci
 
-      - name: Add Codex CLI to PATH
-        run: echo "$HOME/.codex-cli/bin" >> "$GITHUB_PATH"
+      - name: Add tools to PATH
+        run: echo "$GITHUB_WORKSPACE/.github/tools/node_modules/.bin" >> "$GITHUB_PATH"
 
       # enable-cache: false — the default (auto) turns caching on for hosted
       # runners and saves UV_CACHE_DIR in a post step, i.e. after the untrusted
@@ -1058,15 +1051,12 @@ jobs:
       # into the PR checkout below. Saving here (rather than in a post step, and
       # before the checkout write) means neither the no-sandbox Codex run nor a
       # PR-supplied symlink can get a tampered binary persisted under the key.
-      - name: Save Codex CLI cache
-        if: steps.codex_cli_cache.outputs.cache-hit != 'true'
+      - name: Save tools cache
+        if: steps.tools_cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
-          path: ~/.codex-cli
-          # -h2 suffix: bumped after the cache-hardening fixes so head never
-          # restores an entry that an earlier, vulnerable run on this PR could
-          # have poisoned under the old key.
-          key: codex-cli-0.124.0-node24.15.0-h2 # gitleaks:allow -- tool cache key, not a secret
+          path: .github/tools/node_modules
+          key: github-tools-${{ hashFiles('.github/tools/package-lock.json') }}-node24.15.0
 
       - name: Save Serena tool cache
         if: steps.serena_cache.outputs.cache-hit != 'true'

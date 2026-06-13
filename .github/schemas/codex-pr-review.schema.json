@@ -4,6 +4,7 @@
   "required": [
     "decision",
     "summary",
+    "resolutions",
     "findings"
   ],
   "properties": {
