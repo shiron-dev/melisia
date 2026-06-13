@@ -4,7 +4,7 @@ homeassistant:
       trusted_networks:
         - 192.168.1.74/32
       trusted_users:
-        "192.168.1.74/32": kiosk-user
+        "192.168.1.74/32": afaa574e993e4ac4898586fe035d1b23
       allow_bypass_login: true
     - type: homeassistant
 
