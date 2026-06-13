@@ -1,5 +1,11 @@
 locals {
   cloudflare_public_lan_dns_records = {
+    home_assistant = {
+      hostname = "home.local.network.melisia.net"
+      zone     = "melisia.net"
+      content  = "192.168.1.61"
+      comment  = "Home Assistant endpoint via home LAN"
+    }
     storage_srv = {
       hostname = "storage-srv.network.melisia.net"
       zone     = "melisia.net"

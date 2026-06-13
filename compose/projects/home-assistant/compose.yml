@@ -46,8 +46,10 @@ services:
     <<: *resource-homeassistant
     container_name: homeassistant
     image: "ghcr.io/home-assistant/home-assistant:2026.5.4@sha256:ceb1202133a5a036e8b03e20a10eb113186cc2f871968323c6fc6c3fc4205716"
-    # kics-scan ignore-line
-    network_mode: host
+    networks:
+      - home-automation
+    ports:
+      - "192.168.1.61:8123:8123"
     volumes:
       - ./config:/config:rw
       # kics-scan ignore-line
@@ -122,7 +124,6 @@ services:
     environment:
       TUNNEL_TOKEN: "{{ .cf_tunnel_token }}"
     extra_hosts:
-      - "homeassistant:host-gateway"
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
     logging: *default-logging
