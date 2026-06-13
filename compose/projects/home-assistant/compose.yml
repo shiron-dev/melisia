@@ -168,7 +168,7 @@ services:
         FORWARDS = (
             ("127.0.0.1", 1883, "mosquitto", 1883),
             ("127.0.0.1", 10400, "openwakeword", 10400),
-            ("127.0.0.1", 5580, "host.docker.internal", 5580),
+            ("127.0.0.1", 5580, "172.19.0.1", 5580),
         )
 
         async def pipe(reader, writer):
@@ -201,8 +201,6 @@ services:
             await asyncio.gather(*(server.serve_forever() for server in servers))
 
         asyncio.run(main())
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     restart: unless-stopped
     logging: *default-logging
     security_opt:
