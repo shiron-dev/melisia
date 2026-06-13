@@ -327,7 +327,7 @@ jobs:
           HEAD_SHA: ${{ github.event.merge_group.head_sha }}
         run: |
           set -euo pipefail
-          CHANGED=$(git diff --name-only "${BASE_SHA}..${HEAD_SHA}" -- '*.secrets.*.sops' '*.secrets.sops.*')
+          CHANGED=$(git diff --diff-filter=ACMR --name-only "${BASE_SHA}..${HEAD_SHA}" -- '*.secrets.*.sops' '*.secrets.sops.*')
           if [ -z "${CHANGED}" ]; then
             echo "No SOPS files changed, skipping"
             echo "skip=true" >> "$GITHUB_OUTPUT"

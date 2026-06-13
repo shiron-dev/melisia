@@ -8,9 +8,10 @@ import sys
 
 from zxcvbn import zxcvbn
 
-# Matches `key = "value"` in plaintext formats like .tfvars or .env
+# Matches key=value in double-quoted, single-quoted, or bare formats
+# (.tfvars, .env, dotenv). Stops at # to ignore inline comments.
 _KV_RE = re.compile(
-    r"""^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*"([^"]+)"\s*$""",
+    r"""^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:"([^"]*?)"|'([^']*?)'|([^"'#\n\s][^#\n]*?))\s*$""",
     re.MULTILINE,
 )
 
@@ -25,7 +26,7 @@ _SECRET_WORDS = (
     "private_key",
     "access_key",
     "api_key",
-    "auth_key",
+    "auth",
 )
 
 # zxcvbn score 0–4; values below this threshold fail
@@ -58,6 +59,21 @@ def _walk(obj: dict, path: list[str], failures: list[dict], source: str) -> None
                 )
 
 
+def _parse_binary_data(content: str, source: str) -> dict:
+    result = {}
+    for m in _KV_RE.finditer(content):
+        key = m.group(1)
+        value = next((g for g in m.groups()[1:] if g is not None), "")
+        result[key] = value
+    if not result and content.strip():
+        print(
+            f"WARNING: {source}: binary SOPS content could not be parsed as "
+            "key=value pairs; secrets in this file are not checked.",
+            file=sys.stderr,
+        )
+    return result
+
+
 def _check_file(path: str) -> list[dict]:
     proc = subprocess.run(
         ["sops", "--decrypt", "--output-type", "json", path],
@@ -74,7 +90,7 @@ def _check_file(path: str) -> list[dict]:
     # Parse it as key=value pairs so .tfvars/.env-style secrets are checked.
     non_sops = [k for k in data if k != "sops"]
     if non_sops == ["data"] and isinstance(data.get("data"), str):
-        data = {k: v for k, v in _KV_RE.findall(data["data"])}
+        data = _parse_binary_data(data["data"], path)
 
     failures: list[dict] = []
     _walk(data, [], failures, path)
