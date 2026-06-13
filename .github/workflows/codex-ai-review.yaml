@@ -1003,18 +1003,28 @@ jobs:
           path: ~/.codex-cli
           key: codex-cli-0.124.0-node24.15.0
 
+      # Install from $RUNNER_TEMP (outside the PR checkout) with config discovery
+      # disabled and the registry pinned, so a PR-supplied .npmrc cannot redirect
+      # npm to an attacker registry and poison the fixed-key cache on a miss.
       - name: Install Codex CLI
         if: steps.codex_cli_cache.outputs.cache-hit != 'true'
-        run: npm install -g --prefix "$HOME/.codex-cli" @openai/codex@0.124.0
+        working-directory: ${{ runner.temp }}
+        env:
+          npm_config_userconfig: /dev/null
+          npm_config_globalconfig: /dev/null
+        run: npm install -g --prefix "$HOME/.codex-cli" --registry=https://registry.npmjs.org/ @openai/codex@0.124.0
 
       - name: Add Codex CLI to PATH
         run: echo "$HOME/.codex-cli/bin" >> "$GITHUB_PATH"
 
+      # No enable-cache: setup-uv would save the uv cache in a post step, i.e.
+      # after the untrusted `codex exec`, persisting whatever it wrote to
+      # UV_CACHE_DIR. The installed tool is cached separately below, so the uv
+      # build cache adds little anyway.
       - name: Set up uv
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
           python-version: "3.13"
-          enable-cache: true
 
       - name: Restore Serena tool cache
         id: serena_cache
@@ -1025,9 +1035,13 @@ jobs:
             ~/.local/bin/serena
           key: serena-1.1.2-py3.13
 
+      # As with the Codex install: run outside the PR checkout, ignore uv config
+      # files (uv.toml / pyproject.toml), and pin the index so a PR cannot
+      # redirect uv to an attacker index and poison the fixed-key cache.
       - name: Install Serena
         if: steps.serena_cache.outputs.cache-hit != 'true'
-        run: uv tool install -p 3.13 --force "serena-agent==1.1.2"
+        working-directory: ${{ runner.temp }}
+        run: uv tool install --no-config --default-index https://pypi.org/simple -p 3.13 --force "serena-agent==1.1.2"
 
       - name: Add Serena to PATH
         run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
