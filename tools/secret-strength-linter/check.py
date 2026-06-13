@@ -2,10 +2,17 @@
 """Check strength of secrets stored in SOPS-encrypted files."""
 
 import json
+import re
 import subprocess
 import sys
 
 from zxcvbn import zxcvbn
+
+# Matches `key = "value"` in plaintext formats like .tfvars or .env
+_KV_RE = re.compile(
+    r"""^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*"([^"]+)"\s*$""",
+    re.MULTILINE,
+)
 
 # Key names containing any of these substrings (case-insensitive) are checked
 _SECRET_WORDS = (
@@ -62,6 +69,13 @@ def _check_file(path: str) -> list[dict]:
         sys.exit(1)
 
     data = json.loads(proc.stdout)
+
+    # SOPS binary format wraps the whole plaintext in a single "data" key.
+    # Parse it as key=value pairs so .tfvars/.env-style secrets are checked.
+    non_sops = [k for k in data if k != "sops"]
+    if non_sops == ["data"] and isinstance(data.get("data"), str):
+        data = {k: v for k, v in _KV_RE.findall(data["data"])}
+
     failures: list[dict] = []
     _walk(data, [], failures, path)
     return failures
