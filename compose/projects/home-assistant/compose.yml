@@ -128,7 +128,8 @@ services:
     restart: unless-stopped
     logging: *default-logging
     networks:
-      - home-automation
+      home-automation:
+        ipv4_address: 172.19.0.250
     security_opt:
       - no-new-privileges:true
     cap_drop:
