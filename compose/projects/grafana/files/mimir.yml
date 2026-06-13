@@ -24,10 +24,12 @@ store_gateway:
 
 compactor:
   data_dir: /data/mimir/compactor
-  blocks_retention_period: 720h
   sharding_ring:
     kvstore:
       store: memberlist
+
+limits:
+  compactor_blocks_retention_period: 720h
 
 ruler_storage:
   backend: filesystem
