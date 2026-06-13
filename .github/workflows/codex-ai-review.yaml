@@ -165,7 +165,9 @@ jobs:
       pr_title: ${{ steps.review_state.outputs.pr_title }}
       draft: ${{ steps.review_state.outputs.draft }}
       is_internal_pr: ${{ steps.review_state.outputs.is_internal_pr }}
+      bot_login: ${{ steps.add_eyes.outputs.bot_login }}
     permissions:
+      issues: write
       pull-requests: write
     steps:
       - name: Create GitHub App token
@@ -371,34 +373,12 @@ jobs:
 
             core.setOutput("should_run", codexApprovedReviews.length > 0 ? "false" : "true");
 
-  mark-review-start:
-    needs:
-      - review-precheck
-      - review-state
-    if: ${{ needs.review-state.result == 'success' && needs.review-state.outputs.should_run == 'true' }}
-    concurrency:
-      group: codex-ai-review-${{ needs.review-precheck.outputs.pr_number }}
-      cancel-in-progress: true
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    outputs:
-      bot_login: ${{ steps.add_eyes.outputs.bot_login }}
-    permissions:
-      issues: write
-      pull-requests: write
-    steps:
-      - name: Create GitHub App token
-        id: app_token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          app-id: ${{ secrets.CODEX_REVIEW_APP_ID }}
-          private-key: ${{ secrets.CODEX_REVIEW_APP_PRIVATE_KEY }}
-
       - name: Add eyes reaction to PR
         id: add_eyes
+        if: ${{ steps.review_state.outputs.should_run == 'true' }}
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
-          PR_NUMBER: ${{ needs.review-state.outputs.pr_number }}
+          PR_NUMBER: ${{ steps.review_state.outputs.pr_number }}
         with:
           github-token: ${{ steps.app_token.outputs.token }}
           script: |
@@ -442,7 +422,7 @@ jobs:
             }
 
       - name: Add eyes reaction to review command
-        if: ${{ github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment' }}
+        if: ${{ steps.review_state.outputs.should_run == 'true' && (github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment') }}
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           github-token: ${{ steps.app_token.outputs.token }}
@@ -467,7 +447,6 @@ jobs:
     needs:
       - review-precheck
       - review-state
-      - mark-review-start
     if: ${{ needs.review-state.result == 'success' && needs.review-state.outputs.should_run == 'true' }}
     concurrency:
       group: codex-ai-review-${{ needs.review-precheck.outputs.pr_number }}
@@ -482,16 +461,39 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           ref: ${{ needs.review-state.outputs.head_sha }}
-          fetch-depth: 0
+          fetch-depth: 1
 
-      - name: Pre-fetch exact base and head commits for the PR event
+      - name: Pre-fetch base and head with their merge-base for the PR event
         env:
           BASE_SHA: ${{ needs.review-state.outputs.base_sha }}
           HEAD_SHA: ${{ needs.review-state.outputs.head_sha }}
         run: |
-          git fetch --no-tags origin \
-            "$BASE_SHA" \
-            "$HEAD_SHA"
+          # Avoid a full-history clone (fetch-depth: 0). Fetch only the base and
+          # head commits, then deepen progressively until their merge-base is
+          # present, which the three-dot `git diff $BASE...$HEAD` in the review
+          # prompt requires. In the common case the merge-base is shallow, so
+          # this is far cheaper than fetching all history.
+          git fetch --no-tags --depth=1 origin "$BASE_SHA" "$HEAD_SHA"
+          depth=1
+          until git merge-base "$BASE_SHA" "$HEAD_SHA" >/dev/null 2>&1; do
+            depth=$((depth * 2))
+            if [[ "$depth" -gt 1024 ]]; then
+              # Deepening hit the cap without surfacing the merge-base. A plain
+              # fetch would leave the shallow boundary in place, so the
+              # subsequent three-dot diff could still fail with "no merge base".
+              # Fully unshallow instead, then confirm the merge-base really
+              # exists before continuing (fail loudly rather than later).
+              echo "Merge-base not found within depth $depth; unshallowing the repository." >&2
+              git fetch --no-tags --unshallow origin "$BASE_SHA" "$HEAD_SHA" ||
+                git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA"
+              if ! git merge-base "$BASE_SHA" "$HEAD_SHA" >/dev/null 2>&1; then
+                echo "Merge-base of $BASE_SHA and $HEAD_SHA still missing after a full fetch." >&2
+                exit 1
+              fi
+              break
+            fi
+            git fetch --no-tags --deepen="$depth" origin "$BASE_SHA" "$HEAD_SHA"
+          done
 
       # Seed Codex's auth bundle from the secret, read-only. This job holds NO
       # secrets:write credential: the rotating ChatGPT refresh token is refreshed
@@ -581,10 +583,10 @@ jobs:
             const fs = require("fs");
             const pull_number = Number(process.env.PR_NUMBER);
             const { owner, repo } = context.repo;
-            const MAX_REVIEWS = 20;
-            const MAX_REVIEW_COMMENTS = 50;
-            const MAX_REVIEW_THREADS_TO_SCAN = 300;
-            const MAX_THREAD_COMMENT_PAGES = 3;
+            const MAX_REVIEWS = 8;
+            const MAX_REVIEW_COMMENTS = 20;
+            const MAX_REVIEW_THREADS_TO_SCAN = 100;
+            const MAX_THREAD_COMMENT_PAGES = 2;
             const normalizeBody = (value) => {
               if (typeof value !== "string") {
                 return null;
@@ -989,21 +991,90 @@ jobs:
         with:
           node-version: "24.15.0"
 
-      - name: Install Codex CLI
-        run: npm install -g @openai/codex@0.124.0
+      # Restore-only here; the cache is saved by an explicit step below that runs
+      # AFTER install but BEFORE the untrusted `codex exec`. With the default
+      # actions/cache the save happens in a post step, which would persist any
+      # tampering the no-sandbox Codex run made to the tool binaries under the
+      # fixed key and replay it on the next run.
+      - name: Restore tools cache
+        id: tools_cache
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: .github/tools/node_modules
+          key: github-tools-${{ hashFiles('.github/tools/package-lock.json') }}-node24.15.0
 
+      - name: Install tools
+        if: steps.tools_cache.outputs.cache-hit != 'true'
+        working-directory: .github/tools
+        run: npm ci
+
+      - name: Add tools to PATH
+        run: echo "$GITHUB_WORKSPACE/.github/tools/node_modules/.bin" >> "$GITHUB_PATH"
+
+      # enable-cache: false — the default (auto) turns caching on for hosted
+      # runners and saves UV_CACHE_DIR in a post step, i.e. after the untrusted
+      # `codex exec`, which would persist whatever it wrote there. The tool is
+      # cached explicitly below before that run instead.
       - name: Set up uv
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
           python-version: "3.13"
+          enable-cache: false
 
+      # Cache the whole uv data dir, not just the tool venv: `uv tool install`
+      # creates a venv that absolute-symlinks into the uv-managed Python under
+      # ~/.local/share/uv/python. Caching only the tool dir would leave that
+      # symlink dangling on a fresh runner (cache-hit skips reinstall), so
+      # serena would fail to start. ~/.local/share/uv covers tools + python.
+      - name: Restore Serena tool cache
+        id: serena_cache
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.local/share/uv
+            ~/.local/bin/serena
+          key: serena-1.1.2-py3.13-h2 # gitleaks:allow -- tool cache key, not a secret
+
+      # As with the Codex install: run outside the PR checkout, ignore uv config
+      # files (uv.toml / pyproject.toml), and pin the index so a PR cannot
+      # redirect uv to an attacker index and poison the fixed-key cache.
       - name: Install Serena
-        run: uv tool install -p 3.13 --force "serena-agent==1.1.2"
+        if: steps.serena_cache.outputs.cache-hit != 'true'
+        working-directory: ${{ runner.temp }}
+        run: uv tool install --no-config --default-index https://pypi.org/simple -p 3.13 --force "serena-agent==1.1.2"
 
+      - name: Add Serena to PATH
+        run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # Persist the freshly installed tools now, while they are still pristine:
+      # after install but BEFORE both the untrusted `codex exec` AND any write
+      # into the PR checkout below. Saving here (rather than in a post step, and
+      # before the checkout write) means neither the no-sandbox Codex run nor a
+      # PR-supplied symlink can get a tampered binary persisted under the key.
+      - name: Save tools cache
+        if: steps.tools_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: .github/tools/node_modules
+          key: github-tools-${{ hashFiles('.github/tools/package-lock.json') }}-node24.15.0
+
+      - name: Save Serena tool cache
+        if: steps.serena_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.local/share/uv
+            ~/.local/bin/serena
+          key: serena-1.1.2-py3.13-h2 # gitleaks:allow -- tool cache key, not a secret
+
+      # cp --remove-destination unlinks the target first, so a PR that ships
+      # .serena/project.yml as a symlink (e.g. into a cached tool path) cannot
+      # have the copy follow it and write through. The caches are already saved
+      # above, so this can no longer poison them regardless.
       - name: Restrict Serena for review
         env:
           TRUSTED_SERENA_PROJECT_PATH: ${{ runner.temp }}/trusted-serena-project.yml
-        run: cp "$TRUSTED_SERENA_PROJECT_PATH" .serena/project.yml
+        run: cp --remove-destination "$TRUSTED_SERENA_PROJECT_PATH" .serena/project.yml
 
       - name: Run Codex review
         env:
@@ -1038,7 +1109,6 @@ jobs:
     needs:
       - review-precheck
       - review-state
-      - mark-review-start
       - codex-review
     if: ${{ needs.codex-review.result == 'success' && needs.review-state.outputs.should_run == 'true' }}
     concurrency:
@@ -1067,7 +1137,7 @@ jobs:
       - name: Submit review to GitHub
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
-          BOT_LOGIN: ${{ needs.mark-review-start.outputs.bot_login }}
+          BOT_LOGIN: ${{ needs.review-state.outputs.bot_login }}
           CODEX_REVIEW_PATH: ${{ runner.temp }}/codex-pr-review.json
           PR_NUMBER: ${{ needs.review-state.outputs.pr_number }}
         with:
@@ -1270,6 +1340,127 @@ jobs:
             }
 
             const botLogin = process.env.BOT_LOGIN;
+
+            const resolutions = Array.isArray(review.resolutions) ? review.resolutions : [];
+            if (resolutions.length > 0) {
+              const resolutionMarker = "<!-- codex-ai-review-resolution -->";
+
+              // Re-fetch the current review threads so we only act on threads that
+              // really exist on this PR, are still unresolved, and were opened by the
+              // Codex bot. Codex only supplies thread node IDs + reasons; never trust
+              // them blindly.
+              const threadsById = new Map();
+              let resolutionCursor = null;
+              let hasMoreThreads = true;
+              while (hasMoreThreads) {
+                const response = await github.graphql(
+                  `
+                    query($owner: String!, $repo: String!, $pullNumber: Int!, $after: String) {
+                      repository(owner: $owner, name: $repo) {
+                        pullRequest(number: $pullNumber) {
+                          reviewThreads(first: 100, after: $after) {
+                            nodes {
+                              id
+                              isResolved
+                              comments(first: 1) {
+                                nodes {
+                                  author {
+                                    login
+                                  }
+                                }
+                              }
+                            }
+                            pageInfo {
+                              hasNextPage
+                              endCursor
+                            }
+                          }
+                        }
+                      }
+                    }
+                  `,
+                  {
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    pullNumber: pull_number,
+                    after: resolutionCursor,
+                  }
+                );
+                const connection = response.repository.pullRequest.reviewThreads;
+                for (const thread of connection.nodes || []) {
+                  threadsById.set(thread.id, {
+                    isResolved: Boolean(thread.isResolved),
+                    rootAuthor: thread.comments?.nodes?.[0]?.author?.login ?? null,
+                  });
+                }
+                hasMoreThreads = Boolean(connection.pageInfo?.hasNextPage);
+                resolutionCursor = connection.pageInfo?.endCursor ?? null;
+              }
+
+              const seenThreadIds = new Set();
+              for (const resolution of resolutions) {
+                const threadId = typeof resolution?.thread_id === "string" ? resolution.thread_id.trim() : "";
+                const reason = typeof resolution?.reason === "string" ? resolution.reason.trim() : "";
+                if (!threadId || !reason) {
+                  continue;
+                }
+                if (seenThreadIds.has(threadId)) {
+                  continue;
+                }
+                seenThreadIds.add(threadId);
+
+                const thread = threadsById.get(threadId);
+                if (!thread) {
+                  core.warning(`Skipping resolution for unknown thread ${threadId} on PR #${pull_number}.`);
+                  continue;
+                }
+                if (thread.isResolved) {
+                  continue;
+                }
+                if (botLogin && thread.rootAuthor !== botLogin) {
+                  core.warning(`Skipping resolution for thread ${threadId} not opened by ${botLogin}.`);
+                  continue;
+                }
+
+                const replyBody = [
+                  resolutionMarker,
+                  reason,
+                  "",
+                  "_今回の差分で解消されたと判断したため、Codex AI レビューがこの会話を自動で resolved にしました。_",
+                ].join("\n");
+
+                try {
+                  await github.graphql(
+                    `
+                      mutation($threadId: ID!, $body: String!) {
+                        addPullRequestReviewThreadReply(input: { pullRequestReviewThreadId: $threadId, body: $body }) {
+                          comment {
+                            id
+                          }
+                        }
+                      }
+                    `,
+                    { threadId, body: replyBody }
+                  );
+                  await github.graphql(
+                    `
+                      mutation($threadId: ID!) {
+                        resolveReviewThread(input: { threadId: $threadId }) {
+                          thread {
+                            id
+                            isResolved
+                          }
+                        }
+                      }
+                    `,
+                    { threadId }
+                  );
+                } catch (error) {
+                  core.warning(`Failed to resolve thread ${threadId} on PR #${pull_number}: ${error.message}`);
+                }
+              }
+            }
+
             if (botLogin) {
               const reactions = await github.paginate("GET /repos/{owner}/{repo}/issues/{issue_number}/reactions", {
                 owner: context.repo.owner,

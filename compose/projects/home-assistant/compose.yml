@@ -46,8 +46,12 @@ services:
     <<: *resource-homeassistant
     container_name: homeassistant
     image: "ghcr.io/home-assistant/home-assistant:2026.5.4@sha256:ceb1202133a5a036e8b03e20a10eb113186cc2f871968323c6fc6c3fc4205716"
-    # kics-scan ignore-line
-    network_mode: host
+    networks:
+      - home-automation
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "192.168.1.61:8123:8123"
     volumes:
       - ./config:/config:rw
       # kics-scan ignore-line
@@ -122,12 +126,12 @@ services:
     environment:
       TUNNEL_TOKEN: "{{ .cf_tunnel_token }}"
     extra_hosts:
-      - "homeassistant:host-gateway"
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
     logging: *default-logging
     networks:
-      - home-automation
+      home-automation:
+        ipv4_address: 172.19.0.250
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -145,6 +149,83 @@ services:
           memory: 128M
     healthcheck:
       test: ["CMD", "cloudflared", "version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  homeassistant-localhost-proxy:
+    <<: *resource-tiny
+    container_name: homeassistant-localhost-proxy
+    image: python:3.14-alpine@sha256:5a824eb82cc75361f98611f3cfc5091ea33f10a6ccea4d4ebdabbc523b9a1614
+    network_mode: service:homeassistant
+    command:
+      - python
+      - -c
+      - |
+        import asyncio
+
+        FORWARDS = (
+            ("127.0.0.1", 1883, "mosquitto", 1883),
+            ("127.0.0.1", 10400, "openwakeword", 10400),
+            ("127.0.0.1", 5580, "172.19.0.1", 5580),
+        )
+
+        async def pipe(reader, writer):
+            try:
+                while data := await reader.read(65536):
+                    writer.write(data)
+                    await writer.drain()
+            finally:
+                writer.close()
+
+        async def handle(client_reader, client_writer, target_host, target_port):
+            try:
+                target_reader, target_writer = await asyncio.open_connection(target_host, target_port)
+            except OSError:
+                client_writer.close()
+                return
+            await asyncio.gather(
+                pipe(client_reader, target_writer),
+                pipe(target_reader, client_writer),
+            )
+
+        async def main():
+            servers = []
+            for listen_host, listen_port, target_host, target_port in FORWARDS:
+                servers.append(await asyncio.start_server(
+                    lambda reader, writer, h=target_host, p=target_port: handle(reader, writer, h, p),
+                    listen_host,
+                    listen_port,
+                ))
+            await asyncio.gather(*(server.serve_forever() for server in servers))
+
+        asyncio.run(main())
+    restart: unless-stopped
+    logging: *default-logging
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    depends_on:
+      homeassistant:
+        condition: service_started
+      matter-server:
+        condition: service_started
+      mosquitto:
+        condition: service_started
+      openwakeword:
+        condition: service_started
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >
+          import socket;
+          socket.create_connection(("127.0.0.1", 1883), 3).close();
+          socket.create_connection(("127.0.0.1", 10400), 3).close();
+          socket.create_connection(("127.0.0.1", 5580), 3).close()
       interval: 30s
       timeout: 10s
       retries: 3

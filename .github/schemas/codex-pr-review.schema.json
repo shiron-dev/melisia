@@ -4,6 +4,7 @@
   "required": [
     "decision",
     "summary",
+    "resolutions",
     "findings"
   ],
   "properties": {
@@ -18,6 +19,27 @@
     "summary": {
       "type": "string",
       "minLength": 1
+    },
+    "resolutions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "thread_id",
+          "reason"
+        ],
+        "properties": {
+          "thread_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
     },
     "findings": {
       "type": "array",

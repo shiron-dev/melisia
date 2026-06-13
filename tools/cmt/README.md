@@ -289,9 +289,10 @@ beforeApplyHooks:
 cmt [--config <path>] <command> [flags]
 
 コマンド:
-  plan      変更内容を表示（変更は行わない）
-  apply     リモートホストに変更を適用
-  schema    設定ファイルの JSON Schema を生成
+  plan          変更内容を表示（変更は行わない）
+  apply         リモートホストに変更を適用
+  force-unlock  スタックしたロックを解除（<host> <project> を指定）
+  schema        設定ファイルの JSON Schema を生成
 
 グローバルフラグ:
   --config  cmt 設定ファイルのパス（デフォルト: config.yml）
@@ -308,12 +309,41 @@ plan フラグ:
 apply フラグ:
   --auto-approve  確認プロンプトをスキップ
 
+force-unlock:
+  cmt force-unlock <host> <project>  指定 project のリモートロックを解除
+  --force                            確認プロンプトをスキップ
+
 schema:
   cmt schema cmt                 cmt 設定の JSON Schema を出力
   cmt schema host                host.yml の JSON Schema を出力
   cmt schema hook-before-plan          beforePlan フックの stdin JSON Schema を出力
   cmt schema hook-before-apply-prompt  beforeApplyPrompt フックの stdin JSON Schema を出力
   cmt schema hook-before-apply         beforeApply フックの stdin JSON Schema を出力
+```
+
+## ロック
+
+`plan` / `apply` は対象**リモートホスト上**に project 単位のロックを作成し、
+操作の競合を防ぎます。
+
+- ロックファイルは各 project のリモートディレクトリ直下に作られます:
+  `<remotePath>/<project>/.cmt.lock`（例: `/opt/compose/grafana/.cmt.lock`）。
+- ロックはリモート側に置かれるため、ローカル開発機と CI runner など**別マシンからの
+  同時操作も排他**できます。
+- ロックは **project 単位**です。`--target` / `--project` で対象を絞った場合、
+  別 project への操作とは**競合しません**。
+- ロックは操作終了時に自動解放されます。プロセスがクラッシュした等でロックが
+  残った場合は `cmt force-unlock <host> <project>` で解除します。
+- `apply` はロック取得時に project ディレクトリを作成しますが、`plan` は読み取り
+  専用のためディレクトリを作成しません。未デプロイ（ディレクトリ未作成）の project
+  に対する `plan` はロックを取得せずにスキップします。
+- `apply` がロック取得でディレクトリを作成したものの、確認キャンセル・差分なし・
+  hook 中断・plan digest 不一致などで何も書き込まなかった場合、ロック解放時に
+  空ディレクトリをロールバック（削除）します。
+
+```bash
+cmt force-unlock arm-srv grafana            # 確認プロンプトあり
+cmt force-unlock arm-srv grafana --force    # 確認なしで解除
 ```
 
 ## JSON Schema

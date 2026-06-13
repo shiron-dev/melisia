@@ -17,6 +17,7 @@ import (
 
 type ApplyDependencies struct {
 	ClientFactory remote.ClientFactory
+	SSHResolver   config.SSHConfigResolver
 	Input         io.Reader
 	HookRunner    HookRunner
 	ConfigPath    string

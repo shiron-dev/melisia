@@ -1,0 +1,8 @@
+# gitleaks false positives.
+# The Codex review workflow's tool cache keys (codex-cli-* / serena-*) trip the
+# generic-api-key rule on entropy. They are GitHub Actions cache keys, not
+# secrets. These fingerprints pin the finding to the commit that introduced the
+# -h2 key bump; the lines also carry an inline `# gitleaks:allow` for any future
+# re-introduction.
+5ae3135cf8cac2c668d517b3193cf0cea94243c2:.github/workflows/codex-ai-review.yaml:generic-api-key:1039
+5ae3135cf8cac2c668d517b3193cf0cea94243c2:.github/workflows/codex-ai-review.yaml:generic-api-key:1074
