@@ -90,7 +90,14 @@ services:
           cpus: '0.25'
           memory: 256M
     healthcheck:
-      disable: true
+      # grafana/mimir はシェルも wget も含まない distroless イメージのため、
+      # バイナリを直接実行する CMD 形式でバージョン確認のみ行う。
+      # HTTP /ready の到達性は外部から別途確認すること。
+      test: ["CMD", "/bin/mimir", "--version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
   # vmauth は vm-write.shiron.dev (Cloudflare Tunnel + Access) 経由で受けた
   # リクエストのうち、Mimir への /api/v1/push と Loki への /loki/api/v1/push
   # のみを転送するリバースプロキシ。それ以外のパスはルート無しで拒否される。
