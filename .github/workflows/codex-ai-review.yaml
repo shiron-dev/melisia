@@ -165,7 +165,9 @@ jobs:
       pr_title: ${{ steps.review_state.outputs.pr_title }}
       draft: ${{ steps.review_state.outputs.draft }}
       is_internal_pr: ${{ steps.review_state.outputs.is_internal_pr }}
+      bot_login: ${{ steps.add_eyes.outputs.bot_login }}
     permissions:
+      issues: write
       pull-requests: write
     steps:
       - name: Create GitHub App token
@@ -371,34 +373,12 @@ jobs:
 
             core.setOutput("should_run", codexApprovedReviews.length > 0 ? "false" : "true");
 
-  mark-review-start:
-    needs:
-      - review-precheck
-      - review-state
-    if: ${{ needs.review-state.result == 'success' && needs.review-state.outputs.should_run == 'true' }}
-    concurrency:
-      group: codex-ai-review-${{ needs.review-precheck.outputs.pr_number }}
-      cancel-in-progress: true
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    outputs:
-      bot_login: ${{ steps.add_eyes.outputs.bot_login }}
-    permissions:
-      issues: write
-      pull-requests: write
-    steps:
-      - name: Create GitHub App token
-        id: app_token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          app-id: ${{ secrets.CODEX_REVIEW_APP_ID }}
-          private-key: ${{ secrets.CODEX_REVIEW_APP_PRIVATE_KEY }}
-
       - name: Add eyes reaction to PR
         id: add_eyes
+        if: ${{ steps.review_state.outputs.should_run == 'true' }}
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
-          PR_NUMBER: ${{ needs.review-state.outputs.pr_number }}
+          PR_NUMBER: ${{ steps.review_state.outputs.pr_number }}
         with:
           github-token: ${{ steps.app_token.outputs.token }}
           script: |
@@ -442,7 +422,7 @@ jobs:
             }
 
       - name: Add eyes reaction to review command
-        if: ${{ github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment' }}
+        if: ${{ steps.review_state.outputs.should_run == 'true' && (github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment') }}
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           github-token: ${{ steps.app_token.outputs.token }}
@@ -467,7 +447,6 @@ jobs:
     needs:
       - review-precheck
       - review-state
-      - mark-review-start
     if: ${{ needs.review-state.result == 'success' && needs.review-state.outputs.should_run == 'true' }}
     concurrency:
       group: codex-ai-review-${{ needs.review-precheck.outputs.pr_number }}
@@ -482,16 +461,29 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           ref: ${{ needs.review-state.outputs.head_sha }}
-          fetch-depth: 0
+          fetch-depth: 1
 
-      - name: Pre-fetch exact base and head commits for the PR event
+      - name: Pre-fetch base and head with their merge-base for the PR event
         env:
           BASE_SHA: ${{ needs.review-state.outputs.base_sha }}
           HEAD_SHA: ${{ needs.review-state.outputs.head_sha }}
         run: |
-          git fetch --no-tags origin \
-            "$BASE_SHA" \
-            "$HEAD_SHA"
+          # Avoid a full-history clone (fetch-depth: 0). Fetch only the base and
+          # head commits, then deepen progressively until their merge-base is
+          # present, which the three-dot `git diff $BASE...$HEAD` in the review
+          # prompt requires. In the common case the merge-base is shallow, so
+          # this is far cheaper than fetching all history.
+          git fetch --no-tags --depth=1 origin "$BASE_SHA" "$HEAD_SHA"
+          depth=1
+          until git merge-base "$BASE_SHA" "$HEAD_SHA" >/dev/null 2>&1; do
+            depth=$((depth * 2))
+            if [[ "$depth" -gt 1024 ]]; then
+              echo "Merge-base not found within depth $depth; falling back to full fetch." >&2
+              git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA"
+              break
+            fi
+            git fetch --no-tags --deepen="$depth" origin "$BASE_SHA" "$HEAD_SHA"
+          done
 
       # Seed Codex's auth bundle from the secret, read-only. This job holds NO
       # secrets:write credential: the rotating ChatGPT refresh token is refreshed
@@ -581,10 +573,10 @@ jobs:
             const fs = require("fs");
             const pull_number = Number(process.env.PR_NUMBER);
             const { owner, repo } = context.repo;
-            const MAX_REVIEWS = 20;
-            const MAX_REVIEW_COMMENTS = 50;
-            const MAX_REVIEW_THREADS_TO_SCAN = 300;
-            const MAX_THREAD_COMMENT_PAGES = 3;
+            const MAX_REVIEWS = 8;
+            const MAX_REVIEW_COMMENTS = 20;
+            const MAX_REVIEW_THREADS_TO_SCAN = 100;
+            const MAX_THREAD_COMMENT_PAGES = 2;
             const normalizeBody = (value) => {
               if (typeof value !== "string") {
                 return null;
@@ -989,16 +981,41 @@ jobs:
         with:
           node-version: "24.15.0"
 
+      - name: Cache Codex CLI
+        id: codex_cli_cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.codex-cli
+          key: codex-cli-0.124.0-node24.15.0
+
       - name: Install Codex CLI
-        run: npm install -g @openai/codex@0.124.0
+        if: steps.codex_cli_cache.outputs.cache-hit != 'true'
+        run: npm install -g --prefix "$HOME/.codex-cli" @openai/codex@0.124.0
+
+      - name: Add Codex CLI to PATH
+        run: echo "$HOME/.codex-cli/bin" >> "$GITHUB_PATH"
 
       - name: Set up uv
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
           python-version: "3.13"
+          enable-cache: true
+
+      - name: Cache Serena tool
+        id: serena_cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.local/share/uv/tools/serena-agent
+            ~/.local/bin/serena
+          key: serena-1.1.2-py3.13
 
       - name: Install Serena
+        if: steps.serena_cache.outputs.cache-hit != 'true'
         run: uv tool install -p 3.13 --force "serena-agent==1.1.2"
+
+      - name: Add Serena to PATH
+        run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Restrict Serena for review
         env:
@@ -1038,7 +1055,6 @@ jobs:
     needs:
       - review-precheck
       - review-state
-      - mark-review-start
       - codex-review
     if: ${{ needs.codex-review.result == 'success' && needs.review-state.outputs.should_run == 'true' }}
     concurrency:
@@ -1067,7 +1083,7 @@ jobs:
       - name: Submit review to GitHub
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
-          BOT_LOGIN: ${{ needs.mark-review-start.outputs.bot_login }}
+          BOT_LOGIN: ${{ needs.review-state.outputs.bot_login }}
           CODEX_REVIEW_PATH: ${{ runner.temp }}/codex-pr-review.json
           PR_NUMBER: ${{ needs.review-state.outputs.pr_number }}
         with:
