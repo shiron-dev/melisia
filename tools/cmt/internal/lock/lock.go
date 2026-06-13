@@ -47,6 +47,11 @@ type Info struct {
 	Who       string    `json:"who"`
 	Created   time.Time `json:"created"`
 	Path      string    `json:"path"`
+
+	// CreatedDir reports whether acquiring the lock created the project's remote
+	// directory (apply only). It is not persisted; callers use it to roll back
+	// the directory on release if nothing was written. json:"-"
+	CreatedDir bool `json:"-"`
 }
 
 // Target identifies a per-project lock living on a remote host.
@@ -96,11 +101,12 @@ func (l *RemoteLocker) Acquire(target Target, operation string, ensureDir bool) 
 	defer func() { _ = client.Close() }()
 
 	info := &Info{
-		ID:        generateID(),
-		Operation: operation,
-		Who:       whoString(),
-		Created:   time.Now().UTC(),
-		Path:      target.lockPath(),
+		ID:         generateID(),
+		Operation:  operation,
+		Who:        whoString(),
+		Created:    time.Now().UTC(),
+		Path:       target.lockPath(),
+		CreatedDir: false,
 	}
 
 	data, err := json.Marshal(info)
@@ -121,19 +127,26 @@ func buildAcquireScript(target Target, jsonData []byte, ensureDir bool) string {
 	lockFile := shellQuote(target.lockPath())
 	payload := shellQuote(string(jsonData))
 
-	createLock := fmt.Sprintf(
-		"if ( set -C; printf '%%s' %s > %s ) 2>/dev/null; then echo %s; else echo %s; cat %s 2>/dev/null || true; fi",
+	// On success prints "<markerOK> <created>" where <created> is 1 if this call
+	// created the project directory, else 0.
+	takeLock := fmt.Sprintf(
+		"if ( set -C; printf '%%s' %s > %s ) 2>/dev/null; "+
+			"then echo %s $created; else echo %s; cat %s 2>/dev/null || true; fi",
 		payload, lockFile, markerOK, markerHeld, lockFile,
 	)
 
 	if ensureDir {
-		// apply: create the project directory if missing, then take the lock.
-		return fmt.Sprintf("mkdir -p %s 2>/dev/null; %s", dir, createLock)
+		// apply: create the project directory if missing, recording whether we
+		// created it so release can roll it back when nothing was written.
+		return fmt.Sprintf(
+			"created=0; if [ ! -d %s ]; then mkdir -p %s 2>/dev/null && created=1; fi; %s",
+			dir, dir, takeLock,
+		)
 	}
 
 	// plan: never create directories. If the project directory is absent there
 	// is nothing to lock yet.
-	return fmt.Sprintf("if [ -d %s ]; then %s; else echo %s; fi", dir, createLock, markerNoDir)
+	return fmt.Sprintf("created=0; if [ -d %s ]; then %s; else echo %s; fi", dir, takeLock, markerNoDir)
 }
 
 func parseAcquireOutput(target Target, info *Info, out string) (*Info, error) {
@@ -141,6 +154,9 @@ func parseAcquireOutput(target Target, info *Info, out string) (*Info, error) {
 
 	switch {
 	case strings.HasPrefix(trimmed, markerOK):
+		fields := strings.Fields(trimmed)
+		info.CreatedDir = len(fields) > 1 && fields[1] == "1"
+
 		return info, nil
 	case strings.HasPrefix(trimmed, markerNoDir):
 		// Project not deployed yet; nothing to lock.
@@ -278,6 +294,27 @@ func (l *RemoteLocker) ForceUnlockWithID(target Target, expectedID string) error
 	err = client.Remove(target.lockPath())
 	if err != nil {
 		return fmt.Errorf("removing lock for %s: %w", target.label(), err)
+	}
+
+	return nil
+}
+
+// RemoveEmptyDir removes target's project directory if it is empty. It is used
+// to roll back a directory that lock acquisition created when an apply ends
+// without writing anything. A non-empty directory (a real deployment) is left
+// untouched.
+func (l *RemoteLocker) RemoveEmptyDir(target Target) error {
+	client, err := l.factory.NewClient(target.Host)
+	if err != nil {
+		return fmt.Errorf("connecting to %q: %w", target.Host.Name, err)
+	}
+
+	defer func() { _ = client.Close() }()
+
+	// rmdir only succeeds on an empty directory; ignore failure otherwise.
+	_, err = client.RunCommand("", "rmdir "+shellQuote(target.RemoteDir)+" 2>/dev/null || true")
+	if err != nil {
+		return fmt.Errorf("removing empty dir for %s: %w", target.label(), err)
 	}
 
 	return nil

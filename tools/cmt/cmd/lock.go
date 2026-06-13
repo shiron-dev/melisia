@@ -8,8 +8,9 @@ import (
 )
 
 type acquiredLock struct {
-	target lock.Target
-	lockID string
+	target     lock.Target
+	lockID     string
+	createdDir bool
 }
 
 func acquireRemoteLocks(
@@ -24,6 +25,12 @@ func acquireRemoteLocks(
 	releaseFn := func() {
 		for _, a := range acquired {
 			_ = locker.Release(a.target, a.lockID)
+
+			// Roll back a directory that acquisition created if the operation
+			// left it empty (e.g. apply cancelled before writing anything).
+			if a.createdDir {
+				_ = locker.RemoveEmptyDir(a.target)
+			}
 		}
 	}
 
@@ -41,7 +48,7 @@ func acquireRemoteLocks(
 		}
 
 		_, _ = fmt.Fprintf(w, "Lock acquired: %s/%s\n", target.Host.Name, target.Project)
-		acquired = append(acquired, acquiredLock{target: target, lockID: info.ID})
+		acquired = append(acquired, acquiredLock{target: target, lockID: info.ID, createdDir: info.CreatedDir})
 	}
 
 	return releaseFn, nil

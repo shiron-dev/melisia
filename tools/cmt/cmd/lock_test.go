@@ -33,28 +33,13 @@ func (c *fakeClient) RunCommand(_ string, command string) (string, error) {
 
 	quoted := extractQuoted(command)
 
-	// quoted segments for acquire: [dir, "%s" (from printf '%s'), payload, lockPath, lockPath]
-	const minArgs = 4
-
 	switch {
-	case strings.HasPrefix(command, "mkdir -p"): // apply: create dir then lock
-		if len(quoted) < minArgs {
-			return "", nil
+	case strings.HasPrefix(command, "rmdir "): // roll back empty dir
+		if len(quoted) > 0 && c.dirEmpty(quoted[0]) {
+			delete(c.dirs, quoted[0])
 		}
 
-		c.dirs[quoted[0]] = true
-
-		return c.tryCreate(quoted[3], quoted[2]), nil
-	case strings.HasPrefix(command, "if [ -d "): // plan: lock only if dir exists
-		if len(quoted) < minArgs {
-			return "", nil
-		}
-
-		if !c.dirs[quoted[0]] {
-			return "CMT_LOCK_NODIR\n", nil
-		}
-
-		return c.tryCreate(quoted[3], quoted[2]), nil
+		return "", nil
 	case strings.HasPrefix(command, "if [ -e "): // existence check
 		if len(quoted) > 0 {
 			if _, ok := c.files[quoted[0]]; ok {
@@ -63,6 +48,32 @@ func (c *fakeClient) RunCommand(_ string, command string) (string, error) {
 		}
 
 		return "N\n", nil
+	case strings.Contains(command, "mkdir -p"): // apply: [dir, dir, "%s", payload, lock, lock]
+		const minArgs = 5
+		if len(quoted) < minArgs {
+			return "", nil
+		}
+
+		created := "0"
+
+		if !c.dirs[quoted[0]] {
+			c.dirs[quoted[0]] = true
+			created = "1"
+		}
+
+		return c.tryCreate(quoted[4], quoted[3], created), nil
+	case strings.Contains(command, "if [ -d "): // plan: [dir, "%s", payload, lock, lock]
+		const minArgs = 4
+
+		if len(quoted) < minArgs {
+			return "", nil
+		}
+
+		if !c.dirs[quoted[0]] {
+			return "CMT_LOCK_NODIR\n", nil
+		}
+
+		return c.tryCreate(quoted[3], quoted[2], "0"), nil
 	default:
 		return "", nil
 	}
@@ -92,14 +103,24 @@ func (c *fakeClient) StatDirMetadata(string) (*remote.DirMetadata, error) {
 }
 func (c *fakeClient) ListFilesRecursive(string) ([]string, error) { return nil, nil }
 
-func (c *fakeClient) tryCreate(lockPath, payload string) string {
+func (c *fakeClient) tryCreate(lockPath, payload, created string) string {
 	if existing, exists := c.files[lockPath]; exists {
 		return "CMT_LOCK_HELD\n" + existing
 	}
 
 	c.files[lockPath] = payload
 
-	return "CMT_LOCK_OK\n"
+	return "CMT_LOCK_OK " + created + "\n"
+}
+
+func (c *fakeClient) dirEmpty(dir string) bool {
+	for f := range c.files {
+		if strings.HasPrefix(f, dir+"/") {
+			return false
+		}
+	}
+
+	return true
 }
 
 func extractQuoted(s string) []string {
@@ -179,6 +200,57 @@ func TestAcquireRemoteLocksSuccess(t *testing.T) {
 		if locked {
 			t.Errorf("expected %s to be unlocked after release", target.Project)
 		}
+	}
+}
+
+func TestAcquireRemoteLocksRollsBackCreatedEmptyDir(t *testing.T) {
+	t.Parallel()
+
+	client := &fakeClient{files: make(map[string]string), dirs: make(map[string]bool)}
+	locker := lock.NewRemote(fakeFactory{client: client})
+	targets := lockTargets("grafana")
+
+	var buf strings.Builder
+
+	// apply-style acquire (ensureDir=true) creates the project dir.
+	release, err := acquireRemoteLocks(locker, targets, "apply", true, &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !client.dirs["/opt/compose/grafana"] {
+		t.Fatal("expected project dir to be created on acquire")
+	}
+
+	// Release with nothing written => the created empty dir is rolled back.
+	release()
+
+	if client.dirs["/opt/compose/grafana"] {
+		t.Error("expected created empty dir to be rolled back on release")
+	}
+}
+
+func TestAcquireRemoteLocksKeepsDirWithFiles(t *testing.T) {
+	t.Parallel()
+
+	client := &fakeClient{files: make(map[string]string), dirs: make(map[string]bool)}
+	locker := lock.NewRemote(fakeFactory{client: client})
+	targets := lockTargets("grafana")
+
+	var buf strings.Builder
+
+	release, err := acquireRemoteLocks(locker, targets, "apply", true, &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Simulate apply writing a file before release.
+	client.files["/opt/compose/grafana/compose.yml"] = "services: {}"
+
+	release()
+
+	if !client.dirs["/opt/compose/grafana"] {
+		t.Error("expected dir with files to be kept after release")
 	}
 }
 
