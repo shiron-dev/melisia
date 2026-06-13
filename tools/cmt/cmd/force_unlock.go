@@ -45,15 +45,6 @@ func runForceUnlock(configPath, hostName, project string, force bool) error {
 		return err
 	}
 
-	target, err := resolveSingleLockTarget(cfg, hostName, project)
-	if err != nil {
-		return err
-	}
-
-	return runForceUnlockWithLocker(remoteLocker(nil), target, force)
-}
-
-func resolveSingleLockTarget(cfg *config.CmtConfig, hostName, project string) (lock.Target, error) {
 	deps := syncer.PlanDependencies{
 		ClientFactory:  nil,
 		SSHResolver:    nil,
@@ -61,6 +52,19 @@ func resolveSingleLockTarget(cfg *config.CmtConfig, hostName, project string) (l
 		ProgressWriter: nil,
 	}
 
+	target, err := resolveSingleLockTarget(cfg, hostName, project, deps)
+	if err != nil {
+		return err
+	}
+
+	return runForceUnlockWithLocker(remoteLocker(nil), target, force)
+}
+
+func resolveSingleLockTarget(
+	cfg *config.CmtConfig,
+	hostName, project string,
+	deps syncer.PlanDependencies,
+) (lock.Target, error) {
 	targets, err := syncer.ResolveLockTargets(cfg, []string{hostName}, []string{project}, deps)
 	if err != nil {
 		return lock.Target{}, err

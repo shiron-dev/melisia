@@ -120,6 +120,72 @@ func (f fakeFactory) NewClient(config.HostEntry) (remote.RemoteClient, error) {
 	return f.client, nil
 }
 
+var errConnect = errors.New("connection refused")
+
+// errFactory always fails to create a client.
+type errFactory struct{}
+
+func (errFactory) NewClient(config.HostEntry) (remote.RemoteClient, error) {
+	return nil, errConnect
+}
+
+// errRunClient connects but every RunCommand fails (e.g. SSH command error).
+type errRunClient struct{ fakeClient }
+
+func (errRunClient) RunCommand(string, string) (string, error) {
+	return "", errConnect
+}
+
+type errRunFactory struct{}
+
+func (errRunFactory) NewClient(config.HostEntry) (remote.RemoteClient, error) {
+	return &errRunClient{fakeClient{files: map[string]string{}}}, nil
+}
+
+func checkConnErr(t *testing.T, name string, err error) {
+	t.Helper()
+
+	if !errors.Is(err, errConnect) {
+		t.Errorf("%s: expected errConnect, got %v", name, err)
+	}
+}
+
+func TestConnectErrorsPropagate(t *testing.T) {
+	t.Parallel()
+
+	locker := lock.NewRemote(errFactory{})
+	target := testTarget()
+
+	_, acquireErr := locker.Acquire(target, "plan")
+	checkConnErr(t, "Acquire", acquireErr)
+
+	checkConnErr(t, "Release", locker.Release(target, "id"))
+
+	_, readErr := locker.Read(target)
+	checkConnErr(t, "Read", readErr)
+
+	checkConnErr(t, "ForceUnlock", locker.ForceUnlock(target))
+	checkConnErr(t, "ForceUnlockWithID", locker.ForceUnlockWithID(target, "id"))
+
+	_, isLockedErr := locker.IsLocked(target)
+	checkConnErr(t, "IsLocked", isLockedErr)
+}
+
+func TestRunCommandErrorsPropagate(t *testing.T) {
+	t.Parallel()
+
+	locker := lock.NewRemote(errRunFactory{})
+	target := testTarget()
+
+	_, acquireErr := locker.Acquire(target, "plan")
+	checkConnErr(t, "Acquire", acquireErr)
+
+	_, isLockedErr := locker.IsLocked(target)
+	checkConnErr(t, "IsLocked", isLockedErr)
+
+	checkConnErr(t, "ForceUnlock", locker.ForceUnlock(target))
+}
+
 func testTarget() lock.Target {
 	return lock.Target{
 		Host:      config.HostEntry{Name: "host1"},

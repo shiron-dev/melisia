@@ -146,6 +146,104 @@ func TestRunApplyCmdLockFail(t *testing.T) {
 	}
 }
 
+func TestRunPlanCmdWithLockerSuccess(t *testing.T) {
+	t.Parallel()
+
+	configPath := writeTestRepo(t)
+	client := &fakeClient{files: make(map[string]string)}
+
+	err := runPlanCmdWithLocker(newTestLocker(), configPath, nil, nil, false, "", planDeps(client))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunApplyCmdSuccessNoChanges(t *testing.T) {
+	t.Parallel()
+
+	configPath := writeTestRepo(t)
+	client := &fakeClient{files: make(map[string]string)}
+
+	err := runApplyCmd(configPath, nil, nil, true, false, "",
+		syncer.ApplyDependencies{
+			ClientFactory: fakeFactory{client: client},
+			SSHResolver:   noopResolver{},
+		})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestResolveSingleLockTargetSuccess(t *testing.T) {
+	t.Parallel()
+
+	configPath := writeTestRepo(t)
+
+	cfg, err := config.LoadCmtConfig(configPath)
+	if err != nil {
+		t.Fatalf("unexpected error loading config: %v", err)
+	}
+
+	target, err := resolveSingleLockTarget(cfg, "test-host", "grafana",
+		syncer.PlanDependencies{SSHResolver: noopResolver{}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if target.LockPath != "/opt/compose/grafana/.cmt.lock" {
+		t.Errorf("lock path = %q, want /opt/compose/grafana/.cmt.lock", target.LockPath)
+	}
+}
+
+func TestResolveSingleLockTargetNotFound(t *testing.T) {
+	t.Parallel()
+
+	configPath := writeTestRepo(t)
+
+	cfg, err := config.LoadCmtConfig(configPath)
+	if err != nil {
+		t.Fatalf("unexpected error loading config: %v", err)
+	}
+
+	_, err = resolveSingleLockTarget(cfg, "test-host", "nonexistent",
+		syncer.PlanDependencies{SSHResolver: noopResolver{}})
+	if err == nil {
+		t.Fatal("expected error for nonexistent project")
+	}
+}
+
+func TestRunForceUnlockConfigNotFound(t *testing.T) {
+	t.Parallel()
+
+	err := runForceUnlock("/nonexistent/config.yml", "test-host", "grafana", false)
+	if err == nil {
+		t.Fatal("expected error for nonexistent config")
+	}
+}
+
+func TestRunForceUnlockWithLockerForceWithInfo(t *testing.T) {
+	t.Parallel()
+
+	locker := newTestLocker()
+	target := lockTargets("grafana")[0]
+
+	_, err := locker.Acquire(target, "apply")
+	if err != nil {
+		t.Fatalf("unexpected error acquiring lock: %v", err)
+	}
+
+	// --force skips the prompt; info is read and ForceUnlockWithID is used.
+	err = runForceUnlockWithLocker(locker, target, true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	locked, _ := locker.IsLocked(target)
+	if locked {
+		t.Error("expected lock to be released")
+	}
+}
+
 func TestWritePlanDigestFileEmpty(t *testing.T) {
 	t.Parallel()
 

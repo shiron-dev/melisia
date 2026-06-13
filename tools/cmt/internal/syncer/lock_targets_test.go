@@ -134,6 +134,65 @@ func TestResolveLockTargets_NoProjects(t *testing.T) {
 	}
 }
 
+func TestResolveLockTargets_HostConfigError(t *testing.T) {
+	t.Parallel()
+
+	cfg := writeLockTargetRepo(t, "grafana")
+
+	hostDir := filepath.Join(cfg.BasePath, "hosts", "host1")
+
+	err := os.MkdirAll(hostDir, 0o750)
+	if err != nil {
+		t.Fatalf("unexpected error creating host dir: %v", err)
+	}
+
+	// Invalid YAML triggers a host config load error.
+	err = os.WriteFile(filepath.Join(hostDir, "host.yml"), []byte("remotePath: [unterminated\n"), 0o600)
+	if err != nil {
+		t.Fatalf("unexpected error writing host.yml: %v", err)
+	}
+
+	_, err = ResolveLockTargets(cfg, nil, nil, PlanDependencies{SSHResolver: stubResolver{}})
+	if err == nil {
+		t.Fatal("expected error for invalid host.yml")
+	}
+}
+
+func TestResolveLockTargets_NoHostProjectsMatched(t *testing.T) {
+	t.Parallel()
+
+	cfg := writeLockTargetRepo(t, "grafana")
+
+	hostDir := filepath.Join(cfg.BasePath, "hosts", "host1")
+
+	err := os.MkdirAll(hostDir, 0o750)
+	if err != nil {
+		t.Fatalf("unexpected error creating host dir: %v", err)
+	}
+
+	// host.yml declares only an unrelated project, so grafana matches no host project.
+	err = os.WriteFile(filepath.Join(hostDir, "host.yml"), []byte("projects:\n  other: {}\n"), 0o600)
+	if err != nil {
+		t.Fatalf("unexpected error writing host.yml: %v", err)
+	}
+
+	_, err = ResolveLockTargets(cfg, nil, nil, PlanDependencies{SSHResolver: stubResolver{}})
+	if !errors.Is(err, errNoHostProjectsMatched) {
+		t.Errorf("expected errNoHostProjectsMatched, got %v", err)
+	}
+}
+
+func TestResolveLockTargets_NoHostsMatched(t *testing.T) {
+	t.Parallel()
+
+	cfg := writeLockTargetRepo(t, "grafana")
+
+	_, err := ResolveLockTargets(cfg, []string{"nonexistent-host"}, nil, PlanDependencies{SSHResolver: stubResolver{}})
+	if !errors.Is(err, errNoHostsMatched) {
+		t.Errorf("expected errNoHostsMatched, got %v", err)
+	}
+}
+
 func TestResolveLockTargets_RemotePathNotSet(t *testing.T) {
 	t.Parallel()
 
