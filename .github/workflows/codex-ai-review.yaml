@@ -996,27 +996,20 @@ jobs:
       # actions/cache the save happens in a post step, which would persist any
       # tampering the no-sandbox Codex run made to the tool binaries under the
       # fixed key and replay it on the next run.
-      - name: Restore Codex CLI cache
-        id: codex_cli_cache
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      - name: Restore tools cache
+        id: tools_cache
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
-          path: ~/.codex-cli
-          # -h2 suffix: bumped after the cache-hardening fixes so head never
-          # restores an entry that an earlier, vulnerable run on this PR could
-          # have poisoned under the old key.
-          key: codex-cli-0.124.0-node24.15.0-h2 # gitleaks:allow -- tool cache key, not a secret
+          path: .github/tools/node_modules
+          key: github-tools-${{ hashFiles('.github/tools/package-lock.json') }}-node24.15.0
 
-      # Install from $RUNNER_TEMP (outside the PR checkout) so npm's project
-      # .npmrc search never reaches the checkout, and pin the registry on the
-      # command line (which overrides any .npmrc), so a PR-supplied .npmrc cannot
-      # redirect npm to an attacker registry and poison the fixed-key cache.
-      - name: Install Codex CLI
-        if: steps.codex_cli_cache.outputs.cache-hit != 'true'
-        working-directory: ${{ runner.temp }}
-        run: npm install -g --prefix "$HOME/.codex-cli" --registry=https://registry.npmjs.org/ @openai/codex@0.124.0
+      - name: Install tools
+        if: steps.tools_cache.outputs.cache-hit != 'true'
+        working-directory: .github/tools
+        run: npm ci
 
-      - name: Add Codex CLI to PATH
-        run: echo "$HOME/.codex-cli/bin" >> "$GITHUB_PATH"
+      - name: Add tools to PATH
+        run: echo "$GITHUB_WORKSPACE/.github/tools/node_modules/.bin" >> "$GITHUB_PATH"
 
       # enable-cache: false — the default (auto) turns caching on for hosted
       # runners and saves UV_CACHE_DIR in a post step, i.e. after the untrusted
@@ -1035,7 +1028,7 @@ jobs:
       # serena would fail to start. ~/.local/share/uv covers tools + python.
       - name: Restore Serena tool cache
         id: serena_cache
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
             ~/.local/share/uv
@@ -1058,19 +1051,16 @@ jobs:
       # into the PR checkout below. Saving here (rather than in a post step, and
       # before the checkout write) means neither the no-sandbox Codex run nor a
       # PR-supplied symlink can get a tampered binary persisted under the key.
-      - name: Save Codex CLI cache
-        if: steps.codex_cli_cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      - name: Save tools cache
+        if: steps.tools_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
-          path: ~/.codex-cli
-          # -h2 suffix: bumped after the cache-hardening fixes so head never
-          # restores an entry that an earlier, vulnerable run on this PR could
-          # have poisoned under the old key.
-          key: codex-cli-0.124.0-node24.15.0-h2 # gitleaks:allow -- tool cache key, not a secret
+          path: .github/tools/node_modules
+          key: github-tools-${{ hashFiles('.github/tools/package-lock.json') }}-node24.15.0
 
       - name: Save Serena tool cache
         if: steps.serena_cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
             ~/.local/share/uv
@@ -1350,6 +1340,127 @@ jobs:
             }
 
             const botLogin = process.env.BOT_LOGIN;
+
+            const resolutions = Array.isArray(review.resolutions) ? review.resolutions : [];
+            if (resolutions.length > 0) {
+              const resolutionMarker = "<!-- codex-ai-review-resolution -->";
+
+              // Re-fetch the current review threads so we only act on threads that
+              // really exist on this PR, are still unresolved, and were opened by the
+              // Codex bot. Codex only supplies thread node IDs + reasons; never trust
+              // them blindly.
+              const threadsById = new Map();
+              let resolutionCursor = null;
+              let hasMoreThreads = true;
+              while (hasMoreThreads) {
+                const response = await github.graphql(
+                  `
+                    query($owner: String!, $repo: String!, $pullNumber: Int!, $after: String) {
+                      repository(owner: $owner, name: $repo) {
+                        pullRequest(number: $pullNumber) {
+                          reviewThreads(first: 100, after: $after) {
+                            nodes {
+                              id
+                              isResolved
+                              comments(first: 1) {
+                                nodes {
+                                  author {
+                                    login
+                                  }
+                                }
+                              }
+                            }
+                            pageInfo {
+                              hasNextPage
+                              endCursor
+                            }
+                          }
+                        }
+                      }
+                    }
+                  `,
+                  {
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    pullNumber: pull_number,
+                    after: resolutionCursor,
+                  }
+                );
+                const connection = response.repository.pullRequest.reviewThreads;
+                for (const thread of connection.nodes || []) {
+                  threadsById.set(thread.id, {
+                    isResolved: Boolean(thread.isResolved),
+                    rootAuthor: thread.comments?.nodes?.[0]?.author?.login ?? null,
+                  });
+                }
+                hasMoreThreads = Boolean(connection.pageInfo?.hasNextPage);
+                resolutionCursor = connection.pageInfo?.endCursor ?? null;
+              }
+
+              const seenThreadIds = new Set();
+              for (const resolution of resolutions) {
+                const threadId = typeof resolution?.thread_id === "string" ? resolution.thread_id.trim() : "";
+                const reason = typeof resolution?.reason === "string" ? resolution.reason.trim() : "";
+                if (!threadId || !reason) {
+                  continue;
+                }
+                if (seenThreadIds.has(threadId)) {
+                  continue;
+                }
+                seenThreadIds.add(threadId);
+
+                const thread = threadsById.get(threadId);
+                if (!thread) {
+                  core.warning(`Skipping resolution for unknown thread ${threadId} on PR #${pull_number}.`);
+                  continue;
+                }
+                if (thread.isResolved) {
+                  continue;
+                }
+                if (botLogin && thread.rootAuthor !== botLogin) {
+                  core.warning(`Skipping resolution for thread ${threadId} not opened by ${botLogin}.`);
+                  continue;
+                }
+
+                const replyBody = [
+                  resolutionMarker,
+                  reason,
+                  "",
+                  "_今回の差分で解消されたと判断したため、Codex AI レビューがこの会話を自動で resolved にしました。_",
+                ].join("\n");
+
+                try {
+                  await github.graphql(
+                    `
+                      mutation($threadId: ID!, $body: String!) {
+                        addPullRequestReviewThreadReply(input: { pullRequestReviewThreadId: $threadId, body: $body }) {
+                          comment {
+                            id
+                          }
+                        }
+                      }
+                    `,
+                    { threadId, body: replyBody }
+                  );
+                  await github.graphql(
+                    `
+                      mutation($threadId: ID!) {
+                        resolveReviewThread(input: { threadId: $threadId }) {
+                          thread {
+                            id
+                            isResolved
+                          }
+                        }
+                      }
+                    `,
+                    { threadId }
+                  );
+                } catch (error) {
+                  core.warning(`Failed to resolve thread ${threadId} on PR #${pull_number}: ${error.message}`);
+                }
+              }
+            }
+
             if (botLogin) {
               const reactions = await github.paginate("GET /repos/{owner}/{repo}/issues/{issue_number}/reactions", {
                 owner: context.repo.owner,
