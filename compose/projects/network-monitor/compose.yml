@@ -75,9 +75,9 @@ services:
       start_period: 20s
 
   # home-ep のメトリクスは vmagent でローカルスクレイプし、arm-srv の
-  # VictoriaMetrics へ remote_write (push) する。書き込み経路は Cloudflare
+  # Mimir へ remote_write (push) する。書き込み経路は Cloudflare
   # Tunnel + Access (vm-write.shiron.dev) で、書き込み専用の vm_write service
-  # token で認証する。arm-srv 側は vmauth が /api/v1/write のみ転送する。
+  # token で認証する。
   # これにより各 exporter を外部公開してスクレイプさせる必要がなくなる。
   vmagent:
     container_name: home_ep_vmagent
@@ -93,9 +93,9 @@ services:
       - "./vmagent_data:/vmagent-remotewrite-data"
     command:
       - "--promscrape.config=/etc/vmagent/scrape.yml"
-      - "--remoteWrite.url=https://vm-write.shiron.dev/api/v1/write"
+      - "--remoteWrite.url=https://vm-write.shiron.dev/api/v1/push"
       - "--remoteWrite.tmpDataPath=/vmagent-remotewrite-data"
-      # 書き込み先 (vm-write/Access/vmauth) 障害時にバッファが home-ep の
+      # 書き込み先 (vm-write/Access) 障害時にバッファが home-ep の
       # ディスクを食い潰さないよう上限を設ける。超過分は古いものから破棄される。
       - "--remoteWrite.maxDiskUsagePerURL=512MB"
       - "--remoteWrite.headers=CF-Access-Client-Id:{{ .cloudflare_vm_write_client_id }}^^CF-Access-Client-Secret:{{ .cloudflare_vm_write_client_secret }}"
