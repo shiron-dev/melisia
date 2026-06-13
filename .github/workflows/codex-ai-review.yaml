@@ -1018,21 +1018,27 @@ jobs:
       - name: Add Codex CLI to PATH
         run: echo "$HOME/.codex-cli/bin" >> "$GITHUB_PATH"
 
-      # No enable-cache: setup-uv would save the uv cache in a post step, i.e.
-      # after the untrusted `codex exec`, persisting whatever it wrote to
-      # UV_CACHE_DIR. The installed tool is cached separately below, so the uv
-      # build cache adds little anyway.
+      # enable-cache: false — the default (auto) turns caching on for hosted
+      # runners and saves UV_CACHE_DIR in a post step, i.e. after the untrusted
+      # `codex exec`, which would persist whatever it wrote there. The tool is
+      # cached explicitly below before that run instead.
       - name: Set up uv
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
           python-version: "3.13"
+          enable-cache: false
 
+      # Cache the whole uv data dir, not just the tool venv: `uv tool install`
+      # creates a venv that absolute-symlinks into the uv-managed Python under
+      # ~/.local/share/uv/python. Caching only the tool dir would leave that
+      # symlink dangling on a fresh runner (cache-hit skips reinstall), so
+      # serena would fail to start. ~/.local/share/uv covers tools + python.
       - name: Restore Serena tool cache
         id: serena_cache
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
-            ~/.local/share/uv/tools/serena-agent
+            ~/.local/share/uv
             ~/.local/bin/serena
           key: serena-1.1.2-py3.13-h2 # gitleaks:allow -- tool cache key, not a secret
 
@@ -1067,7 +1073,7 @@ jobs:
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
-            ~/.local/share/uv/tools/serena-agent
+            ~/.local/share/uv
             ~/.local/bin/serena
           key: serena-1.1.2-py3.13-h2 # gitleaks:allow -- tool cache key, not a secret
 
