@@ -11,13 +11,14 @@ resource "google_iam_workload_identity_pool_provider" "github_actions" {
   description                        = "Trust token.actions.githubusercontent.com"
 
   attribute_mapping = {
-    "google.subject"       = "assertion.sub"
-    "attribute.repository" = "assertion.repository"
-    "attribute.ref"        = "assertion.ref"
-    "attribute.event_name" = "assertion.event_name"
+    "google.subject"             = "assertion.sub"
+    "attribute.repository"       = "assertion.repository"
+    "attribute.ref"              = "assertion.ref"
+    "attribute.event_name"       = "assertion.event_name"
+    "attribute.job_workflow_ref" = "assertion.job_workflow_ref"
   }
 
-  attribute_condition = "assertion.sub == 'repo:shiron-dev/melisia:ref:refs/heads/main' || assertion.sub == 'repo:shiron-dev/melisia:environment:production-plan' || assertion.sub == 'repo:shiron-dev/melisia:environment:production' || (attribute.repository == 'shiron-dev/melisia' && attribute.event_name == 'merge_group')"
+  attribute_condition = "assertion.sub == 'repo:shiron-dev/melisia:ref:refs/heads/main' || assertion.sub == 'repo:shiron-dev/melisia:environment:production-plan' || assertion.sub == 'repo:shiron-dev/melisia:environment:production' || (attribute.repository == 'shiron-dev/melisia' && attribute.event_name == 'merge_group' && attribute.job_workflow_ref.startsWith('shiron-dev/melisia/.github/workflows/ci.yml@'))"
 
   oidc {
     issuer_uri = "https://token.actions.githubusercontent.com"

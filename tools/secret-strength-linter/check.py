@@ -65,11 +65,16 @@ def _parse_binary_data(content: str, source: str) -> dict:
         key = m.group(1)
         value = next((g for g in m.groups()[1:] if g is not None), "")
         result[key] = value
-    if not result and content.strip():
+    unparseable = [
+        line.rstrip()
+        for line in content.splitlines()
+        if line.strip() and not line.strip().startswith("#") and not _KV_RE.match(line)
+    ]
+    if unparseable:
+        preview = "\n".join(f"  {ln}" for ln in unparseable[:3])
         print(
-            f"ERROR: {source}: binary SOPS content could not be parsed as "
-            "key=value pairs. Add this file to the CI exclusion glob or "
-            "handle its format explicitly.",
+            f"ERROR: {source}: binary SOPS content has {len(unparseable)} "
+            f"unparseable line(s); any secrets on those lines are unchecked:\n{preview}",
             file=sys.stderr,
         )
         sys.exit(1)
