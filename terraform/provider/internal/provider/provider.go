@@ -98,12 +98,15 @@ func (p *TrueNASProvider) Configure(ctx context.Context, req provider.ConfigureR
 
 func (p *TrueNASProvider) DataSources(_ context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
+		NewAppConfigDocumentDataSource,
 		NewPoolDataSource,
 	}
 }
 
 func (p *TrueNASProvider) Resources(_ context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
+		NewAppConfigResource,
+		NewAppsConfigResource,
 		NewDatasetResource,
 	}
 }
