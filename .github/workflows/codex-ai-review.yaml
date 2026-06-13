@@ -1046,15 +1046,11 @@ jobs:
       - name: Add Serena to PATH
         run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Restrict Serena for review
-        env:
-          TRUSTED_SERENA_PROJECT_PATH: ${{ runner.temp }}/trusted-serena-project.yml
-        run: cp "$TRUSTED_SERENA_PROJECT_PATH" .serena/project.yml
-
-      # Persist the freshly installed tools now, while they are still trusted and
-      # before the no-sandbox `codex exec` below runs. Saving here (rather than in
-      # a post step) means a tampered binary can never be written back under the
-      # cache key.
+      # Persist the freshly installed tools now, while they are still pristine:
+      # after install but BEFORE both the untrusted `codex exec` AND any write
+      # into the PR checkout below. Saving here (rather than in a post step, and
+      # before the checkout write) means neither the no-sandbox Codex run nor a
+      # PR-supplied symlink can get a tampered binary persisted under the key.
       - name: Save Codex CLI cache
         if: steps.codex_cli_cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
@@ -1070,6 +1066,15 @@ jobs:
             ~/.local/share/uv/tools/serena-agent
             ~/.local/bin/serena
           key: serena-1.1.2-py3.13
+
+      # cp --remove-destination unlinks the target first, so a PR that ships
+      # .serena/project.yml as a symlink (e.g. into a cached tool path) cannot
+      # have the copy follow it and write through. The caches are already saved
+      # above, so this can no longer poison them regardless.
+      - name: Restrict Serena for review
+        env:
+          TRUSTED_SERENA_PROJECT_PATH: ${{ runner.temp }}/trusted-serena-project.yml
+        run: cp --remove-destination "$TRUSTED_SERENA_PROJECT_PATH" .serena/project.yml
 
       - name: Run Codex review
         env:
