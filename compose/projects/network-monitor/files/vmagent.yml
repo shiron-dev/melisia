@@ -16,26 +16,18 @@ scrape_configs:
           - host.docker.internal:9100
         labels:
           probe_server: home-ep
+  # 自前の icmp-ping-exporter が 10 分ごとに 5 発 ping を打って状態を保持する。
+  # vmagent はその状態を 30s ごとに取りに行くだけ (実際の値は 10 分ごとに更新)。
   - job_name: 'home_ep_icmp'
     scrape_interval: 30s
     scrape_timeout: 10s
-    metrics_path: /probe
-    params:
-      module: [icmp_8_8_8_8]
     static_configs:
       - targets:
-          - 8.8.8.8
+          - home_ep_icmp_ping_exporter:9799
         labels:
           probe_server: home-ep
           target_server: google-public-dns
           check: icmp
-    relabel_configs:
-      - source_labels: [__address__]
-        target_label: __param_target
-      - source_labels: [__param_target]
-        target_label: instance
-      - target_label: __address__
-        replacement: home_ep_blackbox_exporter:9115
   - job_name: 'home_ep_cloudflare_speedtest'
     scrape_interval: 30s
     scrape_timeout: 10s
