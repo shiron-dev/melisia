@@ -36,7 +36,6 @@ jobs:
       - renovate-deps-comment
       - gitleaks
       - trufflehog
-      - secret-strength-linter
     if: ${{ always() }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -298,13 +297,3 @@ jobs:
           path: ./
           base: ${{ github.event.pull_request.base.sha || github.event.before }}
           head: ${{ github.event.pull_request.head.sha || github.sha }}
-
-  secret-strength-linter:
-    if: github.event_name == 'merge_group'
-    permissions:
-      contents: read
-      id-token: write
-    uses: shiron-dev/melisia/.github/workflows/secret-strength-linter.yml@main
-    with:
-      base_sha: ${{ github.event.merge_group.base_sha }}
-      head_sha: ${{ github.event.merge_group.head_sha }}

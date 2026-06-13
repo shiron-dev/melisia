@@ -77,16 +77,16 @@ def _parse_env_data(content: str, source: str) -> dict:
         key = m.group(1)
         value = next((g for g in m.groups()[1:] if g is not None), "")
         result[key] = value
-    unparseable = [
-        line.rstrip()
-        for line in content.splitlines()
+    unparseable_lines = [
+        i + 1
+        for i, line in enumerate(content.splitlines())
         if line.strip() and not line.strip().startswith("#") and not _KV_RE.match(line)
     ]
-    if unparseable:
-        preview = "\n".join(f"  {ln}" for ln in unparseable[:3])
+    if unparseable_lines:
         print(
-            f"ERROR: {source}: binary SOPS content has {len(unparseable)} "
-            f"unparseable line(s); any secrets on those lines are unchecked:\n{preview}",
+            f"ERROR: {source}: binary SOPS content has {len(unparseable_lines)} "
+            f"unparseable line(s) at line(s) {unparseable_lines[:5]}; "
+            "any secrets on those lines are unchecked",
             file=sys.stderr,
         )
         sys.exit(1)
