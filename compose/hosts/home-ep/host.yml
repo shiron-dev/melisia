@@ -5,21 +5,16 @@ sshConfig: ssh_config
 projects:
   host-monitor: {}
 
-  log-collector:
-    removeOrphans: true
-    postSyncCommand: chmod 0644 promtail.yml
-    dirs:
-      - promtail_positions:
-        owner: 0
-        group: 0
-        become: true
-
   network-monitor:
     removeOrphans: true
-    postSyncCommand: chmod 0644 icmp-ping-exporter.py cloudflare-speedtest-exporter.py vmagent.yml
+    postSyncCommand: chmod 0644 icmp-ping-exporter.py cloudflare-speedtest-exporter.py vmagent.yml promtail.yml
     dirs:
       # vmagent の remote_write オンディスクバッファ (arm-srv VM 断時の取りこぼし防止)
       - vmagent_data:
+        owner: 0
+        group: 0
+        become: true
+      - promtail_positions:
         owner: 0
         group: 0
         become: true

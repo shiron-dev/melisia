@@ -19,17 +19,6 @@ resource "local_sensitive_file" "cloudflare_vm_write_secret_home_ep" {
   })
 }
 
-# home-ep の promtail が vm-write.shiron.dev 経由で Loki へ push する際の
-# CF-Access service token。vmagent と同じ vm_write token を再利用する。
-resource "local_sensitive_file" "cloudflare_vm_write_secret_home_ep_log_collector" {
-  filename = "${path.module}/../../compose/hosts/home-ep/log-collector/vm-write.secrets.yml"
-  content = yamlencode({
-    cloudflare_vm_write_client_id = cloudflare_zero_trust_access_service_token.vm_write.client_id
-    # kics-scan ignore-line
-    cloudflare_vm_write_client_secret = cloudflare_zero_trust_access_service_token.vm_write.client_secret
-  })
-}
-
 removed {
   from = local_sensitive_file.cloudflare_tunnel_secret
 
