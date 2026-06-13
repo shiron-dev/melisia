@@ -3,35 +3,68 @@ package cmd
 import (
 	"fmt"
 	"io"
+	"os"
 
-	"github.com/shiron-dev/melisia/tools/cmt/internal/config"
 	"github.com/shiron-dev/melisia/tools/cmt/internal/lock"
 )
 
 type acquiredLock struct {
-	hostName string
-	lockID   string
+	target     lock.Target
+	lockID     string
+	createdDir bool
 }
 
-func acquireHostLocks(locker *lock.Locker, hosts []config.HostEntry, operation string, w io.Writer) (func(), error) {
+// acquireRemoteLocks takes the locks for all targets. The returned release
+// function removes them and reports the first release failure — a leaked remote
+// lock blocks later operations, so callers must surface it rather than ignore it.
+func acquireRemoteLocks(
+	locker *lock.RemoteLocker,
+	targets []lock.Target,
+	operation string,
+	ensureDir bool,
+	w io.Writer,
+) (func() error, error) {
 	var acquired []acquiredLock
 
-	releaseFn := func() {
-		for _, l := range acquired {
-			_ = locker.Release(l.hostName, l.lockID)
+	releaseFn := func() error {
+		var firstErr error
+
+		for _, a := range acquired {
+			err := locker.Release(a.target, a.lockID)
+			if err != nil {
+				_, _ = fmt.Fprintf(os.Stderr, "Warning: failed to release lock %s/%s: %v\n",
+					a.target.Host.Name, a.target.Project, err)
+
+				if firstErr == nil {
+					firstErr = err
+				}
+			}
+
+			// Roll back a directory that acquisition created if the operation
+			// left it empty (e.g. apply cancelled before writing anything).
+			if a.createdDir {
+				_ = locker.RemoveEmptyDir(a.target)
+			}
 		}
+
+		return firstErr
 	}
 
-	for _, host := range hosts {
-		info, err := locker.Acquire(host.Name, operation)
+	for _, target := range targets {
+		info, err := locker.Acquire(target, operation, ensureDir)
 		if err != nil {
-			releaseFn()
+			_ = releaseFn()
 
-			return func() {}, err
+			return func() error { return nil }, err
 		}
 
-		_, _ = fmt.Fprintf(w, "Lock acquired: %s\n", host.Name)
-		acquired = append(acquired, acquiredLock{hostName: host.Name, lockID: info.ID})
+		if info == nil {
+			// Lock skipped (e.g. plan on a not-yet-deployed project).
+			continue
+		}
+
+		_, _ = fmt.Fprintf(w, "Lock acquired: %s/%s\n", target.Host.Name, target.Project)
+		acquired = append(acquired, acquiredLock{target: target, lockID: info.ID, createdDir: info.CreatedDir})
 	}
 
 	return releaseFn, nil

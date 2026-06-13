@@ -42,7 +42,7 @@ It follows a plan/apply workflow similar to Terraform:
 	rootCommand.AddCommand(newPlanCmd(&configPath))
 	rootCommand.AddCommand(newApplyCmd(&configPath))
 	rootCommand.AddCommand(newSchemaCmd())
-	rootCommand.AddCommand(newForceUnlockCmd())
+	rootCommand.AddCommand(newForceUnlockCmd(&configPath))
 
 	return rootCommand
 }
