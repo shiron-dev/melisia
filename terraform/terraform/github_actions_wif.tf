@@ -18,7 +18,7 @@ resource "google_iam_workload_identity_pool_provider" "github_actions" {
     "attribute.job_workflow_ref" = "assertion.job_workflow_ref"
   }
 
-  attribute_condition = "assertion.sub == 'repo:shiron-dev/melisia:ref:refs/heads/main' || assertion.sub == 'repo:shiron-dev/melisia:environment:production-plan' || assertion.sub == 'repo:shiron-dev/melisia:environment:production' || (attribute.repository == 'shiron-dev/melisia' && attribute.event_name == 'merge_group' && attribute.job_workflow_ref.startsWith('shiron-dev/melisia/.github/workflows/ci.yml@'))"
+  attribute_condition = "assertion.sub == 'repo:shiron-dev/melisia:ref:refs/heads/main' || assertion.sub == 'repo:shiron-dev/melisia:environment:production-plan' || assertion.sub == 'repo:shiron-dev/melisia:environment:production' || (attribute.repository == 'shiron-dev/melisia' && attribute.event_name == 'merge_group' && attribute.job_workflow_ref.startsWith('shiron-dev/melisia/.github/workflows/secret-strength-linter.yml@'))"
 
   oidc {
     issuer_uri = "https://token.actions.githubusercontent.com"

@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """Check strength of secrets stored in SOPS-encrypted files."""
 
+import io
 import json
 import re
 import subprocess
 import sys
 
+import hcl2
 from zxcvbn import zxcvbn
 
 # Matches key=value in double-quoted, single-quoted, or bare formats
-# (.tfvars, .env, dotenv). Stops at # to ignore inline comments.
+# (.env, dotenv). Stops at # to ignore inline comments.
 _KV_RE = re.compile(
     r"""^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:"([^"]*?)"|'([^']*?)'|([^"'#\n\s][^#\n]*?))\s*$""",
     re.MULTILINE,
@@ -38,28 +40,38 @@ def _is_secret_key(key: str) -> bool:
     return any(w in k for w in _SECRET_WORDS)
 
 
-def _walk(obj: dict, path: list[str], failures: list[dict], source: str) -> None:
-    for key, value in obj.items():
-        if key == "sops":
-            continue
-        current = path + [key]
-        if isinstance(value, dict):
-            _walk(value, current, failures, source)
-        elif isinstance(value, str) and value and _is_secret_key(key):
-            result = zxcvbn(value)
-            score = result["score"]
-            if score < _MIN_SCORE:
-                failures.append(
-                    {
-                        "file": source,
-                        "key": ".".join(current),
-                        "score": score,
-                        "feedback": result["feedback"],
-                    }
-                )
+def _walk(obj, path: list[str], failures: list[dict], source: str) -> None:
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            if key == "sops":
+                continue
+            _walk(value, path + [key], failures, source)
+    elif isinstance(obj, list):
+        for item in obj:
+            _walk(item, path, failures, source)
+    elif isinstance(obj, str) and obj and path and _is_secret_key(path[-1]):
+        result = zxcvbn(obj)
+        score = result["score"]
+        if score < _MIN_SCORE:
+            failures.append(
+                {
+                    "file": source,
+                    "key": ".".join(path),
+                    "score": score,
+                    "feedback": result["feedback"],
+                }
+            )
 
 
-def _parse_binary_data(content: str, source: str) -> dict:
+def _parse_hcl_data(content: str, source: str) -> dict:
+    try:
+        return hcl2.load(io.StringIO(content))
+    except Exception as e:
+        print(f"ERROR: {source}: HCL parse failed: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def _parse_env_data(content: str, source: str) -> dict:
     result = {}
     for m in _KV_RE.finditer(content):
         key = m.group(1)
@@ -81,6 +93,12 @@ def _parse_binary_data(content: str, source: str) -> dict:
     return result
 
 
+def _parse_binary_data(content: str, source: str) -> dict:
+    if "tfvars" in source:
+        return _parse_hcl_data(content, source)
+    return _parse_env_data(content, source)
+
+
 def _check_file(path: str) -> list[dict]:
     proc = subprocess.run(
         ["sops", "--decrypt", "--output-type", "json", path],
@@ -94,7 +112,8 @@ def _check_file(path: str) -> list[dict]:
     data = json.loads(proc.stdout)
 
     # SOPS binary format wraps the whole plaintext in a single "data" key.
-    # Parse it as key=value pairs so .tfvars/.env-style secrets are checked.
+    # Parse it as key=value pairs so .env-style secrets are checked, or as
+    # HCL for .tfvars files.
     non_sops = [k for k in data if k != "sops"]
     if non_sops == ["data"] and isinstance(data.get("data"), str):
         data = _parse_binary_data(data["data"], path)
