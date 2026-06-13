@@ -93,7 +93,7 @@ arm-srv の VictoriaMetrics へ remote_write (push) する。永続化は arm-sr
 
 ```text
 arm-srv:  local exporters / e2e blackbox ──► vmagent ──► victoriametrics ◄── Grafana
-home-ep:  node / blackbox / speedtest ─────► vmagent ──(HTTPS push)─► vmauth ─┘
+home-ep:  node / icmp-ping / speedtest ────► vmagent ──(HTTPS push)─► vmauth ─┘
                                                        vm-write.shiron.dev   (/api/v1/write のみ)
                                                        (Tunnel + Access: vm_write token)
 ```
@@ -101,8 +101,8 @@ home-ep:  node / blackbox / speedtest ─────► vmagent ──(HTTPS pu
 - arm-srv: `vmagent` (`compose/projects/grafana`) がローカル exporter と
   e2e blackbox プローブをスクレイプし、同居の `victoriametrics` へ remote_write。
 - home-ep: `vmagent` (`compose/projects/network-monitor`) がローカルの node /
-  blackbox / cloudflare-speedtest exporter をスクレイプし、`vm-write.shiron.dev`
-  経由で arm-srv へ push。
+  icmp-ping (8.8.8.8 へ 10 分ごとに 5 発 ping) / cloudflare-speedtest exporter を
+  スクレイプし、`vm-write.shiron.dev` 経由で arm-srv へ push。
 - これにより各 exporter を外部公開してスクレイプさせる必要がなくなり、CF-Access
   認証は「スクレイプ経路」から「remote_write 経路」へ移動した。
 - 旧 InfluxDB は停止し、永続化バックエンドは VictoriaMetrics に一本化した。
