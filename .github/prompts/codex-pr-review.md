@@ -22,6 +22,14 @@ GitHub Pull Request をレビューしてください。
 - ただし最終的な判定と指摘は、今回の base/head 差分に対して妥当なものだけに限定してください。
 - 必要なら `git diff`、`git log`、`git show`、`rg`、変更を伴わないテストコマンドなどの read-only な確認を行ってください。
 
+過去 review thread のクローズ:
+- 過去 review 文脈ファイルの各 comment には `thread` 情報が含まれ、`thread.id`（GraphQL node ID）と `thread.isResolved` を参照できます。
+- Codex 自身（bot）が過去に開いた未解決（`isResolved` が false）の review thread のうち、今回の base/head 差分で指摘が実際に解消されたと判断できるものは `resolutions` に列挙してください。
+- 各要素には対象 thread の `thread.id` を `thread_id` に、クローズする理由（どの変更でどう解消されたか）を日本語で `reason` に入れてください。
+- 解消されたと自信を持って言えるものだけを挙げてください。未対応・部分対応・判断が曖昧なものは含めないでください。
+- 解消したと判断できる thread が無い場合は `resolutions` を空配列にしてください。
+- thread のクローズと理由の返信はワークフロー側が実施します。`resolutions` はクローズ対象の指定だけに使い、`findings` には含めないでください。
+
 指摘の要件:
 - 各指摘は具体的で、修正に結びつく内容にしてください。
 - 変更ファイルのパスを必ず含めてください。

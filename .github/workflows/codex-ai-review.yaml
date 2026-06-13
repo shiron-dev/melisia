@@ -1270,6 +1270,127 @@ jobs:
             }
 
             const botLogin = process.env.BOT_LOGIN;
+
+            const resolutions = Array.isArray(review.resolutions) ? review.resolutions : [];
+            if (resolutions.length > 0) {
+              const resolutionMarker = "<!-- codex-ai-review-resolution -->";
+
+              // Re-fetch the current review threads so we only act on threads that
+              // really exist on this PR, are still unresolved, and were opened by the
+              // Codex bot. Codex only supplies thread node IDs + reasons; never trust
+              // them blindly.
+              const threadsById = new Map();
+              let resolutionCursor = null;
+              let hasMoreThreads = true;
+              while (hasMoreThreads) {
+                const response = await github.graphql(
+                  `
+                    query($owner: String!, $repo: String!, $pullNumber: Int!, $after: String) {
+                      repository(owner: $owner, name: $repo) {
+                        pullRequest(number: $pullNumber) {
+                          reviewThreads(first: 100, after: $after) {
+                            nodes {
+                              id
+                              isResolved
+                              comments(first: 1) {
+                                nodes {
+                                  author {
+                                    login
+                                  }
+                                }
+                              }
+                            }
+                            pageInfo {
+                              hasNextPage
+                              endCursor
+                            }
+                          }
+                        }
+                      }
+                    }
+                  `,
+                  {
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    pullNumber: pull_number,
+                    after: resolutionCursor,
+                  }
+                );
+                const connection = response.repository.pullRequest.reviewThreads;
+                for (const thread of connection.nodes || []) {
+                  threadsById.set(thread.id, {
+                    isResolved: Boolean(thread.isResolved),
+                    rootAuthor: thread.comments?.nodes?.[0]?.author?.login ?? null,
+                  });
+                }
+                hasMoreThreads = Boolean(connection.pageInfo?.hasNextPage);
+                resolutionCursor = connection.pageInfo?.endCursor ?? null;
+              }
+
+              const seenThreadIds = new Set();
+              for (const resolution of resolutions) {
+                const threadId = typeof resolution?.thread_id === "string" ? resolution.thread_id.trim() : "";
+                const reason = typeof resolution?.reason === "string" ? resolution.reason.trim() : "";
+                if (!threadId || !reason) {
+                  continue;
+                }
+                if (seenThreadIds.has(threadId)) {
+                  continue;
+                }
+                seenThreadIds.add(threadId);
+
+                const thread = threadsById.get(threadId);
+                if (!thread) {
+                  core.warning(`Skipping resolution for unknown thread ${threadId} on PR #${pull_number}.`);
+                  continue;
+                }
+                if (thread.isResolved) {
+                  continue;
+                }
+                if (botLogin && thread.rootAuthor !== botLogin) {
+                  core.warning(`Skipping resolution for thread ${threadId} not opened by ${botLogin}.`);
+                  continue;
+                }
+
+                const replyBody = [
+                  resolutionMarker,
+                  reason,
+                  "",
+                  "_今回の差分で解消されたと判断したため、Codex AI レビューがこの会話を自動で resolved にしました。_",
+                ].join("\n");
+
+                try {
+                  await github.graphql(
+                    `
+                      mutation($threadId: ID!, $body: String!) {
+                        addPullRequestReviewThreadReply(input: { pullRequestReviewThreadId: $threadId, body: $body }) {
+                          comment {
+                            id
+                          }
+                        }
+                      }
+                    `,
+                    { threadId, body: replyBody }
+                  );
+                  await github.graphql(
+                    `
+                      mutation($threadId: ID!) {
+                        resolveReviewThread(input: { threadId: $threadId }) {
+                          thread {
+                            id
+                            isResolved
+                          }
+                        }
+                      }
+                    `,
+                    { threadId }
+                  );
+                } catch (error) {
+                  core.warning(`Failed to resolve thread ${threadId} on PR #${pull_number}: ${error.message}`);
+                }
+              }
+            }
+
             if (botLogin) {
               const reactions = await github.paginate("GET /repos/{owner}/{repo}/issues/{issue_number}/reactions", {
                 owner: context.repo.owner,
