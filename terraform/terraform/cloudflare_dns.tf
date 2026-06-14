@@ -24,5 +24,5 @@ resource "cloudflare_dns_record" "public_lan" {
   content = each.value.content
   ttl     = 1
   proxied = false
-  comment = each.value.comment
+  comment = "${each.value.comment}${local.cloudflare_resource_name_suffix}"
 }
