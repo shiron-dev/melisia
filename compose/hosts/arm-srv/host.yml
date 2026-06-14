@@ -94,6 +94,14 @@ projects:
         group: 999
         become: true
 
+  wakapi:
+    remotePath: /var
+    dirs:
+      - wakapi_data:
+        owner: 65532
+        group: 65532
+        become: true
+
   snipeit:
     composeAction: down
     dirs:
