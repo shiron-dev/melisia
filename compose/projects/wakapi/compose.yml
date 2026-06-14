@@ -7,7 +7,7 @@ services:
       WAKAPI_DB_TYPE: sqlite3
       WAKAPI_DB_NAME: /data/wakapi.db
       WAKAPI_PASSWORD_SALT: "{{ .wakapi_password_salt }}"
-      WAKAPI_APP_DOMAIN: "wakapi.shiron.dev"
+      WAKAPI_APP_DOMAIN: "wakapi.melisia.net"
       WAKAPI_ALLOW_SIGNUP: "false"
       WAKAPI_TRUST_REVERSE_PROXY_IP: "true"
     volumes:
