@@ -15,7 +15,7 @@ resource "grafana_rule_group" "cloudflare_tunnel_e2e" {
     no_data_state  = "Alerting"
     exec_err_state = "Alerting"
     annotations = {
-      summary     = "Cloudflare tunnel E2E probe failed"
+      summary     = "[{{ $labels.target_server }}] {{ $labels.host }}: Cloudflare tunnel E2E probe failed"
       description = "{{ $labels.instance }} is not reachable from the public tunnel endpoint."
     }
     labels = {
@@ -141,7 +141,7 @@ resource "grafana_rule_group" "cloudflare_access_block_e2e" {
     no_data_state  = "Alerting"
     exec_err_state = "Alerting"
     annotations = {
-      summary     = "Cloudflare Access block E2E probe failed"
+      summary     = "[{{ $labels.target_server }}] {{ $labels.host }}: Cloudflare Access block E2E probe failed"
       description = "{{ $labels.instance }} did not return the expected Cloudflare Access login redirect."
     }
     labels = {
