@@ -197,14 +197,11 @@ jobs:
         with:
           github_token: ${{ github.token }}
           level: warning
+      - uses: jdx/mise-action@v2
+        with:
+          install: false
       - name: Install shfmt
-        run: |
-          set -euo pipefail
-          curl -sSfL \
-            -o /tmp/shfmt \
-            https://github.com/mvdan/sh/releases/download/v3.12.0/shfmt_v3.12.0_linux_amd64
-          echo "d9fbb2a9c33d13f47e7618cf362a914d029d02a6df124064fff04fd688a745ea  /tmp/shfmt" | sha256sum -c -
-          sudo install -m 0755 /tmp/shfmt /usr/local/bin/shfmt
+        run: mise install shfmt
       - name: Run shfmt
         run: shfmt -i 2 -ci -w .
       - uses: reviewdog/action-suggester@aa38384ceb608d00f84b4690cacc83a5aba307ff # v1.24.0

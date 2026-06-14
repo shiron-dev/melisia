@@ -1,0 +1,10 @@
+name: Install sops
+description: Install sops using mise (version defined in .mise.toml)
+runs:
+  using: composite
+  steps:
+    - uses: jdx/mise-action@v2
+      with:
+        install: false
+    - shell: bash
+      run: mise install sops
