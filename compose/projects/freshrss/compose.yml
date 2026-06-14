@@ -6,7 +6,7 @@ services:
     environment:
       TZ: Asia/Tokyo
       CRON_MIN: "{{ .freshrss_cron_min }}"
-      TRUSTED_PROXIES: "172.16.0.0/12"
+      TRUSTED_PROXY: "172.16.0.0/12"
     volumes:
       - ./data:/var/www/FreshRSS/data
       - ./extensions:/var/www/FreshRSS/extensions
