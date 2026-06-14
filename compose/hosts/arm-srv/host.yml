@@ -75,6 +75,14 @@ projects:
 
   discord-webhook:
 
+  wakapi:
+    remotePath: /var
+    dirs:
+      - wakapi_data:
+        owner: 65532
+        group: 65532
+        become: true
+
   snipeit:
     composeAction: down
     dirs:

@@ -1,0 +1,55 @@
+services:
+  wakapi:
+    image: ghcr.io/muety/wakapi:2.17.4@sha256:6fce764acf8775e1166e8b03e59fb6b34744e4a9fba5e98d9ea15d341db31bf8
+    container_name: wakapi
+    restart: always
+    environment:
+      WAKAPI_DB_TYPE: sqlite3
+      WAKAPI_DB_NAME: /data/wakapi.db
+      WAKAPI_PASSWORD_SALT: "{{ .wakapi_password_salt }}"
+      WAKAPI_APP_DOMAIN: "wakapi.shiron.dev"
+      WAKAPI_ALLOW_SIGNUP: "false"
+      WAKAPI_TRUST_REVERSE_PROXY_IP: "true"
+    volumes:
+      - ./wakapi_data:/data
+    user: "65532:65532"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+  tunnel-wakapi:
+    image: cloudflare/cloudflared:2026.6.0@sha256:ba461b8aa9c042156dbd39c38657fe7431bafa063220eab8d5330a523863da9f
+    container_name: wakapi-tunnel
+    restart: always
+    command: tunnel run
+    environment:
+      TUNNEL_TOKEN: "{{ .cf_tunnel_token }}"
+    depends_on:
+      - wakapi
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "cloudflared", "version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
