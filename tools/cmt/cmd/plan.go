@@ -82,12 +82,20 @@ func runPlanCmd(
 	return nil
 }
 
+// planExit terminates the process with the plan's exit code. It is a variable
+// so tests can observe the chosen code without exiting the test binary.
+//
+//nolint:gochecknoglobals // overridable seam for testing os.Exit behaviour
+var planExit = os.Exit
+
 func exitWithPlanCode(plan *syncer.SyncPlan) {
 	if plan.HasChanges() {
-		os.Exit(exitCodeHasChanges)
+		planExit(exitCodeHasChanges)
+
+		return
 	}
 
-	os.Exit(exitCodeNoChanges)
+	planExit(exitCodeNoChanges)
 }
 
 func bindPlanFlags(
