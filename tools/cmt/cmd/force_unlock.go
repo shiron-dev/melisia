@@ -19,6 +19,7 @@ var (
 	errForceUnlockNeedsTwoArgs   = errors.New("force-unlock requires <host> <project> (or use --all)")
 	errForceUnlockAllNoArgs      = errors.New("--all takes no positional args; narrow the scope with --host/--project")
 	errForceUnlockFiltersNeedAll = errors.New("--host/--project may only be used together with --all")
+	errUnreadableLockNeedsForce  = errors.New("lock present but unreadable; re-run with --force to remove")
 )
 
 const forceUnlockArgCount = 2
@@ -130,7 +131,9 @@ func runForceUnlockAll(
 	opts forceUnlockOptions,
 	deps syncer.PlanDependencies,
 ) error {
-	targets, err := syncer.ResolveLockTargets(cfg, opts.hostFilter, opts.projectFilter, deps)
+	// Lenient resolution: a host that never runs the filtered project is skipped
+	// rather than aborting the whole batch.
+	targets, err := syncer.ResolveLockTargetsLenient(cfg, opts.hostFilter, opts.projectFilter, deps)
 	if err != nil {
 		return err
 	}
@@ -143,67 +146,115 @@ type lockedTarget struct {
 	info   *lock.Info
 }
 
-// scanLockedTargets reads each candidate and returns only those currently
-// locked. A genuine read failure (SSH/permission) shouldn't abort the whole
-// sweep, so it is warned-and-skipped rather than propagated.
-func scanLockedTargets(locker *lock.RemoteLocker, candidates []lock.Target) []lockedTarget {
-	var locked []lockedTarget
+// lockScan splits the candidate targets into locks that were read successfully
+// and locks that are present but unreadable (corrupt JSON, permission). Targets
+// with no lock at all are dropped.
+type lockScan struct {
+	locked     []lockedTarget
+	unreadable []lock.Target
+}
+
+func (s lockScan) empty() bool {
+	return len(s.locked) == 0 && len(s.unreadable) == 0
+}
+
+func (s lockScan) count() int {
+	return len(s.locked) + len(s.unreadable)
+}
+
+func scanLockedTargets(locker *lock.RemoteLocker, candidates []lock.Target) lockScan {
+	var scan lockScan
 
 	for _, target := range candidates {
 		info, readErr := locker.Read(target)
-		if readErr != nil {
-			if !errors.Is(readErr, lock.ErrLockNotFound) {
-				_, _ = fmt.Fprintf(os.Stderr, "Warning: skipping %s/%s: %v\n",
-					target.Host.Name, target.Project, readErr)
-			}
 
-			continue
+		switch {
+		case readErr == nil:
+			scan.locked = append(scan.locked, lockedTarget{target: target, info: info})
+		case errors.Is(readErr, lock.ErrLockNotFound):
+			// No lock here; nothing to release.
+		default:
+			scan.unreadable = append(scan.unreadable, target)
 		}
-
-		locked = append(locked, lockedTarget{target: target, info: info})
 	}
 
-	return locked
+	return scan
 }
 
 // forceUnlockMany scans the candidate targets, force-unlocks only the ones that
 // are currently locked, and asks for a single confirmation covering the batch.
 func forceUnlockMany(locker *lock.RemoteLocker, candidates []lock.Target, force bool) error {
-	locked := scanLockedTargets(locker, candidates)
+	scan := scanLockedTargets(locker, candidates)
 
-	if len(locked) == 0 {
+	if scan.empty() {
 		_, _ = fmt.Fprintln(os.Stdout, "No locks found to release.")
 
 		return nil
 	}
 
-	for _, lt := range locked {
+	for _, lt := range scan.locked {
 		printLockInfo(lt.target, lt.info)
 	}
 
-	if !force && !confirmForceUnlock(fmt.Sprintf("%d lock(s)", len(locked))) {
+	for _, target := range scan.unreadable {
+		_, _ = fmt.Fprintf(os.Stdout, "Lock present but unreadable for %s/%s.\n", target.Host.Name, target.Project)
+	}
+
+	if !force && !confirmForceUnlock(fmt.Sprintf("%d lock(s)", scan.count())) {
 		_, _ = fmt.Fprintln(os.Stdout, "Force-unlock cancelled.")
 
 		return nil
 	}
 
+	return releaseScannedLocks(locker, scan, force)
+}
+
+// releaseScannedLocks removes every readable lock and, when --force is set, every
+// unreadable one too (mirroring the single-target force path). Without --force an
+// unreadable lock can't be safely removed, so it is reported as an error.
+func releaseScannedLocks(locker *lock.RemoteLocker, scan lockScan, force bool) error {
 	var firstErr error
 
-	for _, lt := range locked {
+	for _, lt := range scan.locked {
 		err := locker.ForceUnlockWithID(lt.target, lt.info.ID)
-		if err != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "Warning: failed to release lock %s/%s: %v\n",
-				lt.target.Host.Name, lt.target.Project, err)
+		firstErr = reportRelease(lt.target, err, firstErr)
+	}
+
+	for _, target := range scan.unreadable {
+		if !force {
+			_, _ = fmt.Fprintf(os.Stderr,
+				"Warning: not removing unreadable lock %s/%s without --force.\n",
+				target.Host.Name, target.Project)
 
 			if firstErr == nil {
-				firstErr = err
+				firstErr = errUnreadableLockNeedsForce
 			}
 
 			continue
 		}
 
-		_, _ = fmt.Fprintf(os.Stdout, "Lock released for %s/%s.\n", lt.target.Host.Name, lt.target.Project)
+		err := locker.ForceUnlock(target)
+		firstErr = reportRelease(target, err, firstErr)
 	}
+
+	return firstErr
+}
+
+// reportRelease prints the outcome of a single release and folds any failure into
+// the running first error.
+func reportRelease(target lock.Target, err, firstErr error) error {
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "Warning: failed to release lock %s/%s: %v\n",
+			target.Host.Name, target.Project, err)
+
+		if firstErr == nil {
+			return err
+		}
+
+		return firstErr
+	}
+
+	_, _ = fmt.Fprintf(os.Stdout, "Lock released for %s/%s.\n", target.Host.Name, target.Project)
 
 	return firstErr
 }

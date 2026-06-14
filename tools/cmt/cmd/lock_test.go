@@ -494,17 +494,54 @@ func TestValidateForceUnlockArgs(t *testing.T) {
 	}
 }
 
-func TestForceUnlockManyReadErrorSkips(t *testing.T) {
+func TestForceUnlockManyUnreadableForceRemoves(t *testing.T) {
 	t.Parallel()
 
-	// A genuine read failure (not "lock absent") must be warned-and-skipped,
-	// not abort the whole sweep. With every target erroring, nothing is locked.
-	client := &fakeClient{files: make(map[string]string), runErr: errNotSupported}
+	// An existing-but-corrupt lock can't be read; with --force it must still be
+	// removed, mirroring the single-target force path.
+	target := lockTargets("grafana")[0]
+	client := &fakeClient{files: map[string]string{target.LockPath: "{not valid json"}}
 	locker := lock.NewRemote(fakeFactory{client: client})
 
-	err := forceUnlockMany(locker, lockTargets("grafana", "n8n"), true)
+	err := forceUnlockMany(locker, []lock.Target{target}, true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+
+	locked, _ := locker.IsLocked(target)
+	if locked {
+		t.Error("expected unreadable lock to be removed with --force")
+	}
+}
+
+func TestForceUnlockManyUnreadableWithoutForceErrors(t *testing.T) { //nolint:paralleltest
+	// Without --force an unreadable lock can't be safely removed: it must be left
+	// in place and reported as an error.
+	target := lockTargets("grafana")[0]
+	client := &fakeClient{files: map[string]string{target.LockPath: "{not valid json"}}
+	locker := lock.NewRemote(fakeFactory{client: client})
+
+	r, w, pipeErr := os.Pipe()
+	if pipeErr != nil {
+		t.Fatalf("unexpected error creating pipe: %v", pipeErr)
+	}
+
+	_, _ = w.WriteString("y\n")
+	_ = w.Close()
+
+	oldStdin := os.Stdin
+	os.Stdin = r
+
+	t.Cleanup(func() { os.Stdin = oldStdin; _ = r.Close() })
+
+	err := forceUnlockMany(locker, []lock.Target{target}, false)
+	if !errors.Is(err, errUnreadableLockNeedsForce) {
+		t.Errorf("expected errUnreadableLockNeedsForce, got %v", err)
+	}
+
+	locked, _ := locker.IsLocked(target)
+	if !locked {
+		t.Error("expected unreadable lock to be left in place without --force")
 	}
 }
 
@@ -526,6 +563,29 @@ func TestForceUnlockManyReleaseErrorSurfaced(t *testing.T) {
 	err = forceUnlockMany(locker, []lock.Target{target}, true)
 	if err == nil {
 		t.Error("expected forceUnlockMany to surface the release failure")
+	}
+}
+
+func TestForceUnlockManyMultipleReleaseErrors(t *testing.T) {
+	t.Parallel()
+
+	client := &fakeClient{files: make(map[string]string), dirs: make(map[string]bool)}
+	locker := lock.NewRemote(fakeFactory{client: client})
+	targets := lockTargets("grafana", "n8n")
+
+	for _, target := range targets {
+		_, err := locker.Acquire(target, "apply", true)
+		if err != nil {
+			t.Fatalf("unexpected error acquiring lock: %v", err)
+		}
+	}
+
+	// Both removals fail: only the first error is surfaced, the rest are warnings.
+	client.removeErr = errNotSupported
+
+	err := forceUnlockMany(locker, targets, true)
+	if !errors.Is(err, errNotSupported) {
+		t.Errorf("expected first release error to surface, got %v", err)
 	}
 }
 

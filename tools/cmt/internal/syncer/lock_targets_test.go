@@ -182,6 +182,40 @@ func TestResolveLockTargets_NoHostProjectsMatched(t *testing.T) {
 	}
 }
 
+func TestResolveLockTargetsLenient_SkipsUnmatchedHost(t *testing.T) {
+	t.Parallel()
+
+	cfg := writeLockTargetRepo(t, "grafana")
+
+	hostDir := filepath.Join(cfg.BasePath, "hosts", "host1")
+
+	err := os.MkdirAll(hostDir, 0o750)
+	if err != nil {
+		t.Fatalf("unexpected error creating host dir: %v", err)
+	}
+
+	// host1 declares only an unrelated project, so grafana matches no host
+	// project. Strict resolution errors; the lenient variant skips the host.
+	err = os.WriteFile(filepath.Join(hostDir, "host.yml"), []byte("projects:\n  other: {}\n"), 0o600)
+	if err != nil {
+		t.Fatalf("unexpected error writing host.yml: %v", err)
+	}
+
+	_, err = ResolveLockTargets(cfg, nil, nil, PlanDependencies{SSHResolver: stubResolver{}})
+	if !errors.Is(err, errNoHostProjectsMatched) {
+		t.Fatalf("strict: expected errNoHostProjectsMatched, got %v", err)
+	}
+
+	targets, err := ResolveLockTargetsLenient(cfg, nil, nil, PlanDependencies{SSHResolver: stubResolver{}})
+	if err != nil {
+		t.Fatalf("lenient: unexpected error: %v", err)
+	}
+
+	if len(targets) != 0 {
+		t.Errorf("lenient: targets = %d, want 0 (host skipped)", len(targets))
+	}
+}
+
 func TestResolveLockTargets_NoHostsMatched(t *testing.T) {
 	t.Parallel()
 
