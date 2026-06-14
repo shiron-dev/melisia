@@ -123,8 +123,8 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "python-hcl2", specifier = ">=4.3.0" },
-    { name = "zxcvbn", specifier = ">=4.4.28" },
+    { name = "python-hcl2", specifier = ">=8.1.2" },
+    { name = "zxcvbn", specifier = ">=4.5.0" },
 ]
 
 [[package]]
