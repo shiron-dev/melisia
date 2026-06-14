@@ -14,50 +14,63 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var errLockTargetNotResolved = errors.New("could not resolve lock target")
-
-const (
-	forceUnlockArgCount = 2
-
-	// lockWildcard matches every host or project when passed in place of a
-	// concrete name, so a single command can release many stuck locks at once.
-	// "*" is used (not "all") because it can't collide with a real host or
-	// project name; quote it in the shell so it isn't glob-expanded.
-	lockWildcard = "*"
+var (
+	errLockTargetNotResolved     = errors.New("could not resolve lock target")
+	errForceUnlockNeedsTwoArgs   = errors.New("force-unlock requires <host> <project> (or use --all)")
+	errForceUnlockAllNoArgs      = errors.New("--all takes no positional args; narrow the scope with --host/--project")
+	errForceUnlockFiltersNeedAll = errors.New("--host/--project may only be used together with --all")
 )
 
+const forceUnlockArgCount = 2
+
+// forceUnlockOptions captures the flags that select which locks are released.
+type forceUnlockOptions struct {
+	force         bool
+	all           bool
+	hostFilter    []string
+	projectFilter []string
+}
+
 func newForceUnlockCmd(configPath *string) *cobra.Command {
-	var force bool
+	var opts forceUnlockOptions
 
 	cmd := new(cobra.Command)
-	cmd.Use = "force-unlock <host> <project>"
+	cmd.Use = "force-unlock [<host> <project>]"
 	cmd.Short = "Release a stuck lock for a project on a host"
 	cmd.Long = `Remove the remote lock file for a project that was left locked by a crashed or interrupted operation.
 
 The lock lives on the remote host at <remotePath>/<project>/.cmt.lock.
 
-Pass "*" in place of <host> and/or <project> to release every matching lock
-(quote it so the shell doesn't expand it):
+Pass --all to release every lock that is currently held, optionally narrowed with
+the repeatable --host / --project filters:
 
-  cmt force-unlock '*' '*'          # every locked project on every host
-  cmt force-unlock arm-srv '*'      # every locked project on arm-srv
-  cmt force-unlock '*' grafana      # grafana on every host that has it locked
+  cmt force-unlock --all                       # every locked project on every host
+  cmt force-unlock --all --host arm-srv        # every locked project on arm-srv
+  cmt force-unlock --all --project grafana     # grafana on every host that has it locked
 
-When a wildcard is used, only projects that are currently locked are touched and
-a single confirmation covers the whole batch.
+With --all only projects that are currently locked are touched and a single
+confirmation covers the whole batch.
 
 Use --force to skip the confirmation prompt.`
-	cmd.Args = cobra.ExactArgs(forceUnlockArgCount)
+	cmd.Args = cobra.MaximumNArgs(forceUnlockArgCount)
 	cmd.RunE = func(_ *cobra.Command, args []string) error {
-		return runForceUnlock(*configPath, args[0], args[1], force)
+		return runForceUnlock(*configPath, args, opts)
 	}
 
-	cmd.Flags().BoolVar(&force, "force", false, "skip confirmation prompt")
+	cmd.Flags().BoolVar(&opts.force, "force", false, "skip confirmation prompt")
+	cmd.Flags().BoolVar(&opts.all, "all", false, "release every currently held lock (narrow with --host/--project)")
+	cmd.Flags().StringSliceVar(&opts.hostFilter, "host", nil, "with --all: filter by host name (repeatable)")
+	cmd.Flags().StringSliceVar(&opts.projectFilter, "project", nil, "with --all: filter by project name (repeatable)")
 
 	return cmd
 }
 
-func runForceUnlock(configPath, hostName, project string, force bool) error {
+func runForceUnlock(configPath string, args []string, opts forceUnlockOptions) error {
+	err := validateForceUnlockArgs(args, opts)
+	if err != nil {
+		return err
+	}
+
 	cfg, err := config.LoadCmtConfig(configPath)
 	if err != nil {
 		return err
@@ -70,69 +83,93 @@ func runForceUnlock(configPath, hostName, project string, force bool) error {
 		ProgressWriter: nil,
 	}
 
-	if hostName == lockWildcard || project == lockWildcard {
-		return runForceUnlockWildcard(cfg, hostName, project, force, deps)
+	if opts.all {
+		return runForceUnlockAll(remoteLocker(nil), cfg, opts, deps)
 	}
 
-	target, err := resolveSingleLockTarget(cfg, hostName, project, deps)
+	// validateForceUnlockArgs already guaranteed exactly two args here; the guard
+	// keeps the indexing provably safe for static analysis.
+	if len(args) < forceUnlockArgCount {
+		return errForceUnlockNeedsTwoArgs
+	}
+
+	target, err := resolveSingleLockTarget(cfg, args[0], args[1], deps)
 	if err != nil {
 		return err
 	}
 
-	return runForceUnlockWithLocker(remoteLocker(nil), target, force)
+	return runForceUnlockWithLocker(remoteLocker(nil), target, opts.force)
 }
 
-// lockFilter turns a positional argument into a ResolveLockTargets filter: the
-// wildcard becomes an empty filter (matches all), anything else a single name.
-func lockFilter(value string) []string {
-	if value == lockWildcard {
+// validateForceUnlockArgs rejects flag/argument combinations that don't make
+// sense: --all takes no positionals, the filters require --all, and the
+// single-target form needs exactly <host> <project>.
+func validateForceUnlockArgs(args []string, opts forceUnlockOptions) error {
+	if opts.all {
+		if len(args) > 0 {
+			return errForceUnlockAllNoArgs
+		}
+
 		return nil
 	}
 
-	return []string{value}
+	if len(opts.hostFilter) > 0 || len(opts.projectFilter) > 0 {
+		return errForceUnlockFiltersNeedAll
+	}
+
+	if len(args) != forceUnlockArgCount {
+		return errForceUnlockNeedsTwoArgs
+	}
+
+	return nil
 }
 
-func runForceUnlockWildcard(
+func runForceUnlockAll(
+	locker *lock.RemoteLocker,
 	cfg *config.CmtConfig,
-	hostName, project string,
-	force bool,
+	opts forceUnlockOptions,
 	deps syncer.PlanDependencies,
 ) error {
-	targets, err := syncer.ResolveLockTargets(cfg, lockFilter(hostName), lockFilter(project), deps)
+	targets, err := syncer.ResolveLockTargets(cfg, opts.hostFilter, opts.projectFilter, deps)
 	if err != nil {
 		return err
 	}
 
-	return forceUnlockMany(remoteLocker(nil), targets, force)
+	return forceUnlockMany(locker, targets, opts.force)
 }
 
-// forceUnlockMany scans the candidate targets, force-unlocks only the ones that
-// are currently locked, and asks for a single confirmation covering the batch.
-func forceUnlockMany(locker *lock.RemoteLocker, candidates []lock.Target, force bool) error {
-	type lockedTarget struct {
-		target lock.Target
-		info   *lock.Info
-	}
+type lockedTarget struct {
+	target lock.Target
+	info   *lock.Info
+}
 
+// scanLockedTargets reads each candidate and returns only those currently
+// locked. A genuine read failure (SSH/permission) shouldn't abort the whole
+// sweep, so it is warned-and-skipped rather than propagated.
+func scanLockedTargets(locker *lock.RemoteLocker, candidates []lock.Target) []lockedTarget {
 	var locked []lockedTarget
 
 	for _, target := range candidates {
 		info, readErr := locker.Read(target)
 		if readErr != nil {
-			if errors.Is(readErr, lock.ErrLockNotFound) {
-				continue
+			if !errors.Is(readErr, lock.ErrLockNotFound) {
+				_, _ = fmt.Fprintf(os.Stderr, "Warning: skipping %s/%s: %v\n",
+					target.Host.Name, target.Project, readErr)
 			}
-
-			// A genuine read failure (SSH/permission) shouldn't abort the whole
-			// sweep: warn and keep going so other hosts still get unlocked.
-			_, _ = fmt.Fprintf(os.Stderr, "Warning: skipping %s/%s: %v\n",
-				target.Host.Name, target.Project, readErr)
 
 			continue
 		}
 
 		locked = append(locked, lockedTarget{target: target, info: info})
 	}
+
+	return locked
+}
+
+// forceUnlockMany scans the candidate targets, force-unlocks only the ones that
+// are currently locked, and asks for a single confirmation covering the batch.
+func forceUnlockMany(locker *lock.RemoteLocker, candidates []lock.Target, force bool) error {
+	locked := scanLockedTargets(locker, candidates)
 
 	if len(locked) == 0 {
 		_, _ = fmt.Fprintln(os.Stdout, "No locks found to release.")

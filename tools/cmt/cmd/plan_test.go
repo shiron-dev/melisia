@@ -215,7 +215,7 @@ func TestResolveSingleLockTargetNotFound(t *testing.T) {
 func TestRunForceUnlockConfigNotFound(t *testing.T) {
 	t.Parallel()
 
-	err := runForceUnlock("/nonexistent/config.yml", "test-host", "grafana", false)
+	err := runForceUnlock("/nonexistent/config.yml", []string{"test-host", "grafana"}, forceUnlockOptions{})
 	if err == nil {
 		t.Fatal("expected error for nonexistent config")
 	}
