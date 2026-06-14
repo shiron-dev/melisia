@@ -39,10 +39,11 @@ define check_gcloud_auth
 endef
 
 .PHONY: auth
-auth: init
+auth: init home-ep-ssh-key
 	$(call check_gcloud_auth)
 	gcloud config set project $(PROJECT_ID)
 	ssh -o BatchMode=yes -o ConnectTimeout=5 -F $(ANSIBLE_DIR)/ssh_config ansible_user@arm-srv.shiron.dev exit
+	ssh -o BatchMode=yes -o ConnectTimeout=5 -F $(ANSIBLE_DIR)/ssh_config home-ep exit
 
 .PHONY: home-ep-ssh-key
 home-ep-ssh-key: init
