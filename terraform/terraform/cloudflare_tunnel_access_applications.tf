@@ -48,6 +48,11 @@ resource "cloudflare_zero_trust_access_application" "this" {
   policies = concat([local.cloudflare_access_e2e_policy_ref], each.value.policies)
 }
 
+import {
+  to = cloudflare_zero_trust_access_application.n8n
+  id = "accounts/edc628145468437b85dc0e6d48bff3e3/b52adec0-a363-431f-80f7-43e5a5e1b9df"
+}
+
 resource "cloudflare_zero_trust_access_application" "n8n" {
   account_id                 = local.cloudflare_account_id
   name                       = "n8n"
@@ -62,6 +67,11 @@ resource "cloudflare_zero_trust_access_application" "n8n" {
   options_preflight_bypass   = false
 
   policies = concat([local.cloudflare_access_e2e_policy_ref], local.cloudflare_access_policy_refs.n8n)
+}
+
+import {
+  to = cloudflare_zero_trust_access_application.n8n_bypass
+  id = "accounts/edc628145468437b85dc0e6d48bff3e3/d39f708f-53b7-41e3-b930-ce81174eeeae"
 }
 
 resource "cloudflare_zero_trust_access_application" "n8n_bypass" {
