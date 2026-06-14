@@ -7,6 +7,7 @@ resource "cloudflare_dns_record" "tunnel" {
   content = "${cloudflare_zero_trust_tunnel_cloudflared.this[each.key].id}.cfargotunnel.com"
   ttl     = 1
   proxied = true
+  comment = "Cloudflare Tunnel ${each.key}${local.cloudflare_resource_name_suffix}"
 }
 
 resource "cloudflare_dns_record" "extra_tunnel_ingress" {
@@ -18,4 +19,5 @@ resource "cloudflare_dns_record" "extra_tunnel_ingress" {
   content = "${cloudflare_zero_trust_tunnel_cloudflared.this[each.value.tunnel_key].id}.cfargotunnel.com"
   ttl     = 1
   proxied = true
+  comment = "Cloudflare Tunnel ${each.value.tunnel_key} extra ingress${local.cloudflare_resource_name_suffix}"
 }

@@ -230,6 +230,10 @@
           "values": false
         },
         "showPercentChange": false,
+        "text": {
+          "titleSize": 16,
+          "valueSize": 40
+        },
         "textMode": "value_and_name",
         "wideLayout": false
       },
@@ -241,9 +245,9 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "probe_success{job=\"cloudflare_tunnel_e2e\",edge_auth=~\".+\"}",
+          "expr": "label_replace(probe_success{job=\"cloudflare_tunnel_e2e\",edge_auth=~\".+\"}, \"host_label\", \"$1\", \"host\", \"^([^.]+)\\\\..*\")",
           "instant": true,
-          "legendFormat": "{{ probe_server }} {{ target_server }} {{ edge_auth }} {{ host }}",
+          "legendFormat": "{{ host_label }}",
           "range": false,
           "refId": "A"
         }
@@ -421,6 +425,10 @@
           "values": false
         },
         "showPercentChange": false,
+        "text": {
+          "titleSize": 28,
+          "valueSize": 28
+        },
         "textMode": "value_and_name",
         "wideLayout": false
       },
@@ -490,6 +498,10 @@
           "values": false
         },
         "showPercentChange": false,
+        "text": {
+          "titleSize": 28,
+          "valueSize": 28
+        },
         "textMode": "value_and_name",
         "wideLayout": false
       },
@@ -569,6 +581,13 @@
                     "type": "value"
                   }
                 ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "mode": "basic",
+                  "type": "color-background"
+                }
               }
             ]
           },
@@ -609,6 +628,10 @@
         },
         "showHeader": true,
         "sortBy": [
+          {
+            "desc": false,
+            "displayName": "Status"
+          },
           {
             "desc": false,
             "displayName": "Target Server"

@@ -42,7 +42,7 @@ resource "cloudflare_dns_record" "mesh_dynamic" {
   content = "100.96.0.1"
   ttl     = 1
   proxied = false
-  comment = "Cloudflare Mesh IP managed by mesh-dns-updater"
+  comment = "Cloudflare Mesh IP managed by mesh-dns-updater${local.cloudflare_resource_name_suffix}"
 
   lifecycle {
     ignore_changes = [content]
