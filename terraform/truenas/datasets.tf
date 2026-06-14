@@ -30,14 +30,24 @@ locals {
       full_name   = "apps/apps/nextcloud/config"
       compression = "LZ4"
     }
-    apps_apps_nextcloud_userdata = {
-      pool        = "apps"
-      full_name   = "apps/apps/nextcloud/userdata"
-      compression = "LZ4"
-    }
     tank = {
       pool        = "tank"
       full_name   = "tank"
+      compression = "LZ4"
+    }
+    tank_apps = {
+      pool        = "tank"
+      full_name   = "tank/apps"
+      compression = "LZ4"
+    }
+    tank_apps_tnextcloud = {
+      pool        = "tank"
+      full_name   = "tank/apps/tnextcloud"
+      compression = "LZ4"
+    }
+    tank_apps_tnextcloud_userdata = {
+      pool        = "tank"
+      full_name   = "tank/apps/tnextcloud/userdata"
       compression = "LZ4"
     }
     tank_users = {

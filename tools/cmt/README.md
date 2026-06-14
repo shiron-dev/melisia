@@ -312,6 +312,8 @@ apply フラグ:
 force-unlock:
   cmt force-unlock <host> <project>  指定 project のリモートロックを解除
   --force                            確認プロンプトをスキップ
+  --all                              現在ロック中の全 project をまとめて解除
+  --host / --project                 --all の対象を絞り込み（複数指定可）
 
 schema:
   cmt schema cmt                 cmt 設定の JSON Schema を出力
@@ -344,6 +346,24 @@ schema:
 cmt force-unlock arm-srv grafana            # 確認プロンプトあり
 cmt force-unlock arm-srv grafana --force    # 確認なしで解除
 ```
+
+`--all` を指定すると、一致する**現在ロック中**の project をまとめて解除できます。
+対象は `--host` / `--project`（いずれも複数指定可）で絞り込めます。フラグ方式の
+ため、シェルのグロブ展開を気にせず（`*` のクォート不要で）zsh でもそのまま使えます。
+
+```bash
+cmt force-unlock --all                    # 全ホスト・全 project のロックを解除
+cmt force-unlock --all --host arm-srv     # arm-srv 上の全 project のロックを解除
+cmt force-unlock --all --project grafana  # grafana がロック中の全ホストを解除
+```
+
+`--all` 指定時はロック中の project のみが対象になり、まとめて 1 回だけ
+確認プロンプトが表示されます（`--force` でスキップ）。`--host` / `--project` は
+`--all` と併用する必要があり、単体指定はエラーになります。
+
+`--all --project grafana` のように絞り込んだ場合、その project を持たないホストは
+エラーにせずスキップします。また、ロックファイルが壊れて読めない場合は単体指定と
+同様に `--force` を付けたときのみ削除し、`--force` なしではエラーとして報告します。
 
 ## JSON Schema
 
