@@ -186,7 +186,7 @@ func TestAcquireRemoteLocksSuccess(t *testing.T) {
 
 	var buf strings.Builder
 
-	release, err := acquireRemoteLocks(locker, targets, "plan", true, &buf)
+	release, err := acquireRemoteLocks(locker, targets, &buf)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -218,7 +218,7 @@ func TestAcquireRemoteLocksRollsBackCreatedEmptyDir(t *testing.T) {
 	var buf strings.Builder
 
 	// apply-style acquire (ensureDir=true) creates the project dir.
-	release, err := acquireRemoteLocks(locker, targets, "apply", true, &buf)
+	release, err := acquireRemoteLocks(locker, targets, &buf)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -244,7 +244,7 @@ func TestAcquireRemoteLocksKeepsDirWithFiles(t *testing.T) {
 
 	var buf strings.Builder
 
-	release, err := acquireRemoteLocks(locker, targets, "apply", true, &buf)
+	release, err := acquireRemoteLocks(locker, targets, &buf)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -268,7 +268,7 @@ func TestAcquireRemoteLocksReleaseSurfacesError(t *testing.T) {
 
 	var buf strings.Builder
 
-	release, err := acquireRemoteLocks(locker, targets, "apply", true, &buf)
+	release, err := acquireRemoteLocks(locker, targets, &buf)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -294,7 +294,7 @@ func TestAcquireRemoteLocksAlreadyLocked(t *testing.T) {
 
 	var buf strings.Builder
 
-	release, err := acquireRemoteLocks(locker, targets, "plan", true, &buf)
+	release, err := acquireRemoteLocks(locker, targets, &buf)
 	if err == nil {
 		_ = release()
 
@@ -320,7 +320,7 @@ func TestAcquireRemoteLocksReleasesOnPartialFailure(t *testing.T) {
 
 	var buf strings.Builder
 
-	_, err = acquireRemoteLocks(locker, targets, "plan", true, &buf)
+	_, err = acquireRemoteLocks(locker, targets, &buf)
 	if err == nil {
 		t.Fatal("expected error when second target is already locked")
 	}
@@ -338,7 +338,7 @@ func TestAcquireRemoteLocksEmpty(t *testing.T) {
 
 	var buf strings.Builder
 
-	release, err := acquireRemoteLocks(locker, nil, "plan", true, &buf)
+	release, err := acquireRemoteLocks(locker, nil, &buf)
 	if err != nil {
 		t.Fatalf("unexpected error for empty target list: %v", err)
 	}

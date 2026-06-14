@@ -57,15 +57,15 @@ func planDeps(client *fakeClient) syncer.PlanDependencies {
 func TestRunPlanCmdConfigNotFound(t *testing.T) {
 	t.Parallel()
 
-	locker := newTestLocker()
-
-	err := runPlanCmdWithLocker(locker, "/nonexistent/config.yml", nil, nil, false, "", syncer.PlanDependencies{})
+	err := runPlanCmd("/nonexistent/config.yml", nil, nil, false, "", syncer.PlanDependencies{})
 	if err == nil {
 		t.Fatal("expected error for nonexistent config")
 	}
 }
 
-func TestRunPlanCmdWithLockerLockFail(t *testing.T) {
+// plan is read-only and must not be blocked by a held lock from another
+// operation.
+func TestRunPlanCmdSucceedsWhenLocked(t *testing.T) {
 	t.Parallel()
 
 	configPath := writeTestRepo(t)
@@ -73,7 +73,7 @@ func TestRunPlanCmdWithLockerLockFail(t *testing.T) {
 	client := &fakeClient{files: make(map[string]string)}
 	deps := planDeps(client)
 
-	// Pre-lock the grafana project so plan's acquire fails.
+	// Pre-lock the grafana project; plan must still succeed.
 	preLocker := lock.NewRemote(fakeFactory{client: client})
 
 	_, err := preLocker.Acquire(lock.Target{
@@ -86,21 +86,9 @@ func TestRunPlanCmdWithLockerLockFail(t *testing.T) {
 		t.Fatalf("unexpected error pre-acquiring lock: %v", err)
 	}
 
-	locker := lock.NewRemote(fakeFactory{client: client})
-
-	err = runPlanCmdWithLocker(locker, configPath, nil, nil, false, "", deps)
-	if !errors.Is(err, lock.ErrLocked) {
-		t.Errorf("expected ErrLocked, got %v", err)
-	}
-}
-
-func TestRunPlanCmdWrapperConfigNotFound(t *testing.T) {
-	t.Parallel()
-
-	err := runPlanCmd("/nonexistent/config.yml", nil, nil, false, "",
-		syncer.PlanDependencies{ClientFactory: fakeFactory{client: &fakeClient{files: map[string]string{}}}})
-	if err == nil {
-		t.Fatal("expected error for nonexistent config")
+	err = runPlanCmd(configPath, nil, nil, false, "", deps)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -146,13 +134,13 @@ func TestRunApplyCmdLockFail(t *testing.T) {
 	}
 }
 
-func TestRunPlanCmdWithLockerSuccess(t *testing.T) {
+func TestRunPlanCmdSuccess(t *testing.T) {
 	t.Parallel()
 
 	configPath := writeTestRepo(t)
 	client := &fakeClient{files: make(map[string]string)}
 
-	err := runPlanCmdWithLocker(newTestLocker(), configPath, nil, nil, false, "", planDeps(client))
+	err := runPlanCmd(configPath, nil, nil, false, "", planDeps(client))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
