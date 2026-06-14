@@ -52,7 +52,7 @@ import {
 
 import {
   to = cloudflare_zero_trust_access_service_token.github_actions_arm_srv
-  id = "edc628145468437b85dc0e6d48bff3e3/4350fda9-d790-494c-aca2-259fe39edc55"
+  id = "accounts/edc628145468437b85dc0e6d48bff3e3/4350fda9-d790-494c-aca2-259fe39edc55"
 }
 
 import {
