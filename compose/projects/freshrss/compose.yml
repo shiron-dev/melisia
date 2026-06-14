@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     environment:
       TZ: Asia/Tokyo
-      CRON_MIN: "2,32"
+      CRON_MIN: "{{ .freshrss_cron_min }}"
       TRUSTED_PROXIES: "172.16.0.0/12"
     volumes:
       - ./data:/var/www/FreshRSS/data
@@ -35,7 +35,7 @@ services:
           cpus: '0.25'
           memory: 128M
     healthcheck:
-      test: ["CMD-SHELL", "wget --quiet --spider --tries=1 --timeout=5 http://127.0.0.1/ || exit 1"]
+      test: ["CMD-SHELL", "php -r \"exit(@fsockopen('127.0.0.1', 80) !== false ? 0 : 1);\""]
       interval: 30s
       timeout: 10s
       retries: 3
