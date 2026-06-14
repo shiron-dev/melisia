@@ -210,6 +210,9 @@ services:
     depends_on:
       homeassistant:
         condition: service_started
+        # homeassistant が再生成されると netns が変わるため、proxy を自動で再起動して
+        # 新しい netns に再アタッチさせる (restart 不可・recreate 必須問題の恒久対応)
+        restart: true
       matter-server:
         condition: service_started
       mosquitto:
