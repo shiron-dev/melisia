@@ -17,11 +17,12 @@ type acquiredLock struct {
 // acquireRemoteLocks takes the locks for all targets. The returned release
 // function removes them and reports the first release failure — a leaked remote
 // lock blocks later operations, so callers must surface it rather than ignore it.
+//
+// Only apply acquires locks (plan is read-only and never locks), so the project
+// directory is always created when missing.
 func acquireRemoteLocks(
 	locker *lock.RemoteLocker,
 	targets []lock.Target,
-	operation string,
-	ensureDir bool,
 	w io.Writer,
 ) (func() error, error) {
 	var acquired []acquiredLock
@@ -51,7 +52,7 @@ func acquireRemoteLocks(
 	}
 
 	for _, target := range targets {
-		info, err := locker.Acquire(target, operation, ensureDir)
+		info, err := locker.Acquire(target, "apply", true)
 		if err != nil {
 			_ = releaseFn()
 
@@ -59,7 +60,8 @@ func acquireRemoteLocks(
 		}
 
 		if info == nil {
-			// Lock skipped (e.g. plan on a not-yet-deployed project).
+			// Defensive: Acquire only returns nil info when the directory is
+			// missing and not created, which cannot happen here (ensureDir).
 			continue
 		}
 

@@ -119,7 +119,7 @@ func acquireApplyLocks(
 		return nil, err
 	}
 
-	return acquireRemoteLocks(remoteLocker(applyDependencies.ClientFactory), targets, "apply", true, os.Stdout)
+	return acquireRemoteLocks(remoteLocker(applyDependencies.ClientFactory), targets, os.Stdout)
 }
 
 // remoteLocker builds a RemoteLocker, defaulting to a real SSH client factory.
