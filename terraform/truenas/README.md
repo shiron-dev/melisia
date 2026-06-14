@@ -38,12 +38,16 @@ make terraform-truenas-replace-provider-state
 Managed storage resources:
 
 - ZFS datasets for the `apps` and `tank` pool roots, plus datasets under
-  `apps/apps` and `tank/users`, are declared in `datasets.tf`.
+  `apps/apps`, `apps/apps/nextcloud` runtime data except userdata,
+  `tank/apps/tnextcloud/userdata`, and `tank/users`, are declared in
+  `datasets.tf`.
 
 Removed storage resources:
 
-- `tank/apps` and its former Nextcloud child datasets were deleted from TrueNAS
-  and removed from Terraform state on 2026-06-07.
+- The former Nextcloud datasets under `tank/apps` were deleted from TrueNAS and
+  removed from Terraform state on 2026-06-07. The
+  `tank/apps/tnextcloud/userdata` dataset is managed again as the Nextcloud
+  userdata location moved from the `apps` pool.
 
 Managed application service settings:
 

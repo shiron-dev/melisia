@@ -201,7 +201,7 @@ locals {
       data = {
         host_path_config = {
           acl_enable = false
-          path       = "/mnt/apps/apps/nextcloud/userdata"
+          path       = "/mnt/tank/apps/tnextcloud/userdata"
         }
         type = "host_path"
       }
