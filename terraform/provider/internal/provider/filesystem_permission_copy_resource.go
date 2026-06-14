@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -13,9 +12,8 @@ import (
 )
 
 var (
-	_ resource.Resource                = &filesystemPermissionCopyResource{}
-	_ resource.ResourceWithConfigure   = &filesystemPermissionCopyResource{}
-	_ resource.ResourceWithImportState = &filesystemPermissionCopyResource{}
+	_ resource.Resource              = &filesystemPermissionCopyResource{}
+	_ resource.ResourceWithConfigure = &filesystemPermissionCopyResource{}
 )
 
 type filesystemPermissionCopyResource struct {
@@ -144,10 +142,6 @@ func (r *filesystemPermissionCopyResource) Update(ctx context.Context, req resou
 }
 
 func (r *filesystemPermissionCopyResource) Delete(ctx context.Context, _ resource.DeleteRequest, _ *resource.DeleteResponse) {
-}
-
-func (r *filesystemPermissionCopyResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
 func (r *filesystemPermissionCopyResource) copyPermission(ctx context.Context, plan filesystemPermissionCopyResourceModel) (filesystemPermissionCopyResourceModel, error) {

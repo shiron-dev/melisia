@@ -120,13 +120,15 @@ func (r *filesystemACLResource) Read(ctx context.Context, req resource.ReadReque
 		return
 	}
 
-	current, err := r.client.GetFilesystemACL(ctx, state.Path.ValueString())
+	pathValue := filesystemPathFromState(state.Path, state.ID)
+	current, err := r.client.GetFilesystemACL(ctx, pathValue)
 	if err != nil {
 		resp.Diagnostics.AddError("Unable to read TrueNAS filesystem ACL", err.Error())
 		return
 	}
 
-	state.ID = types.StringValue(state.Path.ValueString())
+	state.ID = types.StringValue(pathValue)
+	state.Path = types.StringValue(pathValue)
 	state.UID = types.Int64Value(current.UID)
 	state.GID = types.Int64Value(current.GID)
 	state.ACLType = types.StringValue(current.ACLType)
@@ -166,4 +168,14 @@ func (r *filesystemACLResource) apply(ctx context.Context, model filesystemACLRe
 		ACL:       json.RawMessage(model.ACLJSON.ValueString()),
 		Recursive: model.Recursive.ValueBool(),
 	})
+}
+
+func filesystemPathFromState(pathValue, idValue types.String) string {
+	if !pathValue.IsNull() && !pathValue.IsUnknown() && pathValue.ValueString() != "" {
+		return pathValue.ValueString()
+	}
+	if !idValue.IsNull() && !idValue.IsUnknown() {
+		return idValue.ValueString()
+	}
+	return ""
 }

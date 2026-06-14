@@ -4,7 +4,6 @@ import (
 	"context"
 	"strconv"
 
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -14,9 +13,8 @@ import (
 )
 
 var (
-	_ resource.Resource                = &smbShareCopyResource{}
-	_ resource.ResourceWithConfigure   = &smbShareCopyResource{}
-	_ resource.ResourceWithImportState = &smbShareCopyResource{}
+	_ resource.Resource              = &smbShareCopyResource{}
+	_ resource.ResourceWithConfigure = &smbShareCopyResource{}
 )
 
 type smbShareCopyResource struct {
@@ -162,10 +160,6 @@ func (r *smbShareCopyResource) Delete(ctx context.Context, req resource.DeleteRe
 	if err := r.client.DeleteSMBShare(ctx, id); err != nil {
 		resp.Diagnostics.AddError("Unable to delete TrueNAS SMB share", err.Error())
 	}
-}
-
-func (r *smbShareCopyResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
 func (r *smbShareCopyResource) createOrUpdate(ctx context.Context, plan smbShareCopyResourceModel, id int64) (smbShareCopyResourceModel, error) {

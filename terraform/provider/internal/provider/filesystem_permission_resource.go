@@ -109,13 +109,15 @@ func (r *filesystemPermissionResource) Read(ctx context.Context, req resource.Re
 		return
 	}
 
-	current, err := r.client.GetFilesystemStat(ctx, state.Path.ValueString())
+	pathValue := filesystemPathFromState(state.Path, state.ID)
+	current, err := r.client.GetFilesystemStat(ctx, pathValue)
 	if err != nil {
 		resp.Diagnostics.AddError("Unable to read TrueNAS filesystem permissions", err.Error())
 		return
 	}
 
-	state.ID = types.StringValue(state.Path.ValueString())
+	state.ID = types.StringValue(pathValue)
+	state.Path = types.StringValue(pathValue)
 	state.Mode = types.StringValue(current.Mode)
 	state.UID = types.Int64Value(current.UID)
 	state.GID = types.Int64Value(current.GID)
