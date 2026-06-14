@@ -306,7 +306,7 @@ services:
       start_period: 40s
   loki:
     container_name: loki
-    image: grafana/loki:3.5.0@sha256:4c431d2e6b9b38718694b31c5d56be7c80dc69c513215fde1aeb5b02cd4e2665
+    image: grafana/loki:3.7.2@sha256:191d4fdfb7264f16989f0a57f320872620a5a7c2ceeec6229212c4190ec49b86
     user: "10001"
     ports:
       - "127.0.0.1:3100:3100"
