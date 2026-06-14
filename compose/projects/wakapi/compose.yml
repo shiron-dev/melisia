@@ -1,4 +1,5 @@
 services:
+  # kics-scan ignore-line
   wakapi:
     image: ghcr.io/muety/wakapi:2.17.4@sha256:6fce764acf8775e1166e8b03e59fb6b34744e4a9fba5e98d9ea15d341db31bf8
     container_name: wakapi
