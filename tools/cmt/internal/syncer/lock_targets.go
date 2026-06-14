@@ -89,16 +89,19 @@ func resolveHostLockTargets(
 		hostCfg = nil
 	}
 
+	// Match projects before resolving SSH: a host that runs none of the requested
+	// projects can then be skipped (by the lenient caller) without paying the
+	// ssh -G cost or failing on that host's missing/broken SSH config.
+	hostProjects, err := filterHostProjects(host, hostCfg, projects)
+	if err != nil {
+		return nil, err
+	}
+
 	resolvedHost := host
 
 	err = resolveHostSSHConfig(cfg.BasePath, &resolvedHost, hostCfg, sshResolver)
 	if err != nil {
 		return nil, fmt.Errorf("resolving SSH config for %s: %w", host.Name, err)
-	}
-
-	hostProjects, err := filterHostProjects(resolvedHost, hostCfg, projects)
-	if err != nil {
-		return nil, err
 	}
 
 	targets := make([]lock.Target, 0, len(hostProjects))

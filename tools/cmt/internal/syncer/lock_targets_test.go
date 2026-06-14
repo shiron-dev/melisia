@@ -20,6 +20,15 @@ func (stubResolver) Resolve(entry *config.HostEntry, _, _ string) error {
 	return nil
 }
 
+var errResolverInvoked = errors.New("ssh resolver should not have been invoked")
+
+// failResolver fails if called, proving a host was skipped before SSH resolution.
+type failResolver struct{}
+
+func (failResolver) Resolve(_ *config.HostEntry, _, _ string) error {
+	return errResolverInvoked
+}
+
 func writeLockTargetRepo(t *testing.T, projects ...string) *config.CmtConfig {
 	t.Helper()
 
@@ -209,6 +218,38 @@ func TestResolveLockTargetsLenient_SkipsUnmatchedHost(t *testing.T) {
 	targets, err := ResolveLockTargetsLenient(cfg, nil, nil, PlanDependencies{SSHResolver: stubResolver{}})
 	if err != nil {
 		t.Fatalf("lenient: unexpected error: %v", err)
+	}
+
+	if len(targets) != 0 {
+		t.Errorf("lenient: targets = %d, want 0 (host skipped)", len(targets))
+	}
+}
+
+func TestResolveLockTargetsLenient_SkipsBeforeSSHResolve(t *testing.T) {
+	t.Parallel()
+
+	cfg := writeLockTargetRepo(t, "grafana")
+
+	hostDir := filepath.Join(cfg.BasePath, "hosts", "host1")
+
+	err := os.MkdirAll(hostDir, 0o750)
+	if err != nil {
+		t.Fatalf("unexpected error creating host dir: %v", err)
+	}
+
+	// host1 runs only "other", so a grafana filter matches nothing here. With a
+	// resolver that errors if invoked, the lenient path must skip the host before
+	// SSH resolution rather than failing the whole batch.
+	err = os.WriteFile(filepath.Join(hostDir, "host.yml"), []byte("projects:\n  other: {}\n"), 0o600)
+	if err != nil {
+		t.Fatalf("unexpected error writing host.yml: %v", err)
+	}
+
+	targets, err := ResolveLockTargetsLenient(
+		cfg, nil, []string{"grafana"}, PlanDependencies{SSHResolver: failResolver{}},
+	)
+	if err != nil {
+		t.Fatalf("lenient: unexpected error (SSH resolved too early?): %v", err)
 	}
 
 	if len(targets) != 0 {
