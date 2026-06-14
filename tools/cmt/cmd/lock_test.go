@@ -412,6 +412,57 @@ func TestRunForceUnlockWithLockerCancelConfirm(t *testing.T) { //nolint:parallel
 	}
 }
 
+func TestForceUnlockManyReleasesOnlyLocked(t *testing.T) {
+	t.Parallel()
+
+	locker := newTestLocker()
+	targets := lockTargets("grafana", "n8n", "vault")
+
+	// Lock two of the three candidates.
+	for _, i := range []int{0, 2} {
+		_, err := locker.Acquire(targets[i], "apply", true)
+		if err != nil {
+			t.Fatalf("unexpected error acquiring lock: %v", err)
+		}
+	}
+
+	// force=true skips confirmation; n8n is untouched because it was never locked.
+	if err := forceUnlockMany(locker, targets, true); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, target := range targets {
+		locked, _ := locker.IsLocked(target)
+		if locked {
+			t.Errorf("expected %s to be unlocked", target.Project)
+		}
+	}
+}
+
+func TestForceUnlockManyNoLocks(t *testing.T) {
+	t.Parallel()
+
+	locker := newTestLocker()
+
+	// No targets are locked, so this is a no-op success (no confirmation needed).
+	if err := forceUnlockMany(locker, lockTargets("grafana", "n8n"), false); err != nil {
+		t.Fatalf("unexpected error for no-lock batch: %v", err)
+	}
+}
+
+func TestLockFilterWildcard(t *testing.T) {
+	t.Parallel()
+
+	if got := lockFilter(lockWildcard); got != nil {
+		t.Errorf("expected wildcard to map to nil filter, got %v", got)
+	}
+
+	got := lockFilter("grafana")
+	if len(got) != 1 || got[0] != "grafana" {
+		t.Errorf("expected [grafana], got %v", got)
+	}
+}
+
 func TestConfirmForceUnlockYes(t *testing.T) { //nolint:paralleltest
 	for _, answer := range []string{"y\n", "yes\n", "YES\n", "Y\n"} {
 		r, w, err := os.Pipe()

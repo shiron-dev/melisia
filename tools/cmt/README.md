@@ -312,6 +312,7 @@ apply フラグ:
 force-unlock:
   cmt force-unlock <host> <project>  指定 project のリモートロックを解除
   --force                            確認プロンプトをスキップ
+  <host> / <project> に '*' を指定すると一致する全ロックを解除（要クォート）
 
 schema:
   cmt schema cmt                 cmt 設定の JSON Schema を出力
@@ -345,6 +346,20 @@ schema:
 cmt force-unlock arm-srv grafana            # 確認プロンプトあり
 cmt force-unlock arm-srv grafana --force    # 確認なしで解除
 ```
+
+`<host>` / `<project>` に `'*'`（ワイルドカード）を指定すると、一致する
+**現在ロック中**の project をまとめて解除できます。シェルに展開されないよう
+クォートしてください。`all` のような文字列は実在の project 名と衝突しうるため、
+ワイルドカードには `*` を使います。
+
+```bash
+cmt force-unlock '*' '*'          # 全ホスト・全 project のロックを解除
+cmt force-unlock arm-srv '*'      # arm-srv 上の全 project のロックを解除
+cmt force-unlock '*' grafana      # grafana がロック中の全ホストを解除
+```
+
+ワイルドカード指定時はロック中の project のみが対象になり、まとめて 1 回だけ
+確認プロンプトが表示されます（`--force` でスキップ）。
 
 ## JSON Schema
 
