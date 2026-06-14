@@ -41,6 +41,10 @@ Managed storage resources:
   `apps/apps`, `apps/apps/nextcloud` runtime data except userdata,
   `tank/apps/tnextcloud/userdata`, and `tank/users`, are declared in
   `datasets.tf`.
+- The former `apps/apps/nextcloud/userdata` resource must be removed from
+  Terraform state without destroy during migration:
+  `terraform state rm 'truenas_dataset.datasets["apps_apps_nextcloud_userdata"]'`.
+  Delete the old dataset manually only after data copy and app validation.
 
 Removed storage resources:
 
