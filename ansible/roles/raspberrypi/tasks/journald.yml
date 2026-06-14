@@ -1,0 +1,19 @@
+- name: Ensure journald drop-in directory
+  become: true
+  ansible.builtin.file:
+    path: /etc/systemd/journald.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Configure journald to stay volatile and small
+  become: true
+  ansible.builtin.template:
+    src: journald.conf.j2
+    dest: /etc/systemd/journald.conf.d/melisia.conf
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+  notify: Restart journald

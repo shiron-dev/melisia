@@ -4,6 +4,8 @@
   ansible.builtin.import_tasks: tmpfs.yml
 - name: Install rsyslog
   ansible.builtin.import_tasks: rsyslog.yml
+- name: Configure journald
+  ansible.builtin.import_tasks: journald.yml
 - name: Configure Wi-Fi fallback
   ansible.builtin.import_tasks: wifi.yml
 

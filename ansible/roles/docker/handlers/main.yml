@@ -37,3 +37,9 @@
   ansible.builtin.apt:
     name: python3-docker
     state: present
+
+- name: Restart docker
+  become: true
+  ansible.builtin.service:
+    name: docker
+    state: restarted

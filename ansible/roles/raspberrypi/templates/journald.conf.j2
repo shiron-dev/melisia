@@ -1,0 +1,7 @@
+# Managed by Ansible (raspberrypi role)
+# home-ep のログは promtail -> Loki (vm-write.shiron.dev) へ集約し、
+# 実機にはほぼ残さない方針。journald はディスクに書かず RAM 上に
+# 直近分のみ保持する (/var/log は tmpfs のため永続化しても無意味)。
+[Journal]
+Storage=volatile
+RuntimeMaxUse=32M
