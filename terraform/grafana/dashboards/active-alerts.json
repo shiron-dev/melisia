@@ -44,7 +44,7 @@
         "maxItems": 1,
         "sortOrder": 1,
         "stateFilter": {
-          "error": true,
+          "error": false,
           "firing": true,
           "noData": false,
           "normal": false,
