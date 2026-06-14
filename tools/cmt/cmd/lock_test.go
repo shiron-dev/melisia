@@ -23,6 +23,7 @@ type fakeClient struct {
 	files     map[string]string
 	dirs      map[string]bool
 	removeErr error
+	statErr   error
 }
 
 var _ remote.RemoteClient = (*fakeClient)(nil)
@@ -102,7 +103,13 @@ func (c *fakeClient) Remove(remotePath string) error {
 func (c *fakeClient) Close() error                     { return nil }
 func (c *fakeClient) WriteFile(string, []byte) error   { return nil }
 func (c *fakeClient) MkdirAll(string) error            { return nil }
-func (c *fakeClient) Stat(string) (fs.FileInfo, error) { return nil, errNotSupported }
+func (c *fakeClient) Stat(string) (fs.FileInfo, error) {
+	if c.statErr != nil {
+		return nil, c.statErr
+	}
+
+	return nil, errNotSupported
+}
 func (c *fakeClient) StatDirMetadata(string) (*remote.DirMetadata, error) {
 	return nil, errNotSupported
 }
