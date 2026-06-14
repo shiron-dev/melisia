@@ -190,6 +190,192 @@
       },
       "title": "Active Alerts",
       "type": "alertlist"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 20
+      },
+      "id": 6,
+      "title": "Alert History",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "datasource",
+        "uid": "grafana"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 70,
+            "lineWidth": 0
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Alerting" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Pending" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Normal" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Error" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "dark-red", "mode": "fixed" } }]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 21
+      },
+      "id": 7,
+      "options": {
+        "alignValue": "left",
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "mergeValues": true,
+        "rowHeight": 0.9,
+        "showValue": "auto",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "datasource",
+            "uid": "grafana"
+          },
+          "hide": false,
+          "queryType": "anno",
+          "refId": "A",
+          "type": "alertStates"
+        }
+      ],
+      "title": "Alert State Timeline",
+      "type": "state-timeline"
+    },
+    {
+      "datasource": {
+        "type": "datasource",
+        "uid": "grafana"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": { "type": "auto" },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Time" },
+            "properties": [
+              { "id": "custom.width", "value": 180 },
+              { "id": "unit", "value": "dateTimeAsIso" }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "State" },
+            "properties": [
+              { "id": "custom.width", "value": 120 },
+              {
+                "id": "mappings",
+                "value": [
+                  { "options": { "Alerting": { "color": "red", "index": 0 } }, "type": "value" },
+                  { "options": { "Pending": { "color": "orange", "index": 1 } }, "type": "value" },
+                  { "options": { "Normal": { "color": "green", "index": 2 } }, "type": "value" },
+                  { "options": { "Error": { "color": "dark-red", "index": 3 } }, "type": "value" }
+                ]
+              },
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 31
+      },
+      "id": 8,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": ["sum"],
+          "show": false
+        },
+        "showHeader": true,
+        "sortBy": [{ "desc": true, "displayName": "Time" }]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "datasource",
+            "uid": "grafana"
+          },
+          "hide": false,
+          "queryType": "anno",
+          "refId": "A",
+          "type": "alertStates"
+        }
+      ],
+      "title": "Alert State Change Events",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "alertId": true,
+              "dashboardId": true,
+              "dashboardUID": true,
+              "login": true,
+              "panelId": true,
+              "userId": true
+            },
+            "indexByName": {
+              "time": 0,
+              "alertName": 1,
+              "newState": 2,
+              "prevState": 3,
+              "text": 4
+            },
+            "renameByName": {
+              "alertName": "Rule",
+              "newState": "State",
+              "prevState": "Previous State",
+              "text": "Details",
+              "time": "Time"
+            }
+          }
+        }
+      ],
+      "type": "table"
     }
   ],
   "refresh": "1m",
