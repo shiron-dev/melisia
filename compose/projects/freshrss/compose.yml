@@ -1,0 +1,102 @@
+services:
+  freshrss:
+    image: freshrss/freshrss:1.24.3
+    container_name: freshrss
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Tokyo
+      CRON_MIN: "{{ .freshrss_cron_min }}"
+      TRUSTED_PROXY: "172.16.0.0/12"
+    volumes:
+      - ./data:/var/www/FreshRSS/data
+      - ./extensions:/var/www/FreshRSS/extensions
+    depends_on:
+      freshrss-db:
+        condition: service_healthy
+    # kics-scan ignore-line
+    security_opt:
+      - no-new-privileges:false
+    cap_drop:
+      - ALL
+    # kics-scan ignore-line
+    cap_add:
+      - SETUID
+      - SETGID
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - NET_BIND_SERVICE
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    healthcheck:
+      test: ["CMD-SHELL", "php -r \"exit(@fsockopen('127.0.0.1', 80) !== false ? 0 : 1);\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  freshrss-db:
+    image: mariadb:10.11@sha256:8d9046cdb0b0961b3d2119bcb4bea62a185f11944be5968bc42b81d47801902e
+    container_name: freshrss-db
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: "{{ .db_root_password }}"
+      MARIADB_DATABASE: freshrss
+      MARIADB_USER: freshrss
+      MARIADB_PASSWORD: "{{ .db_password }}"
+    user: "999:999"
+    volumes:
+      - ./db_data:/var/lib/mysql
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    healthcheck:
+      test: ["CMD-SHELL", "mariadb -u \"$$MARIADB_USER\" --password=\"$$MARIADB_PASSWORD\" -e 'SELECT 1' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  freshrss-tunnel:
+    image: cloudflare/cloudflared:2026.6.0@sha256:ba461b8aa9c042156dbd39c38657fe7431bafa063220eab8d5330a523863da9f
+    container_name: freshrss-tunnel
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      TUNNEL_TOKEN: "{{ .cf_tunnel_token }}"
+    depends_on:
+      freshrss:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "cloudflared", "version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
