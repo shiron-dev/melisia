@@ -15,15 +15,7 @@ runs:
         token_format: access_token
     - name: Setup gcloud
       uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
-    - name: Install SOPS
-      shell: bash
-      run: |
-        set -euo pipefail
-        SOPS_VERSION="v3.9.4"
-        curl -fsSL -o /tmp/sops "https://github.com/getsops/sops/releases/download/${SOPS_VERSION}/sops-${SOPS_VERSION}.linux.amd64"
-        chmod +x /tmp/sops
-        sudo mv /tmp/sops /usr/local/bin/sops
-        sops --version
+    - uses: ./.github/actions/install-sops
     - name: Decrypt secrets with make sops-decrypt
       shell: bash
       run: |
