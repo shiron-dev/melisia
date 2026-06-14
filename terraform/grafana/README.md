@@ -122,6 +122,22 @@ home-ep:  node / icmp-ping / speedtest ────► vmagent ──(HTTPS push
 arm-srv 内部の blackbox e2e 用 `e2e` token とは分離している。vm-write の Access
 application には共通 e2e ポリシーを付与しない (`skip_e2e_policy = true`)。
 
+## E2E Alert Exclusion
+
+特定のターゲットをアラート対象から除外するには、`compose/projects/grafana/files/vmagent.yml` の該当 static_configs エントリに `alert_excluded: "true"` ラベルを付ける。メトリクス収集とダッシュボード表示はそのまま継続される。
+
+```yaml
+static_configs:
+  - targets:
+      - https://example.melisia.net/
+    labels:
+      edge_auth: cloudflare_access
+      target_server: home-ep
+      alert_excluded: "true"   # intentionally down — suppress alerts
+```
+
+`cloudflare_tunnel_e2e` と `cloudflare_access_block_e2e` の両アラートルールが `alert_excluded!="true"` でフィルタしているため、ラベルを付けるだけで両方から除外される。
+
 ## Existing Resources
 
 The existing Mimir-backed Prometheus data source has a deterministic UID in cmt provisioning:
