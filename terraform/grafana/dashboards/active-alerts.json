@@ -1,0 +1,210 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {
+        "type": "datasource",
+        "uid": "grafana"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "alertInstanceLabelFilter": "",
+        "alertName": "",
+        "dashboardAlerts": false,
+        "datasource": "-- Grafana --",
+        "folder": {},
+        "groupBy": [],
+        "groupMode": "default",
+        "maxItems": 1,
+        "sortOrder": 1,
+        "stateFilter": {
+          "error": true,
+          "firing": true,
+          "noData": false,
+          "normal": false,
+          "pending": false
+        },
+        "viewMode": "stat"
+      },
+      "title": "Firing",
+      "type": "alertlist"
+    },
+    {
+      "datasource": {
+        "type": "datasource",
+        "uid": "grafana"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
+      "id": 2,
+      "options": {
+        "alertInstanceLabelFilter": "",
+        "alertName": "",
+        "dashboardAlerts": false,
+        "datasource": "-- Grafana --",
+        "folder": {},
+        "groupBy": [],
+        "groupMode": "default",
+        "maxItems": 1,
+        "sortOrder": 1,
+        "stateFilter": {
+          "error": false,
+          "firing": false,
+          "noData": false,
+          "normal": false,
+          "pending": true
+        },
+        "viewMode": "stat"
+      },
+      "title": "Pending",
+      "type": "alertlist"
+    },
+    {
+      "datasource": {
+        "type": "datasource",
+        "uid": "grafana"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "id": 3,
+      "options": {
+        "alertInstanceLabelFilter": "",
+        "alertName": "",
+        "dashboardAlerts": false,
+        "datasource": "-- Grafana --",
+        "folder": {},
+        "groupBy": [],
+        "groupMode": "default",
+        "maxItems": 1,
+        "sortOrder": 1,
+        "stateFilter": {
+          "error": true,
+          "firing": false,
+          "noData": false,
+          "normal": false,
+          "pending": false
+        },
+        "viewMode": "stat"
+      },
+      "title": "Error",
+      "type": "alertlist"
+    },
+    {
+      "datasource": {
+        "type": "datasource",
+        "uid": "grafana"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "id": 4,
+      "options": {
+        "alertInstanceLabelFilter": "",
+        "alertName": "",
+        "dashboardAlerts": false,
+        "datasource": "-- Grafana --",
+        "folder": {},
+        "groupBy": [],
+        "groupMode": "default",
+        "maxItems": 1,
+        "sortOrder": 1,
+        "stateFilter": {
+          "error": false,
+          "firing": false,
+          "noData": true,
+          "normal": false,
+          "pending": false
+        },
+        "viewMode": "stat"
+      },
+      "title": "No Data",
+      "type": "alertlist"
+    },
+    {
+      "datasource": {
+        "type": "datasource",
+        "uid": "grafana"
+      },
+      "gridPos": {
+        "h": 16,
+        "w": 24,
+        "x": 0,
+        "y": 4
+      },
+      "id": 5,
+      "options": {
+        "alertInstanceLabelFilter": "",
+        "alertName": "",
+        "dashboardAlerts": false,
+        "datasource": "-- Grafana --",
+        "folder": {},
+        "groupBy": [],
+        "groupMode": "default",
+        "maxItems": 50,
+        "sortOrder": 1,
+        "stateFilter": {
+          "error": true,
+          "firing": true,
+          "noData": false,
+          "normal": false,
+          "pending": true
+        },
+        "viewMode": "list"
+      },
+      "title": "Active Alerts",
+      "type": "alertlist"
+    }
+  ],
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "tags": ["alerting"],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Active Alerts",
+  "uid": "active-alerts-overview",
+  "weekStart": ""
+}
