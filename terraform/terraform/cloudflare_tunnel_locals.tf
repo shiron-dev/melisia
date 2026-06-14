@@ -38,6 +38,14 @@ locals {
       secret_yaml_dir = "${path.module}/../../compose/hosts/arm-srv/snipeit"
       policies        = local.cloudflare_access_policy_refs.shiron
     }
+    "arm-srv-wakapi" = {
+      domain                                         = "wakapi.melisia.net"
+      zone_name                                      = "melisia.net"
+      service                                        = "http://wakapi:3000"
+      secret_yaml_dir                                = "${path.module}/../../compose/hosts/arm-srv/wakapi"
+      policies                                       = []
+      dangerously_allow_public_without_access_policy = true
+    }
     "home-ep-homeassistant" = {
       domain                                         = "home.melisia.net"
       zone_name                                      = "melisia.net"
