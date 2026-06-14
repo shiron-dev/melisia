@@ -4,12 +4,14 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/shiron-dev/melisia/tools/cmt/internal/config"
 	"github.com/shiron-dev/melisia/tools/cmt/internal/lock"
 	"github.com/shiron-dev/melisia/tools/cmt/internal/remote"
+	"github.com/shiron-dev/melisia/tools/cmt/internal/syncer"
 )
 
 var (
@@ -23,11 +25,17 @@ type fakeClient struct {
 	files     map[string]string
 	dirs      map[string]bool
 	removeErr error
+	runErr    error
+	statErr   error
 }
 
 var _ remote.RemoteClient = (*fakeClient)(nil)
 
 func (c *fakeClient) RunCommand(_ string, command string) (string, error) {
+	if c.runErr != nil {
+		return "", c.runErr
+	}
+
 	if c.dirs == nil {
 		c.dirs = make(map[string]bool)
 	}
@@ -102,7 +110,13 @@ func (c *fakeClient) Remove(remotePath string) error {
 func (c *fakeClient) Close() error                     { return nil }
 func (c *fakeClient) WriteFile(string, []byte) error   { return nil }
 func (c *fakeClient) MkdirAll(string) error            { return nil }
-func (c *fakeClient) Stat(string) (fs.FileInfo, error) { return nil, errNotSupported }
+func (c *fakeClient) Stat(string) (fs.FileInfo, error) {
+	if c.statErr != nil {
+		return nil, c.statErr
+	}
+
+	return nil, errNotSupported
+}
 func (c *fakeClient) StatDirMetadata(string) (*remote.DirMetadata, error) {
 	return nil, errNotSupported
 }
@@ -409,6 +423,318 @@ func TestRunForceUnlockWithLockerCancelConfirm(t *testing.T) { //nolint:parallel
 	locked, _ := locker.IsLocked(target)
 	if !locked {
 		t.Error("expected target to still be locked after cancelled force-unlock")
+	}
+}
+
+func TestForceUnlockManyReleasesOnlyLocked(t *testing.T) {
+	t.Parallel()
+
+	locker := newTestLocker()
+	targets := lockTargets("grafana", "n8n", "vault")
+
+	// Lock two of the three candidates.
+	for _, i := range []int{0, 2} {
+		_, err := locker.Acquire(targets[i], "apply", true)
+		if err != nil {
+			t.Fatalf("unexpected error acquiring lock: %v", err)
+		}
+	}
+
+	// force=true skips confirmation; n8n is untouched because it was never locked.
+	err := forceUnlockMany(locker, targets, true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, target := range targets {
+		locked, _ := locker.IsLocked(target)
+		if locked {
+			t.Errorf("expected %s to be unlocked", target.Project)
+		}
+	}
+}
+
+func TestForceUnlockManyNoLocks(t *testing.T) {
+	t.Parallel()
+
+	locker := newTestLocker()
+
+	// No targets are locked, so this is a no-op success (no confirmation needed).
+	err := forceUnlockMany(locker, lockTargets("grafana", "n8n"), false)
+	if err != nil {
+		t.Fatalf("unexpected error for no-lock batch: %v", err)
+	}
+}
+
+func TestValidateForceUnlockArgs(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name    string
+		args    []string
+		opts    forceUnlockOptions
+		wantErr error
+	}{
+		{"single ok", []string{"host1", "grafana"}, forceUnlockOptions{}, nil},
+		{"single missing arg", []string{"host1"}, forceUnlockOptions{}, errForceUnlockNeedsTwoArgs},
+		{"all ok", nil, forceUnlockOptions{all: true}, nil},
+		{"all with args", []string{"host1"}, forceUnlockOptions{all: true}, errForceUnlockAllNoArgs},
+		{
+			"all with filters", nil,
+			forceUnlockOptions{all: true, hostFilter: []string{"host1"}}, nil,
+		},
+		{
+			"filters without all", []string{"host1", "grafana"},
+			forceUnlockOptions{projectFilter: []string{"grafana"}}, errForceUnlockFiltersNeedAll,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := validateForceUnlockArgs(tc.args, tc.opts)
+			if !errors.Is(err, tc.wantErr) {
+				t.Errorf("validateForceUnlockArgs() = %v, want %v", err, tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestForceUnlockManyUnreadableForceRemoves(t *testing.T) {
+	t.Parallel()
+
+	// An existing-but-corrupt lock can't be read; with --force it must still be
+	// removed, mirroring the single-target force path.
+	target := lockTargets("grafana")[0]
+	client := &fakeClient{files: map[string]string{target.LockPath: "{not valid json"}}
+	locker := lock.NewRemote(fakeFactory{client: client})
+
+	err := forceUnlockMany(locker, []lock.Target{target}, true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	locked, _ := locker.IsLocked(target)
+	if locked {
+		t.Error("expected unreadable lock to be removed with --force")
+	}
+}
+
+func TestForceUnlockManyUnreadableWithoutForceErrors(t *testing.T) { //nolint:paralleltest
+	// Without --force an unreadable lock can't be safely removed: it must be left
+	// in place and reported as an error.
+	target := lockTargets("grafana")[0]
+	client := &fakeClient{files: map[string]string{target.LockPath: "{not valid json"}}
+	locker := lock.NewRemote(fakeFactory{client: client})
+
+	r, w, pipeErr := os.Pipe()
+	if pipeErr != nil {
+		t.Fatalf("unexpected error creating pipe: %v", pipeErr)
+	}
+
+	_, _ = w.WriteString("y\n")
+	_ = w.Close()
+
+	oldStdin := os.Stdin
+	os.Stdin = r
+
+	t.Cleanup(func() { os.Stdin = oldStdin; _ = r.Close() })
+
+	err := forceUnlockMany(locker, []lock.Target{target}, false)
+	if !errors.Is(err, errUnreadableLockNeedsForce) {
+		t.Errorf("expected errUnreadableLockNeedsForce, got %v", err)
+	}
+
+	locked, _ := locker.IsLocked(target)
+	if !locked {
+		t.Error("expected unreadable lock to be left in place without --force")
+	}
+}
+
+func TestForceUnlockManyReleaseErrorSurfaced(t *testing.T) {
+	t.Parallel()
+
+	client := &fakeClient{files: make(map[string]string), dirs: make(map[string]bool)}
+	locker := lock.NewRemote(fakeFactory{client: client})
+	target := lockTargets("grafana")[0]
+
+	_, err := locker.Acquire(target, "apply", true)
+	if err != nil {
+		t.Fatalf("unexpected error acquiring lock: %v", err)
+	}
+
+	// Removal now fails: the batch must surface the release error.
+	client.removeErr = errNotSupported
+
+	err = forceUnlockMany(locker, []lock.Target{target}, true)
+	if err == nil {
+		t.Error("expected forceUnlockMany to surface the release failure")
+	}
+}
+
+func TestForceUnlockManyMultipleReleaseErrors(t *testing.T) {
+	t.Parallel()
+
+	client := &fakeClient{files: make(map[string]string), dirs: make(map[string]bool)}
+	locker := lock.NewRemote(fakeFactory{client: client})
+	targets := lockTargets("grafana", "n8n")
+
+	for _, target := range targets {
+		_, err := locker.Acquire(target, "apply", true)
+		if err != nil {
+			t.Fatalf("unexpected error acquiring lock: %v", err)
+		}
+	}
+
+	// Both removals fail: only the first error is surfaced, the rest are warnings.
+	client.removeErr = errNotSupported
+
+	err := forceUnlockMany(locker, targets, true)
+	if !errors.Is(err, errNotSupported) {
+		t.Errorf("expected first release error to surface, got %v", err)
+	}
+}
+
+func TestForceUnlockManyCancelConfirm(t *testing.T) { //nolint:paralleltest
+	locker := newTestLocker()
+	target := lockTargets("grafana")[0]
+
+	_, err := locker.Acquire(target, "plan", true)
+	if err != nil {
+		t.Fatalf("unexpected error acquiring lock: %v", err)
+	}
+
+	r, w, pipeErr := os.Pipe()
+	if pipeErr != nil {
+		t.Fatalf("unexpected error creating pipe: %v", pipeErr)
+	}
+
+	_, _ = w.WriteString("n\n")
+	_ = w.Close()
+
+	oldStdin := os.Stdin
+	os.Stdin = r
+
+	t.Cleanup(func() { os.Stdin = oldStdin; _ = r.Close() })
+
+	err = forceUnlockMany(locker, []lock.Target{target}, false)
+	if err != nil {
+		t.Fatalf("unexpected error for cancelled batch: %v", err)
+	}
+
+	locked, _ := locker.IsLocked(target)
+	if !locked {
+		t.Error("expected target to still be locked after cancelled force-unlock")
+	}
+}
+
+// cmdStubResolver satisfies config.SSHConfigResolver without invoking ssh.
+type cmdStubResolver struct{}
+
+func (cmdStubResolver) Resolve(entry *config.HostEntry, _, _ string) error {
+	if entry.Port == 0 {
+		entry.Port = 22
+	}
+
+	return nil
+}
+
+func writeCmdLockRepo(t *testing.T, projects ...string) *config.CmtConfig {
+	t.Helper()
+
+	base := t.TempDir()
+
+	for _, p := range projects {
+		err := os.MkdirAll(filepath.Join(base, "projects", p), 0o750)
+		if err != nil {
+			t.Fatalf("unexpected error creating project %q: %v", p, err)
+		}
+	}
+
+	return &config.CmtConfig{
+		BasePath: base,
+		Defaults: &config.SyncDefaults{RemotePath: "/opt/compose"},
+		Hosts: []config.HostEntry{
+			{Name: "host1", Host: "host1-alias", User: "deploy"},
+		},
+	}
+}
+
+func TestRunForceUnlockAllReleasesLocked(t *testing.T) {
+	t.Parallel()
+
+	cfg := writeCmdLockRepo(t, "grafana", "n8n")
+	client := &fakeClient{files: make(map[string]string), dirs: make(map[string]bool)}
+	locker := lock.NewRemote(fakeFactory{client: client})
+
+	// Lock grafana only; n8n stays unlocked and must be left untouched.
+	graf := lock.Target{
+		Host:      cfg.Hosts[0],
+		Project:   "grafana",
+		RemoteDir: "/opt/compose/grafana",
+		LockPath:  "/opt/compose/grafana/.cmt.lock",
+	}
+
+	_, err := locker.Acquire(graf, "apply", true)
+	if err != nil {
+		t.Fatalf("unexpected error acquiring lock: %v", err)
+	}
+
+	deps := syncer.PlanDependencies{SSHResolver: cmdStubResolver{}}
+	opts := forceUnlockOptions{force: true, all: true}
+
+	err = runForceUnlockAll(locker, cfg, opts, deps)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	locked, _ := locker.IsLocked(graf)
+	if locked {
+		t.Error("expected grafana to be unlocked after --all force-unlock")
+	}
+}
+
+func TestRunForceUnlockDispatchesAll(t *testing.T) {
+	t.Parallel()
+
+	configPath := writeTestRepo(t)
+
+	// --all narrowed to a non-existent project takes the batch branch and fails
+	// at target resolution, before any remote (SSH) work is attempted.
+	opts := forceUnlockOptions{force: true, all: true, projectFilter: []string{"nonexistent"}}
+
+	err := runForceUnlock(configPath, nil, opts)
+	if err == nil {
+		t.Error("expected error when --all matches no project")
+	}
+}
+
+func TestRunForceUnlockRejectsArgs(t *testing.T) {
+	t.Parallel()
+
+	configPath := writeTestRepo(t)
+
+	// --all with a stray positional arg is rejected before config work.
+	err := runForceUnlock(configPath, []string{"host1"}, forceUnlockOptions{all: true})
+	if !errors.Is(err, errForceUnlockAllNoArgs) {
+		t.Errorf("expected errForceUnlockAllNoArgs, got %v", err)
+	}
+}
+
+func TestRunForceUnlockAllResolveError(t *testing.T) {
+	t.Parallel()
+
+	cfg := writeCmdLockRepo(t, "grafana")
+	locker := newTestLocker()
+	deps := syncer.PlanDependencies{SSHResolver: cmdStubResolver{}}
+	opts := forceUnlockOptions{force: true, all: true, projectFilter: []string{"nonexistent"}}
+
+	// A non-existent project filter resolves to no targets -> error returned
+	// before any locker work.
+	err := runForceUnlockAll(locker, cfg, opts, deps)
+	if err == nil {
+		t.Error("expected error when no targets match the filter")
 	}
 }
 
