@@ -38,6 +38,20 @@ locals {
       secret_yaml_dir = "${path.module}/../../compose/hosts/arm-srv/snipeit"
       policies        = local.cloudflare_access_policy_refs.shiron
     }
+    "arm-srv-rsshub" = {
+      domain          = "rsshub.melisia.net"
+      zone_name       = "melisia.net"
+      service         = "http://rsshub:1200"
+      secret_yaml_dir = "${path.module}/../../compose/hosts/arm-srv/rsshub"
+      policies        = local.cloudflare_access_policy_refs.shiron
+    }
+    "arm-srv-freshrss" = {
+      domain          = "freshrss.melisia.net"
+      zone_name       = "melisia.net"
+      service         = "http://freshrss:80"
+      secret_yaml_dir = "${path.module}/../../compose/hosts/arm-srv/freshrss"
+      policies        = local.cloudflare_access_policy_refs.shiron
+    }
     "home-ep-homeassistant" = {
       domain                                         = "home.melisia.net"
       zone_name                                      = "melisia.net"
