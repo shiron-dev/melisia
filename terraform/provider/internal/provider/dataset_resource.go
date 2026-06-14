@@ -27,6 +27,8 @@ type datasetResourceModel struct {
 	Name             types.String `tfsdk:"name"`
 	Type             types.String `tfsdk:"type"`
 	Atime            types.String `tfsdk:"atime"`
+	ACLMode          types.String `tfsdk:"aclmode"`
+	ACLType          types.String `tfsdk:"acltype"`
 	Compression      types.String `tfsdk:"compression"`
 	Copies           types.Int64  `tfsdk:"copies"`
 	Deduplication    types.String `tfsdk:"deduplication"`
@@ -75,6 +77,16 @@ func (r *datasetResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			"atime": schema.StringAttribute{
 				Required:    true,
 				Description: "Dataset atime property.",
+			},
+			"aclmode": schema.StringAttribute{
+				Optional:    true,
+				Computed:    true,
+				Description: "Dataset aclmode property.",
+			},
+			"acltype": schema.StringAttribute{
+				Optional:    true,
+				Computed:    true,
+				Description: "Dataset acltype property.",
 			},
 			"compression": schema.StringAttribute{
 				Required:    true,
@@ -209,6 +221,8 @@ func modelToDataset(model datasetResourceModel) client.Dataset {
 		Name:          model.Name.ValueString(),
 		Type:          model.Type.ValueString(),
 		Atime:         model.Atime.ValueString(),
+		ACLMode:       model.ACLMode.ValueString(),
+		ACLType:       model.ACLType.ValueString(),
 		Compression:   model.Compression.ValueString(),
 		Copies:        model.Copies.ValueInt64(),
 		Deduplication: model.Deduplication.ValueString(),
@@ -231,6 +245,8 @@ func datasetToModel(dataset client.Dataset, fallback datasetResourceModel) datas
 		Name:             types.StringValue(firstNonEmpty(dataset.Name, fallback.Name.ValueString())),
 		Type:             types.StringValue(firstNonEmpty(dataset.Type, fallback.Type.ValueString())),
 		Atime:            types.StringValue(firstNonEmpty(dataset.Atime, fallback.Atime.ValueString())),
+		ACLMode:          types.StringValue(firstNonEmpty(dataset.ACLMode, fallback.ACLMode.ValueString())),
+		ACLType:          types.StringValue(firstNonEmpty(dataset.ACLType, fallback.ACLType.ValueString())),
 		Compression:      types.StringValue(firstNonEmpty(dataset.Compression, fallback.Compression.ValueString())),
 		Copies:           types.Int64Value(copies),
 		Deduplication:    types.StringValue(firstNonEmpty(dataset.Deduplication, fallback.Deduplication.ValueString())),

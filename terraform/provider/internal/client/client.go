@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -34,6 +35,8 @@ type Dataset struct {
 	Name          string
 	Type          string
 	Atime         string
+	ACLMode       string
+	ACLType       string
 	Compression   string
 	Copies        int64
 	Deduplication string
@@ -62,6 +65,31 @@ type AppConfig struct {
 	ID     string
 	Name   string
 	Values json.RawMessage
+}
+
+type FilesystemStat struct {
+	Path string
+	Mode string
+	UID  int64
+	GID  int64
+}
+
+type FilesystemACL struct {
+	Path      string
+	UID       int64
+	GID       int64
+	ACLType   string
+	ACL       json.RawMessage
+	Recursive bool
+}
+
+type SMBShare struct {
+	ID      int64
+	Name    string
+	Path    string
+	Purpose string
+	Enabled bool
+	Comment string
 }
 
 var (
@@ -159,6 +187,8 @@ func (c *Client) CreateDataset(ctx context.Context, dataset Dataset) (Dataset, e
 		"snapdir":       dataset.Snapdir,
 		"sync":          dataset.Sync,
 	}
+	addOptionalString(body, "aclmode", dataset.ACLMode)
+	addOptionalString(body, "acltype", dataset.ACLType)
 
 	var raw map[string]any
 	for attempt := 0; ; attempt++ {
@@ -199,6 +229,8 @@ func (c *Client) UpdateDataset(ctx context.Context, dataset Dataset) (Dataset, e
 		"snapdir":       dataset.Snapdir,
 		"sync":          dataset.Sync,
 	}
+	addOptionalString(body, "aclmode", dataset.ACLMode)
+	addOptionalString(body, "acltype", dataset.ACLType)
 
 	var raw map[string]any
 	if err := c.doDatasetID(ctx, http.MethodPut, dataset.ID, body, &raw); err != nil {
@@ -214,6 +246,151 @@ func (c *Client) UpdateDataset(ctx context.Context, dataset Dataset) (Dataset, e
 
 func (c *Client) DeleteDataset(ctx context.Context, id string) error {
 	return c.doDatasetID(ctx, http.MethodDelete, id, nil, nil)
+}
+
+func (c *Client) GetFilesystemStat(ctx context.Context, path string) (FilesystemStat, error) {
+	var raw map[string]any
+	if err := c.do(ctx, http.MethodPost, "/api/v2.0/filesystem/stat", path, &raw); err != nil {
+		return FilesystemStat{}, err
+	}
+
+	return FilesystemStat{
+		Path: stringValue(raw["path"]),
+		Mode: permissionMode(stringValue(raw["mode"])),
+		UID:  int64Value(raw["uid"]),
+		GID:  int64Value(raw["gid"]),
+	}, nil
+}
+
+func (c *Client) SetFilesystemPermission(ctx context.Context, stat FilesystemStat) error {
+	body := map[string]any{
+		"path": stat.Path,
+		"mode": stat.Mode,
+		"uid":  stat.UID,
+		"gid":  stat.GID,
+		"options": map[string]any{
+			"recursive": false,
+			"stripacl":  false,
+			"traverse":  false,
+		},
+	}
+
+	var job any
+	if err := c.do(ctx, http.MethodPost, "/api/v2.0/filesystem/setperm", body, &job); err != nil {
+		return err
+	}
+
+	return c.waitForJobResponse(ctx, "filesystem.setperm", job)
+}
+
+func (c *Client) GetFilesystemACL(ctx context.Context, path string) (FilesystemACL, error) {
+	body := map[string]any{
+		"path":       path,
+		"simplified": false,
+	}
+
+	var raw map[string]any
+	if err := c.do(ctx, http.MethodPost, "/api/v2.0/filesystem/getacl", body, &raw); err != nil {
+		return FilesystemACL{}, err
+	}
+
+	acl, err := canonicalJSONFromValue(raw["acl"])
+	if err != nil {
+		return FilesystemACL{}, fmt.Errorf("canonicalize filesystem ACL: %w", err)
+	}
+
+	return FilesystemACL{
+		Path:    stringValue(raw["path"]),
+		UID:     int64Value(raw["uid"]),
+		GID:     int64Value(raw["gid"]),
+		ACLType: stringValue(raw["acltype"]),
+		ACL:     acl,
+	}, nil
+}
+
+func (c *Client) SetFilesystemACL(ctx context.Context, acl FilesystemACL) error {
+	var dacl any
+	if err := json.Unmarshal(acl.ACL, &dacl); err != nil {
+		return fmt.Errorf("decode filesystem ACL: %w", err)
+	}
+
+	body := map[string]any{
+		"path":    acl.Path,
+		"uid":     acl.UID,
+		"gid":     acl.GID,
+		"acltype": acl.ACLType,
+		"dacl":    dacl,
+		"options": map[string]any{
+			"recursive": acl.Recursive,
+			"traverse":  false,
+		},
+	}
+
+	var job any
+	if err := c.do(ctx, http.MethodPost, "/api/v2.0/filesystem/setacl", body, &job); err != nil {
+		return err
+	}
+
+	return c.waitForJobResponse(ctx, "filesystem.setacl", job)
+}
+
+func (c *Client) GetSMBShareByPath(ctx context.Context, path string) (SMBShare, error) {
+	shares, err := c.ListSMBShares(ctx)
+	if err != nil {
+		return SMBShare{}, err
+	}
+
+	for _, share := range shares {
+		if share.Path == path {
+			return share, nil
+		}
+	}
+
+	return SMBShare{}, fmt.Errorf("SMB share for path %q was not found", path)
+}
+
+func (c *Client) ListSMBShares(ctx context.Context) ([]SMBShare, error) {
+	var rawShares []map[string]any
+	if err := c.do(ctx, http.MethodGet, "/api/v2.0/sharing/smb", nil, &rawShares); err != nil {
+		return nil, err
+	}
+
+	shares := make([]SMBShare, 0, len(rawShares))
+	for _, raw := range rawShares {
+		shares = append(shares, smbShareFromAPI(raw))
+	}
+
+	return shares, nil
+}
+
+func (c *Client) CreateSMBShare(ctx context.Context, share SMBShare) (SMBShare, error) {
+	var raw map[string]any
+	if err := c.do(ctx, http.MethodPost, "/api/v2.0/sharing/smb", smbShareToAPI(share), &raw); err != nil {
+		return SMBShare{}, err
+	}
+
+	if len(raw) == 0 {
+		return c.GetSMBShareByPath(ctx, share.Path)
+	}
+
+	return smbShareFromAPI(raw), nil
+}
+
+func (c *Client) UpdateSMBShare(ctx context.Context, share SMBShare) (SMBShare, error) {
+	var raw map[string]any
+	if err := c.do(ctx, http.MethodPut, fmt.Sprintf("/api/v2.0/sharing/smb/id/%d", share.ID), smbShareToAPI(share), &raw); err != nil {
+		return SMBShare{}, err
+	}
+
+	if len(raw) == 0 {
+		return c.GetSMBShareByPath(ctx, share.Path)
+	}
+
+	return smbShareFromAPI(raw), nil
+}
+
+func (c *Client) DeleteSMBShare(ctx context.Context, id int64) error {
+	return c.do(ctx, http.MethodDelete, fmt.Sprintf("/api/v2.0/sharing/smb/id/%d", id), nil, nil)
 }
 
 func (c *Client) GetAppsConfig(ctx context.Context) (AppsConfig, error) {
@@ -437,6 +614,8 @@ func datasetFromAPI(raw map[string]any) Dataset {
 		Name:          name,
 		Type:          propertyString(raw["type"]),
 		Atime:         propertyString(raw["atime"]),
+		ACLMode:       propertyString(raw["aclmode"]),
+		ACLType:       propertyString(raw["acltype"]),
 		Compression:   propertyString(raw["compression"]),
 		Copies:        propertyInt64(raw["copies"]),
 		Deduplication: propertyString(raw["deduplication"]),
@@ -445,6 +624,12 @@ func datasetFromAPI(raw map[string]any) Dataset {
 		Recordsize:    recordsizeString(raw["recordsize"]),
 		Snapdir:       propertyString(raw["snapdir"]),
 		Sync:          propertyString(raw["sync"]),
+	}
+}
+
+func addOptionalString(body map[string]any, key, value string) {
+	if strings.TrimSpace(value) != "" {
+		body[key] = value
 	}
 }
 
@@ -492,6 +677,27 @@ func addressPoolsToAPI(pools []AppsAddressPool) []map[string]any {
 	return rawPools
 }
 
+func smbShareFromAPI(raw map[string]any) SMBShare {
+	return SMBShare{
+		ID:      int64Value(raw["id"]),
+		Name:    stringValue(raw["name"]),
+		Path:    stringValue(raw["path"]),
+		Purpose: stringValue(raw["purpose"]),
+		Enabled: boolValue(raw["enabled"]),
+		Comment: stringValue(raw["comment"]),
+	}
+}
+
+func smbShareToAPI(share SMBShare) map[string]any {
+	return map[string]any{
+		"name":    share.Name,
+		"path":    share.Path,
+		"purpose": share.Purpose,
+		"enabled": share.Enabled,
+		"comment": share.Comment,
+	}
+}
+
 func stringSliceValue(value any) []string {
 	rawValues, ok := value.([]any)
 	if !ok {
@@ -512,6 +718,10 @@ func canonicalJSON(raw json.RawMessage) (json.RawMessage, error) {
 		return nil, fmt.Errorf("decode json: %w", err)
 	}
 
+	return canonicalJSONFromValue(value)
+}
+
+func canonicalJSONFromValue(value any) (json.RawMessage, error) {
 	canonical, err := json.Marshal(value)
 	if err != nil {
 		return nil, fmt.Errorf("encode canonical json: %w", err)
@@ -611,6 +821,38 @@ func int64Value(value any) int64 {
 	default:
 		return 0
 	}
+}
+
+func permissionMode(value string) string {
+	value = strings.TrimSpace(value)
+	if strings.HasPrefix(value, "0o") || strings.HasPrefix(value, "0O") {
+		value = value[2:]
+		if len(value) <= 3 {
+			return value
+		}
+		return value[len(value)-3:]
+	}
+
+	if strings.HasPrefix(value, "40") || strings.HasPrefix(value, "10") {
+		if len(value) <= 3 {
+			return value
+		}
+		return value[len(value)-3:]
+	}
+
+	mode, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || mode <= 0 {
+		return value
+	}
+	if mode <= 777 {
+		trimmed := strings.TrimLeft(value, "0")
+		if trimmed == "" {
+			return "0"
+		}
+		return trimmed
+	}
+
+	return fmt.Sprintf("%03o", mode&0777)
 }
 
 func jobID(value any) (int64, bool) {
