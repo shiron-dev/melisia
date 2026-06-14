@@ -45,6 +45,11 @@ Managed storage resources:
   Terraform state without destroy during migration:
   `terraform state rm 'truenas_dataset.datasets["apps_apps_nextcloud_userdata"]'`.
   Delete the old dataset manually only after data copy and app validation.
+- Migrate Nextcloud userdata in stages: create `tank/apps/tnextcloud/userdata`,
+  copy data and permissions from `/mnt/apps/apps/nextcloud/userdata`, then apply
+  the app configuration path change. The Nextcloud app resource also depends on
+  the new userdata dataset so a normal apply will not update the app before the
+  destination dataset exists.
 
 Removed storage resources:
 

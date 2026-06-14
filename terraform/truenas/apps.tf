@@ -314,6 +314,10 @@ data "truenas_app_config_document" "cloudflared" {
 resource "truenas_app_config" "nextcloud" {
   name        = "nextcloud"
   config_json = data.truenas_app_config_document.nextcloud.json
+
+  depends_on = [
+    truenas_dataset.datasets["tank_apps_tnextcloud_userdata"],
+  ]
 }
 
 resource "truenas_app_config" "cloudflared" {
