@@ -75,6 +75,25 @@ projects:
 
   discord-webhook:
 
+  rsshub:
+    dirs:
+      - redis_data:
+        owner: 1000
+        group: 1000
+        recursive: true
+        become: true
+
+  freshrss:
+    dirs:
+      - data:
+        become: true
+      - extensions:
+        become: true
+      - db_data:
+        owner: 999
+        group: 999
+        become: true
+
   snipeit:
     composeAction: down
     dirs:
