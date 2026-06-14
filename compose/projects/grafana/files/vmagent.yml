@@ -35,10 +35,15 @@ scrape_configs:
       - targets:
           - https://grafana.shiron.dev/
           - https://n8n.shiron.dev/
+        labels:
+          edge_auth: cloudflare_access
+          target_server: arm-srv
+      - targets:
           - https://snipeit.shiron.dev/
         labels:
           edge_auth: cloudflare_access
           target_server: arm-srv
+          alert_excluded: "true"
       - targets:
           - https://home.melisia.net/
           - https://zigbee2mqtt.melisia.net/
@@ -68,10 +73,15 @@ scrape_configs:
       - targets:
           - https://grafana.shiron.dev/
           - https://n8n.shiron.dev/
+        labels:
+          edge_auth: cloudflare_access_block
+          target_server: arm-srv
+      - targets:
           - https://snipeit.shiron.dev/
         labels:
           edge_auth: cloudflare_access_block
           target_server: arm-srv
+          alert_excluded: "true"
       - targets:
           - https://zigbee2mqtt.melisia.net/
           - https://switchbot-mqtt.melisia.net/
