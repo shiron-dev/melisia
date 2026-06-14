@@ -1,6 +1,7 @@
 package syncer
 
 import (
+	"errors"
 	"fmt"
 	"path"
 
@@ -16,6 +17,27 @@ func ResolveLockTargets(
 	cfg *config.CmtConfig,
 	hostFilter, projectFilter []string,
 	deps PlanDependencies,
+) ([]lock.Target, error) {
+	return resolveLockTargets(cfg, hostFilter, projectFilter, deps, false)
+}
+
+// ResolveLockTargetsLenient behaves like ResolveLockTargets but skips hosts
+// whose config matches none of the requested projects instead of failing. It is
+// used by force-unlock --all, where "release grafana everywhere" must not abort
+// just because some host never runs grafana.
+func ResolveLockTargetsLenient(
+	cfg *config.CmtConfig,
+	hostFilter, projectFilter []string,
+	deps PlanDependencies,
+) ([]lock.Target, error) {
+	return resolveLockTargets(cfg, hostFilter, projectFilter, deps, true)
+}
+
+func resolveLockTargets(
+	cfg *config.CmtConfig,
+	hostFilter, projectFilter []string,
+	deps PlanDependencies,
+	skipUnmatchedHosts bool,
 ) ([]lock.Target, error) {
 	_, sshResolver, _ := resolvePlanDependencies(deps)
 
@@ -39,6 +61,10 @@ func ResolveLockTargets(
 	for _, host := range hosts {
 		hostTargets, err := resolveHostLockTargets(cfg, host, projects, sshResolver)
 		if err != nil {
+			if skipUnmatchedHosts && errors.Is(err, errNoHostProjectsMatched) {
+				continue
+			}
+
 			return nil, err
 		}
 
@@ -63,16 +89,19 @@ func resolveHostLockTargets(
 		hostCfg = nil
 	}
 
+	// Match projects before resolving SSH: a host that runs none of the requested
+	// projects can then be skipped (by the lenient caller) without paying the
+	// ssh -G cost or failing on that host's missing/broken SSH config.
+	hostProjects, err := filterHostProjects(host, hostCfg, projects)
+	if err != nil {
+		return nil, err
+	}
+
 	resolvedHost := host
 
 	err = resolveHostSSHConfig(cfg.BasePath, &resolvedHost, hostCfg, sshResolver)
 	if err != nil {
 		return nil, fmt.Errorf("resolving SSH config for %s: %w", host.Name, err)
-	}
-
-	hostProjects, err := filterHostProjects(resolvedHost, hostCfg, projects)
-	if err != nil {
-		return nil, err
 	}
 
 	targets := make([]lock.Target, 0, len(hostProjects))
