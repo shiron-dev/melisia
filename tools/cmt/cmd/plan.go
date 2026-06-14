@@ -5,7 +5,6 @@ import (
 	"os"
 
 	"github.com/shiron-dev/melisia/tools/cmt/internal/config"
-	"github.com/shiron-dev/melisia/tools/cmt/internal/lock"
 	"github.com/shiron-dev/melisia/tools/cmt/internal/syncer"
 
 	"github.com/spf13/cobra"
@@ -45,6 +44,9 @@ func newPlanCmd(configPath *string) *cobra.Command {
 	return planCommand
 }
 
+// runPlanCmd builds and prints the plan. plan is read-only, so it does not
+// acquire remote locks — a plan must never block (or be blocked by) other
+// plan/apply operations.
 func runPlanCmd(
 	configPath string,
 	hostFilter, projectFilter []string,
@@ -52,40 +54,10 @@ func runPlanCmd(
 	digestFile string,
 	dependencies syncer.PlanDependencies,
 ) error {
-	locker := remoteLocker(dependencies.ClientFactory)
-
-	return runPlanCmdWithLocker(locker, configPath, hostFilter, projectFilter, exitCode, digestFile, dependencies)
-}
-
-func runPlanCmdWithLocker(
-	locker *lock.RemoteLocker,
-	configPath string,
-	hostFilter, projectFilter []string,
-	exitCode bool,
-	digestFile string,
-	dependencies syncer.PlanDependencies,
-) (retErr error) {
 	cfg, err := config.LoadCmtConfig(configPath)
 	if err != nil {
 		return err
 	}
-
-	targets, err := syncer.ResolveLockTargets(cfg, hostFilter, projectFilter, dependencies)
-	if err != nil {
-		return err
-	}
-
-	release, err := acquireRemoteLocks(locker, targets, "plan", false, os.Stdout)
-	if err != nil {
-		return err
-	}
-
-	defer func() {
-		releaseErr := release()
-		if releaseErr != nil && retErr == nil {
-			retErr = releaseErr
-		}
-	}()
 
 	plan, err := syncer.BuildPlanWithDeps(cfg, hostFilter, projectFilter, dependencies)
 	if err != nil {
@@ -104,35 +76,26 @@ func runPlanCmdWithLocker(
 	}
 
 	if exitCode {
-		// os.Exit bypasses defer, so release locks explicitly first and stop the
-		// deferred release from running again.
-		releaseErr := release()
-		release = func() error { return nil }
-
-		return exitWithPlanCodeOrReleaseErr(plan, releaseErr)
+		exitWithPlanCode(plan)
 	}
 
 	return nil
 }
 
-// exitWithPlanCodeOrReleaseErr fails the command when releasing the lock failed
-// (so a leaked remote lock doesn't exit 0/2), otherwise exits with the plan code.
-func exitWithPlanCodeOrReleaseErr(plan *syncer.SyncPlan, releaseErr error) error {
-	if releaseErr != nil {
-		return releaseErr
-	}
-
-	exitWithPlanCode(plan)
-
-	return nil
-}
+// planExit terminates the process with the plan's exit code. It is a variable
+// so tests can observe the chosen code without exiting the test binary.
+//
+//nolint:gochecknoglobals // overridable seam for testing os.Exit behaviour
+var planExit = os.Exit
 
 func exitWithPlanCode(plan *syncer.SyncPlan) {
 	if plan.HasChanges() {
-		os.Exit(exitCodeHasChanges)
+		planExit(exitCodeHasChanges)
+
+		return
 	}
 
-	os.Exit(exitCodeNoChanges)
+	planExit(exitCodeNoChanges)
 }
 
 func bindPlanFlags(

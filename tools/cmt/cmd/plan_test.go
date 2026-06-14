@@ -8,6 +8,7 @@ import (
 
 	"github.com/shiron-dev/melisia/tools/cmt/internal/config"
 	"github.com/shiron-dev/melisia/tools/cmt/internal/lock"
+	"github.com/shiron-dev/melisia/tools/cmt/internal/remote"
 	"github.com/shiron-dev/melisia/tools/cmt/internal/syncer"
 )
 
@@ -47,6 +48,31 @@ func writeTestRepo(t *testing.T) string {
 	return configPath
 }
 
+// writeTestRepoWithDirs builds on writeTestRepo, adding a host.yml that declares
+// a project directory so plan builds DirPlans (whose remote existence is probed).
+func writeTestRepoWithDirs(t *testing.T) string {
+	t.Helper()
+
+	configPath := writeTestRepo(t)
+	base := filepath.Dir(configPath)
+
+	hostDir := filepath.Join(base, "hosts", "test-host")
+
+	err := os.MkdirAll(hostDir, 0o750)
+	if err != nil {
+		t.Fatalf("unexpected error creating host dir: %v", err)
+	}
+
+	hostContent := "projects:\n  grafana:\n    dirs:\n      - grafana_storage\n"
+
+	err = os.WriteFile(filepath.Join(hostDir, "host.yml"), []byte(hostContent), 0o600)
+	if err != nil {
+		t.Fatalf("unexpected error writing host.yml: %v", err)
+	}
+
+	return configPath
+}
+
 func planDeps(client *fakeClient) syncer.PlanDependencies {
 	return syncer.PlanDependencies{
 		ClientFactory: fakeFactory{client: client},
@@ -57,15 +83,15 @@ func planDeps(client *fakeClient) syncer.PlanDependencies {
 func TestRunPlanCmdConfigNotFound(t *testing.T) {
 	t.Parallel()
 
-	locker := newTestLocker()
-
-	err := runPlanCmdWithLocker(locker, "/nonexistent/config.yml", nil, nil, false, "", syncer.PlanDependencies{})
+	err := runPlanCmd("/nonexistent/config.yml", nil, nil, false, "", syncer.PlanDependencies{})
 	if err == nil {
 		t.Fatal("expected error for nonexistent config")
 	}
 }
 
-func TestRunPlanCmdWithLockerLockFail(t *testing.T) {
+// plan is read-only and must not be blocked by a held lock from another
+// operation.
+func TestRunPlanCmdSucceedsWhenLocked(t *testing.T) {
 	t.Parallel()
 
 	configPath := writeTestRepo(t)
@@ -73,7 +99,7 @@ func TestRunPlanCmdWithLockerLockFail(t *testing.T) {
 	client := &fakeClient{files: make(map[string]string)}
 	deps := planDeps(client)
 
-	// Pre-lock the grafana project so plan's acquire fails.
+	// Pre-lock the grafana project; plan must still succeed.
 	preLocker := lock.NewRemote(fakeFactory{client: client})
 
 	_, err := preLocker.Acquire(lock.Target{
@@ -86,21 +112,9 @@ func TestRunPlanCmdWithLockerLockFail(t *testing.T) {
 		t.Fatalf("unexpected error pre-acquiring lock: %v", err)
 	}
 
-	locker := lock.NewRemote(fakeFactory{client: client})
-
-	err = runPlanCmdWithLocker(locker, configPath, nil, nil, false, "", deps)
-	if !errors.Is(err, lock.ErrLocked) {
-		t.Errorf("expected ErrLocked, got %v", err)
-	}
-}
-
-func TestRunPlanCmdWrapperConfigNotFound(t *testing.T) {
-	t.Parallel()
-
-	err := runPlanCmd("/nonexistent/config.yml", nil, nil, false, "",
-		syncer.PlanDependencies{ClientFactory: fakeFactory{client: &fakeClient{files: map[string]string{}}}})
-	if err == nil {
-		t.Fatal("expected error for nonexistent config")
+	err = runPlanCmd(configPath, nil, nil, false, "", deps)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -146,15 +160,116 @@ func TestRunApplyCmdLockFail(t *testing.T) {
 	}
 }
 
-func TestRunPlanCmdWithLockerSuccess(t *testing.T) {
+func TestRunPlanCmdSuccess(t *testing.T) {
 	t.Parallel()
 
 	configPath := writeTestRepo(t)
 	client := &fakeClient{files: make(map[string]string)}
 
-	err := runPlanCmdWithLocker(newTestLocker(), configPath, nil, nil, false, "", planDeps(client))
+	err := runPlanCmd(configPath, nil, nil, false, "", planDeps(client))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// withStubbedPlanExit replaces planExit with a recorder and restores it.
+func withStubbedPlanExit(t *testing.T) *int {
+	t.Helper()
+
+	original := planExit
+
+	var code int
+
+	gotExit := false
+	planExit = func(c int) {
+		code = c
+		gotExit = true
+	}
+
+	t.Cleanup(func() {
+		planExit = original
+
+		if !gotExit {
+			t.Error("expected planExit to be called")
+		}
+	})
+
+	return &code
+}
+
+func TestRunPlanCmdExitCodeNoChanges(t *testing.T) { //nolint:paralleltest // mutates the planExit global
+	configPath := writeTestRepo(t)
+	client := &fakeClient{files: make(map[string]string)}
+
+	code := withStubbedPlanExit(t)
+
+	err := runPlanCmd(configPath, nil, nil, true, "", planDeps(client))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if *code != exitCodeNoChanges {
+		t.Errorf("exit code = %d, want %d", *code, exitCodeNoChanges)
+	}
+}
+
+func TestExitWithPlanCode(t *testing.T) { //nolint:paralleltest // mutates the planExit global
+	tests := []struct {
+		name string
+		plan *syncer.SyncPlan
+		want int
+	}{
+		{name: "no changes", plan: &syncer.SyncPlan{}, want: exitCodeNoChanges},
+		{
+			name: "has changes",
+			plan: &syncer.SyncPlan{HostPlans: []syncer.HostPlan{{
+				Projects: []syncer.ProjectPlan{{
+					Files: []syncer.FilePlan{{Action: syncer.ActionAdd}},
+				}},
+			}}},
+			want: exitCodeHasChanges,
+		},
+	}
+
+	for _, testCase := range tests { //nolint:paralleltest // subtests mutate the planExit global
+		t.Run(testCase.name, func(t *testing.T) {
+			code := withStubbedPlanExit(t)
+
+			exitWithPlanCode(testCase.plan)
+
+			if *code != testCase.want {
+				t.Errorf("exit code = %d, want %d", *code, testCase.want)
+			}
+		})
+	}
+}
+
+func TestRunPlanCmdDigestWriteError(t *testing.T) {
+	t.Parallel()
+
+	configPath := writeTestRepo(t)
+	client := &fakeClient{files: make(map[string]string)}
+
+	// A directory path can't be written as a file, so the digest write fails.
+	digestPath := t.TempDir()
+
+	err := runPlanCmd(configPath, nil, nil, false, digestPath, planDeps(client))
+	if err == nil {
+		t.Fatal("expected error when digest file path is not writable")
+	}
+}
+
+// plan surfaces ErrExistenceCheckFailed when a directory's remote existence
+// could not be determined (e.g. SSH unreachable).
+func TestRunPlanCmdExistenceUnknown(t *testing.T) {
+	t.Parallel()
+
+	configPath := writeTestRepoWithDirs(t)
+	client := &fakeClient{files: make(map[string]string), statErr: remote.ErrExistenceUnknown}
+
+	err := runPlanCmd(configPath, nil, nil, false, "", planDeps(client))
+	if !errors.Is(err, syncer.ErrExistenceCheckFailed) {
+		t.Fatalf("expected ErrExistenceCheckFailed, got %v", err)
 	}
 }
 
