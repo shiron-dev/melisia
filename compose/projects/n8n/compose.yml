@@ -1,6 +1,6 @@
 services:
   n8n:
-    image: n8nio/n8n:2.26.2@sha256:61ba01bc5e39304bbc928c9dbecd938c3a5cc1331b68affba6a34d0f654c43d9
+    image: n8nio/n8n:2.26.3@sha256:51ac1d08178e635a593368f0947532990e55c14342ac781c8d77538daae859c8
     container_name: n8n
     restart: always
     environment:
