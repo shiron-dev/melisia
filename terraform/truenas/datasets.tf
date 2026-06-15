@@ -40,6 +40,13 @@ locals {
       full_name   = "tank/apps"
       compression = "LZ4"
     }
+    tank_apps_calibre = {
+      pool        = "tank"
+      full_name   = "tank/apps/calibre"
+      aclmode     = "DISCARD"
+      acltype     = "POSIX"
+      compression = "LZ4"
+    }
     tank_apps_tnextcloud = {
       pool        = "tank"
       full_name   = "tank/apps/tnextcloud"
@@ -70,6 +77,8 @@ resource "truenas_dataset" "datasets" {
   type = "FILESYSTEM"
 
   atime         = "ON"
+  aclmode       = try(each.value.aclmode, null)
+  acltype       = try(each.value.acltype, null)
   compression   = each.value.compression
   copies        = 1
   deduplication = "OFF"

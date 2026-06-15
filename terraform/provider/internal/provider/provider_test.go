@@ -53,8 +53,8 @@ func TestProviderResourcesAndDataSources(t *testing.T) {
 	truenasProvider := &TrueNASProvider{}
 
 	resources := truenasProvider.Resources(context.Background())
-	if len(resources) != 3 {
-		t.Fatalf("got %d resources, want 3", len(resources))
+	if len(resources) != 7 {
+		t.Fatalf("got %d resources, want 7", len(resources))
 	}
 	if _, ok := resources[0]().(*appConfigResource); !ok {
 		t.Fatalf("got resource %T, want *appConfigResource", resources[0]())
@@ -64,6 +64,18 @@ func TestProviderResourcesAndDataSources(t *testing.T) {
 	}
 	if _, ok := resources[2]().(*datasetResource); !ok {
 		t.Fatalf("got resource %T, want *datasetResource", resources[2]())
+	}
+	if _, ok := resources[3]().(*filesystemACLResource); !ok {
+		t.Fatalf("got resource %T, want *filesystemACLResource", resources[3]())
+	}
+	if _, ok := resources[4]().(*filesystemPermissionResource); !ok {
+		t.Fatalf("got resource %T, want *filesystemPermissionResource", resources[4]())
+	}
+	if _, ok := resources[5]().(*filesystemPermissionCopyResource); !ok {
+		t.Fatalf("got resource %T, want *filesystemPermissionCopyResource", resources[5]())
+	}
+	if _, ok := resources[6]().(*smbShareCopyResource); !ok {
+		t.Fatalf("got resource %T, want *smbShareCopyResource", resources[6]())
 	}
 
 	dataSources := truenasProvider.DataSources(context.Background())

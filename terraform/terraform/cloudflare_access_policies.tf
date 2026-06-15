@@ -1,9 +1,10 @@
 locals {
   cloudflare_access_policies = {
-    bypass     = cloudflare_zero_trust_access_policy.bypass_any.id
-    ca_teamj   = cloudflare_zero_trust_access_policy.ca_teamj.id
-    shiron     = cloudflare_zero_trust_access_policy.shiron.id
-    snct_email = cloudflare_zero_trust_access_policy.snct_email.id
+    bypass         = cloudflare_zero_trust_access_policy.bypass_any.id
+    ca_teamj       = cloudflare_zero_trust_access_policy.ca_teamj.id
+    home_ip_bypass = cloudflare_zero_trust_access_policy.home_ip_bypass.id
+    shiron         = cloudflare_zero_trust_access_policy.shiron.id
+    snct_email     = cloudflare_zero_trust_access_policy.snct_email.id
   }
 
   cloudflare_access_policy_refs = {
@@ -22,6 +23,16 @@ locals {
       }
     ]
     shiron = [
+      {
+        id         = local.cloudflare_access_policies.shiron
+        precedence = 2
+      }
+    ]
+    nas_services = [
+      {
+        id         = local.cloudflare_access_policies.home_ip_bypass
+        precedence = 1
+      },
       {
         id         = local.cloudflare_access_policies.shiron
         precedence = 2
@@ -121,6 +132,34 @@ resource "cloudflare_zero_trust_access_policy" "shiron" {
     {
       group = {
         id = cloudflare_zero_trust_access_group.shiron.id
+      }
+    }
+  ]
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+import {
+  to = cloudflare_zero_trust_access_policy.home_ip_bypass
+  id = "edc628145468437b85dc0e6d48bff3e3/5042db41-17fc-4381-8e87-d6db17439e4a"
+}
+
+resource "cloudflare_zero_trust_access_policy" "home_ip_bypass" {
+  account_id       = local.cloudflare_account_id
+  name             = "home-ip-bypass"
+  decision         = "bypass"
+  session_duration = "24h"
+
+  connection_rules = {
+    rdp = {}
+  }
+
+  include = [
+    {
+      ip = {
+        ip = "106.72.56.1/32"
       }
     }
   ]

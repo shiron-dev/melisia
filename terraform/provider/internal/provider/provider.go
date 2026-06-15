@@ -108,5 +108,9 @@ func (p *TrueNASProvider) Resources(_ context.Context) []func() resource.Resourc
 		NewAppConfigResource,
 		NewAppsConfigResource,
 		NewDatasetResource,
+		NewFilesystemACLResource,
+		NewFilesystemPermissionResource,
+		NewFilesystemPermissionCopyResource,
+		NewSMBShareCopyResource,
 	}
 }

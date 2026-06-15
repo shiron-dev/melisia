@@ -85,6 +85,11 @@ import {
   id = "accounts/edc628145468437b85dc0e6d48bff3e3/55492262-7a50-4dd2-8afb-4265faa5d4f1"
 }
 
+import {
+  to = cloudflare_zero_trust_access_application.nas_services
+  id = "accounts/edc628145468437b85dc0e6d48bff3e3/db5ddb8e-b457-4212-83fd-4ca0129f4b24"
+}
+
 resource "cloudflare_zero_trust_access_group" "shiron" {
   account_id = local.cloudflare_account_id
   name       = "shiron"
@@ -214,4 +219,34 @@ resource "cloudflare_zero_trust_access_application" "arm_services" {
       precedence = 1
     }
   ]
+}
+
+resource "cloudflare_zero_trust_access_application" "nas_services" {
+  account_id                 = local.cloudflare_account_id
+  name                       = "NAS Services"
+  domain                     = "nas.shiron.dev"
+  type                       = "self_hosted"
+  session_duration           = "24h"
+  auto_redirect_to_identity  = false
+  app_launcher_visible       = true
+  enable_binding_cookie      = false
+  http_only_cookie_attribute = false
+  options_preflight_bypass   = false
+
+  destinations = [
+    {
+      type = "public"
+      uri  = "nas.shiron.dev"
+    },
+    {
+      type = "public"
+      uri  = "nas-files.shiron.dev"
+    },
+    {
+      type = "public"
+      uri  = "calibre.melisia.net"
+    },
+  ]
+
+  policies = local.cloudflare_access_policy_refs.nas_services
 }
