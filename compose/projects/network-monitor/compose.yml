@@ -1,9 +1,16 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   # 8.8.8.8 への到達性は blackbox の単発 ICMP では上流の断続ロスで probe_success
   # がバタつくため、1 サイクルで 5 発打って 1 発でも返れば成功とする自前 exporter
   # に置き換えた (= 10 分に 1 回・5 回リトライ)。loss 率/RTT も併せて出す。
   icmp_ping_exporter:
     container_name: home_ep_icmp_ping_exporter
+    logging: *default-logging
     image: python:3.14-alpine@sha256:5a824eb82cc75361f98611f3cfc5091ea33f10a6ccea4d4ebdabbc523b9a1614
     command: ["python", "/app/icmp-ping-exporter.py"]
     ports:
@@ -41,6 +48,7 @@ services:
 
   cloudflare_speedtest_exporter:
     container_name: home_ep_cloudflare_speedtest_exporter
+    logging: *default-logging
     image: python:3.14-alpine@sha256:5a824eb82cc75361f98611f3cfc5091ea33f10a6ccea4d4ebdabbc523b9a1614
     command: ["python", "/app/cloudflare-speedtest-exporter.py"]
     ports:
@@ -81,6 +89,7 @@ services:
   # これにより各 exporter を外部公開してスクレイプさせる必要がなくなる。
   vmagent:
     container_name: home_ep_vmagent
+    logging: *default-logging
     image: victoriametrics/vmagent:v1.145.0@sha256:71f19af5c80bec6ea955c171bab0aae01314a80016b3600412c2b4bbb8d95d70
     ports:
       - "127.0.0.1:8429:8429"
@@ -126,6 +135,7 @@ services:
   # kics-scan ignore-line
   promtail:
     container_name: home_ep_promtail
+    logging: *default-logging
     image: grafana/promtail:3.6.11@sha256:a761cb834cfaeee29745440d4884d6748f0a08d8f68928db1d707018c1dcfbe9
     volumes:
       - "./promtail.yml:/etc/promtail/config.yml:ro"

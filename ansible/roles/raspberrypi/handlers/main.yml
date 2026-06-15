@@ -7,6 +7,12 @@
     daemon_reload: true
   notify: Reboot
 
+- name: Restart journald
+  become: true
+  ansible.builtin.service:
+    name: systemd-journald
+    state: restarted
+
 - name: Reload NetworkManager connections
   become: true
   ansible.builtin.command:
