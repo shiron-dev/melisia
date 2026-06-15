@@ -237,6 +237,22 @@ func TestGetDatasetEscapesIDAndNormalizesProperties(t *testing.T) {
 	}
 }
 
+func TestPermissionModeKeepsPermissionBits(t *testing.T) {
+	tests := map[string]string{
+		"0o40775": "775",
+		"40770":   "770",
+		"16877":   "755",
+		"755":     "755",
+		"0755":    "755",
+	}
+
+	for input, want := range tests {
+		if got := permissionMode(input); got != want {
+			t.Fatalf("permissionMode(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
 func TestCreateDatasetSendsExpectedBody(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requireMethodPath(t, r, http.MethodPost, "/api/v2.0/pool/dataset")
