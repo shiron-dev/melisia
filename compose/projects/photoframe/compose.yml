@@ -12,7 +12,7 @@ services:
       CF_ACCESS_CLIENT_ID: "{{ .photoframe_access_client_id }}"
       CF_ACCESS_CLIENT_SECRET: "{{ .photoframe_access_client_secret }}"
       SLIDE_INTERVAL: "30"
-      FADE_DURATION: "3s"
+      FADE_DURATION: "4s"
       CLIENT_REFRESH_INTERVAL: "60"
       REFRESH_INTERVAL: "300"
       IMAGE_CACHE_MAX_AGE: "3600"
