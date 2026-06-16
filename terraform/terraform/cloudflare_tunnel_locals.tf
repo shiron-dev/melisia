@@ -47,7 +47,7 @@ locals {
       zone_name       = "melisia.net"
       service         = "http://photoframe:8080"
       secret_yaml_dir = "${path.module}/../../compose/hosts/arm-srv/photoframe"
-      policies        = local.cloudflare_access_policy_refs.shiron
+      policies        = local.cloudflare_access_policy_refs.photoframe
     }
     "home-ep-homeassistant" = {
       domain                                         = "home.melisia.net"
