@@ -30,7 +30,10 @@ WebDAV の認証情報と Cloudflare Access トークンはサーバ側に隠蔽
 | `CF_ACCESS_CLIENT_ID`    |      | -          | Cloudflare Access service token client id                       |
 | `CF_ACCESS_CLIENT_SECRET`|      | -          | 同 client secret (id と対で指定)                                |
 | `SLIDE_INTERVAL`         |      | `10`       | スライド切替間隔 (秒、または `30s`/`1m` 形式)                   |
-| `REFRESH_INTERVAL`       |      | `5m`       | フォルダ再走査の間隔                                            |
+| `FADE_DURATION`          |      | `1200ms`   | クロスフェードの時間 (`800ms`/`2s` など。秒指定は整数)          |
+| `CLIENT_REFRESH_INTERVAL`|      | `60`       | ブラウザが画像リストを再取得する間隔                            |
+| `REFRESH_INTERVAL`       |      | `5m`       | サーバがフォルダを再走査する間隔                                |
+| `IMAGE_CACHE_MAX_AGE`    |      | `1h`       | 画像のブラウザキャッシュ期間 (`/img` の Cache-Control max-age)  |
 | `REQUEST_TIMEOUT`        |      | `30s`      | WebDAV への 1 リクエストのタイムアウト                          |
 | `LISTEN_ADDR`            |      | `:8080`    | リッスンアドレス                                                |
 

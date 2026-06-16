@@ -1,6 +1,6 @@
 services:
   photoframe:
-    image: ghcr.io/shiron-dev/photoframe:0.1.0@sha256:44ef11dbc82984f5421d8ae6ec25935c8eb2608b84d874c114f92dbcaac2b0c2
+    image: ghcr.io/shiron-dev/photoframe:0.1.1
     container_name: photoframe
     restart: always
     environment:
@@ -12,7 +12,10 @@ services:
       CF_ACCESS_CLIENT_ID: "{{ .photoframe_access_client_id }}"
       CF_ACCESS_CLIENT_SECRET: "{{ .photoframe_access_client_secret }}"
       SLIDE_INTERVAL: "10"
+      FADE_DURATION: "1200ms"
+      CLIENT_REFRESH_INTERVAL: "60"
       REFRESH_INTERVAL: "300"
+      IMAGE_CACHE_MAX_AGE: "3600"
     security_opt:
       - no-new-privileges:true
     cap_drop:

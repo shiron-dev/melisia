@@ -6,6 +6,7 @@ import (
 	"embed"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -141,10 +142,12 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 type imagesResponse struct {
-	Images          []string `json:"images"` // image URLs the browser can request
-	IntervalSeconds float64  `json:"intervalSeconds"`
-	UpdatedAt       string   `json:"updatedAt,omitempty"`
-	Error           string   `json:"error,omitempty"`
+	Images               []string `json:"images"` // image URLs the browser can request
+	IntervalSeconds      float64  `json:"intervalSeconds"`
+	FadeSeconds          float64  `json:"fadeSeconds"`
+	ClientRefreshSeconds float64  `json:"clientRefreshSeconds"`
+	UpdatedAt            string   `json:"updatedAt,omitempty"`
+	Error                string   `json:"error,omitempty"`
 }
 
 func (s *Server) handleImages(w http.ResponseWriter, _ *http.Request) {
@@ -154,9 +157,11 @@ func (s *Server) handleImages(w http.ResponseWriter, _ *http.Request) {
 		urls[i] = "img/" + id
 	}
 	resp := imagesResponse{
-		Images:          urls,
-		IntervalSeconds: s.cfg.SlideInterval.Seconds(),
-		Error:           lastErr,
+		Images:               urls,
+		IntervalSeconds:      s.cfg.SlideInterval.Seconds(),
+		FadeSeconds:          s.cfg.FadeDuration.Seconds(),
+		ClientRefreshSeconds: s.cfg.ClientRefresh.Seconds(),
+		Error:                lastErr,
 	}
 	if !updated.IsZero() {
 		resp.UpdatedAt = updated.UTC().Format(time.RFC3339)
@@ -196,6 +201,6 @@ func (s *Server) handleImage(w http.ResponseWriter, r *http.Request) {
 	if cl := upstream.Header.Get("Content-Length"); cl != "" {
 		w.Header().Set("Content-Length", cl)
 	}
-	w.Header().Set("Cache-Control", "private, max-age=3600")
+	w.Header().Set("Cache-Control", fmt.Sprintf("private, max-age=%d", int(s.cfg.ImageCacheMaxAge.Seconds())))
 	_, _ = io.Copy(w, upstream.Body)
 }

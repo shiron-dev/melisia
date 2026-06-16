@@ -25,9 +25,12 @@ type Config struct {
 	CFAccessClientSecret string
 
 	// Behaviour.
-	SlideInterval   time.Duration // client-side slide rotation interval
-	RefreshInterval time.Duration // how often the server re-lists the folder
-	RequestTimeout  time.Duration // per outbound WebDAV request timeout
+	SlideInterval    time.Duration // client-side slide rotation interval
+	FadeDuration     time.Duration // client-side cross-fade transition duration
+	ClientRefresh    time.Duration // how often the browser re-fetches the image list
+	RefreshInterval  time.Duration // how often the server re-lists the folder
+	RequestTimeout   time.Duration // per outbound WebDAV request timeout
+	ImageCacheMaxAge time.Duration // browser cache lifetime for proxied images
 }
 
 // LoadConfig reads configuration from the environment, applying defaults and
@@ -42,8 +45,11 @@ func LoadConfig() (Config, error) {
 		CFAccessClientID:     os.Getenv("CF_ACCESS_CLIENT_ID"),
 		CFAccessClientSecret: os.Getenv("CF_ACCESS_CLIENT_SECRET"),
 		SlideInterval:        getdur("SLIDE_INTERVAL", 10*time.Second),
+		FadeDuration:         getdur("FADE_DURATION", 1200*time.Millisecond),
+		ClientRefresh:        getdur("CLIENT_REFRESH_INTERVAL", time.Minute),
 		RefreshInterval:      getdur("REFRESH_INTERVAL", 5*time.Minute),
 		RequestTimeout:       getdur("REQUEST_TIMEOUT", 30*time.Second),
+		ImageCacheMaxAge:     getdur("IMAGE_CACHE_MAX_AGE", time.Hour),
 	}
 
 	if cfg.WebDAVBaseURL == "" {

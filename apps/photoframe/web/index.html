@@ -32,7 +32,7 @@
         height: 100%;
         object-fit: contain;
         opacity: 0;
-        transition: opacity 1.2s ease-in-out;
+        transition: opacity var(--fade, 1.2s) ease-in-out;
       }
       .slide.visible {
         opacity: 1;
@@ -72,6 +72,12 @@
         let index = 0;
         let front = 0;
         let timer = null;
+        let loadTimer = null;
+
+        function scheduleLoad() {
+          if (loadTimer) clearInterval(loadTimer);
+          loadTimer = setInterval(load, refreshMs);
+        }
 
         function showMessage(text) {
           message.textContent = text;
@@ -116,6 +122,18 @@
             const res = await fetch("api/images", { cache: "no-store" });
             const data = await res.json();
             intervalMs = Math.max(2, data.intervalSeconds || 10) * 1000;
+
+            // fade duration (CSS var)
+            if (data.fadeSeconds) {
+              document.documentElement.style.setProperty("--fade", data.fadeSeconds + "s");
+            }
+            // list re-fetch interval — reschedule if it changed
+            const newRefreshMs = Math.max(5, data.clientRefreshSeconds || 60) * 1000;
+            if (newRefreshMs !== refreshMs) {
+              refreshMs = newRefreshMs;
+              scheduleLoad();
+            }
+
             const incoming = data.images || [];
 
             const changed =
@@ -141,7 +159,7 @@
         }
 
         load();
-        setInterval(load, refreshMs);
+        scheduleLoad();
 
         // Keep the screen awake on supported devices.
         if ("wakeLock" in navigator) {
