@@ -1,8 +1,6 @@
 services:
   photoframe:
-    # NOTE: digest is pinned by CI/renovate after the first image publish.
-    # Until ghcr.io/shiron-dev/photoframe:0.1.0 is built, this tag has no digest.
-    image: ghcr.io/shiron-dev/photoframe:0.1.0
+    image: ghcr.io/shiron-dev/photoframe:0.1.0@sha256:44ef11dbc82984f5421d8ae6ec25935c8eb2608b84d874c114f92dbcaac2b0c2
     container_name: photoframe
     restart: always
     environment:
