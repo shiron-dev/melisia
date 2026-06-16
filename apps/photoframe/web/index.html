@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Photo Frame</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        background: #000;
+        overflow: hidden;
+        cursor: none;
+      }
+      #stage {
+        position: fixed;
+        inset: 0;
+      }
+      .slide {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        opacity: 0;
+        transition: opacity 1.2s ease-in-out;
+      }
+      .slide.visible {
+        opacity: 1;
+      }
+      #message {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #888;
+        font-family: system-ui, sans-serif;
+        font-size: 1.25rem;
+        text-align: center;
+        padding: 2rem;
+      }
+      #message.hidden {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="stage">
+      <img class="slide" id="slideA" alt="" />
+      <img class="slide" id="slideB" alt="" />
+    </div>
+    <div id="message">読み込み中…</div>
+
+    <script>
+      (function () {
+        const slides = [document.getElementById("slideA"), document.getElementById("slideB")];
+        const message = document.getElementById("message");
+
+        let images = [];
+        let intervalMs = 10000;
+        let refreshMs = 60000;
+        let index = 0;
+        let front = 0;
+        let timer = null;
+
+        function showMessage(text) {
+          message.textContent = text;
+          message.classList.remove("hidden");
+        }
+        function hideMessage() {
+          message.classList.add("hidden");
+        }
+
+        // Cross-fade to the next image, preloading before swapping.
+        function next() {
+          if (images.length === 0) return;
+          const url = images[index % images.length];
+          index = (index + 1) % images.length;
+
+          const incoming = slides[1 - front];
+          const outgoing = slides[front];
+          const pre = new Image();
+          pre.onload = () => {
+            incoming.src = pre.src;
+            incoming.classList.add("visible");
+            outgoing.classList.remove("visible");
+            front = 1 - front;
+            hideMessage();
+          };
+          pre.onerror = () => {
+            // Skip a broken image without stalling the rotation.
+            if (images.length > 1) next();
+          };
+          pre.src = url;
+        }
+
+        function restartTimer() {
+          if (timer) clearInterval(timer);
+          if (images.length > 0) {
+            timer = setInterval(next, intervalMs);
+          }
+        }
+
+        async function load() {
+          try {
+            const res = await fetch("api/images", { cache: "no-store" });
+            const data = await res.json();
+            intervalMs = Math.max(2, data.intervalSeconds || 10) * 1000;
+            const incoming = data.images || [];
+
+            const changed =
+              incoming.length !== images.length ||
+              incoming.some((u, i) => u !== images[i]);
+
+            images = incoming;
+
+            if (images.length === 0) {
+              if (timer) clearInterval(timer);
+              showMessage(data.error ? "エラー: " + data.error : "表示できる画像がありません");
+              return;
+            }
+
+            if (changed) {
+              index = Math.min(index, images.length);
+              next();
+              restartTimer();
+            }
+          } catch (err) {
+            showMessage("接続エラー: " + err);
+          }
+        }
+
+        load();
+        setInterval(load, refreshMs);
+
+        // Keep the screen awake on supported devices.
+        if ("wakeLock" in navigator) {
+          const requestWakeLock = () => navigator.wakeLock.request("screen").catch(() => {});
+          requestWakeLock();
+          document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === "visible") requestWakeLock();
+          });
+        }
+      })();
+    </script>
+  </body>
+</html>
