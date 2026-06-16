@@ -51,7 +51,7 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
+        "w": 5,
         "x": 0,
         "y": 0
       },
@@ -120,8 +120,8 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
-        "x": 6,
+        "w": 5,
+        "x": 5,
         "y": 0
       },
       "id": 2,
@@ -205,8 +205,8 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
-        "x": 12,
+        "w": 5,
+        "x": 10,
         "y": 0
       },
       "id": 3,
@@ -274,8 +274,8 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
-        "x": 18,
+        "w": 4,
+        "x": 15,
         "y": 0
       },
       "id": 4,
@@ -311,6 +311,75 @@
         }
       ],
       "title": "Not Running",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P95B22FBE6FE890D0"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 19,
+        "y": 0
+      },
+      "id": 10,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "13.0.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P95B22FBE6FE890D0"
+          },
+          "editorMode": "code",
+          "expr": "sum(docker_compose_container_health{job=\"docker_compose\",health=\"unhealthy\"}) or vector(0)",
+          "instant": true,
+          "legendFormat": "unhealthy",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Unhealthy",
       "type": "stat"
     },
     {
@@ -591,19 +660,20 @@
               "Value": true,
               "__name__": true,
               "instance": true,
-              "job": true,
-              "probe_server": true
+              "job": true
             },
             "indexByName": {
-              "project": 0,
-              "service": 1,
-              "container": 2,
-              "state": 3,
-              "image": 4
+              "probe_server": 0,
+              "project": 1,
+              "service": 2,
+              "container": 3,
+              "state": 4,
+              "image": 5
             },
             "renameByName": {
               "container": "Container",
               "image": "Image",
+              "probe_server": "Server",
               "project": "Project",
               "service": "Service",
               "state": "State"
@@ -690,18 +760,19 @@
               "__name__": true,
               "image": true,
               "instance": true,
-              "job": true,
-              "probe_server": true
+              "job": true
             },
             "indexByName": {
-              "project": 0,
-              "service": 1,
-              "container": 2,
-              "health": 3
+              "probe_server": 0,
+              "project": 1,
+              "service": 2,
+              "container": 3,
+              "health": 4
             },
             "renameByName": {
               "container": "Container",
               "health": "Health",
+              "probe_server": "Server",
               "project": "Project",
               "service": "Service"
             }
@@ -786,18 +857,19 @@
               "__name__": true,
               "image": true,
               "instance": true,
-              "job": true,
-              "probe_server": true
+              "job": true
             },
             "indexByName": {
-              "project": 0,
-              "service": 1,
-              "container": 2,
-              "Value": 3
+              "probe_server": 0,
+              "project": 1,
+              "service": 2,
+              "container": 3,
+              "Value": 4
             },
             "renameByName": {
               "Value": "Restarts",
               "container": "Container",
+              "probe_server": "Server",
               "project": "Project",
               "service": "Service"
             }
