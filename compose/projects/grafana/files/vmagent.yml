@@ -38,6 +38,7 @@ scrape_configs:
         labels:
           edge_auth: cloudflare_access
           target_server: arm-srv
+          alert_excluded: "false"
       - targets:
           - https://snipeit.shiron.dev/
         labels:
@@ -52,6 +53,7 @@ scrape_configs:
         labels:
           edge_auth: cloudflare_access
           target_server: home-ep
+          alert_excluded: "false"
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
