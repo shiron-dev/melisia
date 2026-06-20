@@ -8,6 +8,7 @@ resource "grafana_data_source" "managed" {
   access_mode = each.value.access_mode
   is_default  = each.value.is_default
 
+  http_headers             = each.value.http_headers
   json_data_encoded        = each.value.json_data_encoded
   secure_json_data_encoded = each.value.secure_json_data_encoded
 }
