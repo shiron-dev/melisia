@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -58,11 +59,12 @@ const samplePropfind = `<?xml version="1.0"?>
 </d:multistatus>`
 
 func TestList(t *testing.T) {
-	var gotAuth, gotCFID, gotDepth string
+	var gotAuth, gotCFID, gotDepth, gotPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "PROPFIND" {
 			t.Errorf("method = %s, want PROPFIND", r.Method)
 		}
+		gotPath = r.URL.Path
 		gotAuth = r.Header.Get("Authorization")
 		gotCFID = r.Header.Get("CF-Access-Client-Id")
 		gotDepth = r.Header.Get("Depth")
@@ -100,5 +102,10 @@ func TestList(t *testing.T) {
 	}
 	if gotDepth != "1" {
 		t.Errorf("Depth = %q, want 1", gotDepth)
+	}
+	// Collection PROPFIND must carry a trailing slash to avoid redirect-induced
+	// method downgrades on Nextcloud/SabreDAV.
+	if !strings.HasSuffix(gotPath, "/") {
+		t.Errorf("PROPFIND path = %q, want trailing slash", gotPath)
 	}
 }

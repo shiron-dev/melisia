@@ -86,7 +86,14 @@ func (c *WebDAVClient) applyAuth(req *http.Request) {
 // List performs a Depth:1 PROPFIND on the configured folder and returns the
 // server-absolute hrefs of the image files it contains.
 func (c *WebDAVClient) List(ctx context.Context) ([]string, error) {
+	// PROPFIND must target the collection URL with a trailing slash. Without it
+	// some servers (Nextcloud/SabreDAV) reply 301/302 to the canonical "/" form,
+	// and Go's client follows redirects by downgrading PROPFIND to GET — the
+	// response is then no longer 207 and the listing fails.
 	target := c.cfg.WebDAVBaseURL + c.cfg.WebDAVPath
+	if !strings.HasSuffix(target, "/") {
+		target += "/"
+	}
 
 	req, err := http.NewRequestWithContext(ctx, "PROPFIND", target, strings.NewReader(propfindBody))
 	if err != nil {
