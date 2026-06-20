@@ -1,8 +1,0 @@
-- name: Restart home-assistant
-  ansible.builtin.shell:
-    cmd: |
-      set -euo pipefail
-      docker compose -f /var/home-assistant/compose.yml down || :
-      docker compose -f /var/home-assistant/compose.yml up -d --build
-    chdir: /var/home-assistant
-  changed_when: true
