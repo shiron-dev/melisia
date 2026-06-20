@@ -29,6 +29,7 @@ variable "datasources" {
     url                      = optional(string)
     access_mode              = optional(string, "proxy")
     is_default               = optional(bool, false)
+    http_headers             = optional(map(string), {})
     json_data_encoded        = optional(string)
     secure_json_data_encoded = optional(string)
   }))
@@ -56,6 +57,9 @@ variable "datasources" {
       url         = "http://loki:3100"
       access_mode = "proxy"
       is_default  = false
+      http_headers = {
+        X-Scope-OrgID = "fake"
+      }
     }
   }
 }
