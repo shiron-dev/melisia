@@ -25,6 +25,45 @@ scrape_configs:
     scrape_timeout: 10s
     static_configs:
       - targets: ['docker_compose_exporter:9487']
+  - job_name: 'loki_storage'
+    scrape_interval: 1m
+    scrape_timeout: 30s
+    static_configs:
+      - targets: ['loki_storage_exporter:9491']
+        labels:
+          host: arm-srv
+  - job_name: 'loki'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    static_configs:
+      - targets: ['loki:3100']
+        labels:
+          host: arm-srv
+  - job_name: 'promtail'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    static_configs:
+      - targets: ['promtail:9080']
+        labels:
+          host: arm-srv
+  - job_name: 'loki_ready'
+    scrape_interval: 30s
+    scrape_timeout: 15s
+    metrics_path: /probe
+    params:
+      module: [local_http_2xx]
+    static_configs:
+      - targets:
+          - http://loki:3100/ready
+        labels:
+          host: arm-srv
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox_exporter:9115
   - job_name: 'cloudflare_tunnel_e2e'
     scrape_interval: 30s
     scrape_timeout: 15s

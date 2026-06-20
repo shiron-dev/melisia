@@ -1,4 +1,10 @@
 modules:
+  local_http_2xx:
+    prober: http
+    timeout: 10s
+    http:
+      method: GET
+      preferred_ip_protocol: ip4
   cloudflare_tunnel_http_2xx:
     prober: http
     timeout: 10s

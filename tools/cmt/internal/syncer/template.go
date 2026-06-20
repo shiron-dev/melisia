@@ -7,13 +7,17 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"text/template"
 
 	"gopkg.in/yaml.v3"
 )
 
 func isTemplateVarExcluded(name string) bool {
-	return name == "compose.override.yml" || name == "host.yml"
+	return name == "compose.override.yml" ||
+		name == "host.yml" ||
+		strings.HasSuffix(name, ".sops") ||
+		strings.Contains(name, ".sops.")
 }
 
 func LoadTemplateVars(basePath, hostName, projectName string, sources []string) (map[string]any, error) {
@@ -92,7 +96,7 @@ func RenderTemplate(data []byte, vars map[string]any) ([]byte, error) {
 		return data, nil
 	}
 
-	if len(vars) == 0 {
+	if len(vars) == 0 && !bytes.Contains(data, []byte("{{")) {
 		return data, nil
 	}
 
