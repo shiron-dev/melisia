@@ -6,3 +6,9 @@
 # re-introduction.
 5ae3135cf8cac2c668d517b3193cf0cea94243c2:.github/workflows/codex-ai-review.yaml:generic-api-key:1039
 5ae3135cf8cac2c668d517b3193cf0cea94243c2:.github/workflows/codex-ai-review.yaml:generic-api-key:1074
+
+# Cloudflare Access Application AUD tag (公開識別子であり秘密ではない) を
+# generic-api-key の entropy ルールが誤検知したもの。この commit で一旦
+# ハードコードしたが、後続 commit で nas_services リソースの .aud 参照へ
+# 置き換え済み。現行ファイルに値は残っていない。
+fc673301184645d8caedfb0e37e95161fddb2f14:terraform/terraform/cloudflare_tunnel_home_nas.tf:generic-api-key:11
