@@ -1,6 +1,6 @@
 services:
   photoframe:
-    image: ghcr.io/shiron-dev/photoframe:0.1.2
+    image: ghcr.io/shiron-dev/photoframe:0.1.2@sha256:d665e1a01b1900dde701d0dca9c536523106b37f0a3c7443413520203162ed18
     container_name: photoframe
     restart: always
     environment:
