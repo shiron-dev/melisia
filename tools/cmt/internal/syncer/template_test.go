@@ -254,6 +254,41 @@ func TestLoadTemplateVars_ExcludesComposeOverride(t *testing.T) {
 	}
 }
 
+func TestLoadTemplateVars_ExcludesSOPSFiles(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	hostProjectDir := filepath.Join(base, "hosts", "server1", "grafana")
+
+	err := os.MkdirAll(hostProjectDir, 0750)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = os.WriteFile(filepath.Join(hostProjectDir, "env.secrets.yml.sops"), []byte("secret_key: ENC[encrypted]\n"), 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = os.WriteFile(
+		filepath.Join(hostProjectDir, "cloudflare-access.sops.yml"),
+		[]byte("client_secret: ENC[encrypted]\n"),
+		0600,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	vars, err := LoadTemplateVars(base, "server1", "grafana", config.DefaultTemplateVarSources())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(vars) != 0 {
+		t.Errorf("expected encrypted SOPS files to be excluded, got %d vars: %v", len(vars), vars)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // RenderTemplate
 // ---------------------------------------------------------------------------
@@ -293,10 +328,10 @@ func TestRenderTemplate_EdgeCases(t *testing.T) {
 	}{
 		{
 			name:       "no vars",
-			data:       []byte("plain text with no {{ templates }}"),
+			data:       []byte("plain text with no templates"),
 			vars:       nil,
 			wantErr:    false,
-			wantResult: []byte("plain text with no {{ templates }}"),
+			wantResult: []byte("plain text with no templates"),
 		},
 		{
 			name:       "empty vars",
@@ -316,6 +351,12 @@ func TestRenderTemplate_EdgeCases(t *testing.T) {
 			name:    "missing key error",
 			data:    []byte("value = {{ .missing_key }}"),
 			vars:    map[string]any{"other_key": "val"},
+			wantErr: true,
+		},
+		{
+			name:    "missing key error with no vars",
+			data:    []byte("TUNNEL_TOKEN={{ .cf_tunnel_token }}"),
+			vars:    nil,
 			wantErr: true,
 		},
 		{
