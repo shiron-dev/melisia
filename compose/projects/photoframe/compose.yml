@@ -1,0 +1,64 @@
+services:
+  photoframe:
+    image: ghcr.io/shiron-dev/photoframe:0.1.2@sha256:d665e1a01b1900dde701d0dca9c536523106b37f0a3c7443413520203162ed18
+    container_name: photoframe
+    restart: always
+    environment:
+      LISTEN_ADDR: ":8080"
+      WEBDAV_BASE_URL: "{{ .webdav_base_url }}"
+      WEBDAV_PATH: "{{ .webdav_path }}"
+      WEBDAV_USERNAME: "{{ .webdav_username }}"
+      WEBDAV_PASSWORD: "{{ .webdav_password }}"
+      CF_ACCESS_CLIENT_ID: "{{ .photoframe_access_client_id }}"
+      CF_ACCESS_CLIENT_SECRET: "{{ .photoframe_access_client_secret }}"
+      SLIDE_INTERVAL: "30"
+      FADE_DURATION: "4s"
+      CLIENT_REFRESH_INTERVAL: "60"
+      REFRESH_INTERVAL: "300"
+      IMAGE_CACHE_MAX_AGE: "3600"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          cpus: "0.05"
+          memory: 32M
+    healthcheck:
+      test: ["CMD", "/app/photoframe", "healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  tunnel-photoframe:
+    image: cloudflare/cloudflared:2026.6.0@sha256:ba461b8aa9c042156dbd39c38657fe7431bafa063220eab8d5330a523863da9f
+    container_name: photoframe-tunnel
+    restart: always
+    command: tunnel run
+    environment:
+      TUNNEL_TOKEN: "{{ .cf_tunnel_token }}"
+    depends_on:
+      - photoframe
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          cpus: "0.05"
+          memory: 32M
+    healthcheck:
+      test: ["CMD", "cloudflared", "version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s

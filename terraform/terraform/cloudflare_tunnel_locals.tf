@@ -38,6 +38,17 @@ locals {
       secret_yaml_dir = "${path.module}/../../compose/hosts/arm-srv/snipeit"
       policies        = local.cloudflare_access_policy_refs.shiron
     }
+    # photoframe.melisia.net は arm-srv 上の軽量スライドショー (Go) を公開する。
+    # 画像ソースは TrueNAS Nextcloud の WebDAV で、photoframe コンテナが
+    # 専用 CF Access service token (photoframe) を使って取得する。
+    # UI 自体は shiron ポリシーで Access 保護する (私的写真の公開を避ける)。
+    "arm-srv-photoframe" = {
+      domain          = "photoframe.melisia.net"
+      zone_name       = "melisia.net"
+      service         = "http://photoframe:8080"
+      secret_yaml_dir = "${path.module}/../../compose/hosts/arm-srv/photoframe"
+      policies        = local.cloudflare_access_policy_refs.photoframe
+    }
     "home-ep-homeassistant" = {
       domain                                         = "home.melisia.net"
       zone_name                                      = "melisia.net"
