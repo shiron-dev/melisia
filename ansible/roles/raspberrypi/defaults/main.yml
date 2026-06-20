@@ -1,0 +1,7 @@
+# Falco kmod ドライバ関連。home-ep は modern eBPF 非対応のためカーネルモジュールを
+# ホスト側で dkms ビルドする (compose/projects/falco-kmod 参照)。
+# raspberrypi_falco_kmod_image / _driver_version は compose 側の falco イメージと
+# 必ずバージョンを揃えること (Falco 更新時は両方を更新する)。
+raspberrypi_falco_kmod_image: "falcosecurity/falco:0.39.2@sha256:6aac44f74a105c2de47018c570da2128c84228c75dedddfcedf6a13adc0b5204"
+raspberrypi_falco_kmod_driver_version: "7.3.0+driver"
+raspberrypi_falco_kmod_driver_pkg: "falco-{{ raspberrypi_falco_kmod_driver_version }}"

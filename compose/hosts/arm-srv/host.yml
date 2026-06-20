@@ -3,6 +3,12 @@
 sshConfig: ../../ssh_config
 
 projects:
+  # Falco (ランタイムセキュリティ監視)。modern eBPF ドライバを使用。
+  # cmt がアップロードする設定ファイルは 0600 になるため 0644 に直す。
+  falco:
+    remotePath: /var
+    postSyncCommand: chmod 0644 falco.yaml falco_rules.local.yaml
+
   grafana:
     remotePath: /var
     composeAction: ignore

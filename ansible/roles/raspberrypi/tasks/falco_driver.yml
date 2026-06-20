@@ -1,0 +1,59 @@
+# home-ep の Falco は kmod ドライバを使う。Pi カーネルのヘッダ構成では
+# falcosecurity/falco イメージのコンテナ内 dkms ビルドが成立しない
+# (相対 build symlink がバインドマウント越しに解決しない) ため、カーネル
+# モジュールはホスト側で dkms によりビルド/ロードする。dkms に登録するので
+# kernel 更新時は autoinstall が自動再ビルドする。
+# ドライバソースは falco イメージから取り出すため、raspberrypi_falco_kmod_*
+# 変数は compose/projects/falco-kmod の image とバージョンを揃えること。
+# 前提のカーネルヘッダは kernel_headers.yml で導入済み。
+
+- name: Install dkms for Falco kernel module build
+  become: true
+  ansible.builtin.apt:
+    name: dkms
+    state: present
+    update_cache: true
+
+- name: Stage Falco driver source from the Falco image
+  become: true
+  ansible.builtin.command:
+    cmd: >-
+      docker run --rm
+      -v /usr/src:/dest
+      --entrypoint cp
+      {{ raspberrypi_falco_kmod_image }}
+      -rn /usr/src/{{ raspberrypi_falco_kmod_driver_pkg }} /dest/
+    creates: "/usr/src/{{ raspberrypi_falco_kmod_driver_pkg }}"
+
+- name: Register Falco driver source with dkms
+  become: true
+  ansible.builtin.command:
+    cmd: "dkms add -m falco -v {{ raspberrypi_falco_kmod_driver_version }}"
+    creates: "/var/lib/dkms/falco/{{ raspberrypi_falco_kmod_driver_version }}/source"
+
+- name: Build and install the Falco kernel module via dkms
+  become: true
+  ansible.builtin.command:
+    cmd: "dkms install -m falco -v {{ raspberrypi_falco_kmod_driver_version }} --force"
+    creates: "/lib/modules/{{ ansible_kernel }}/updates/dkms/falco.ko.xz"
+
+- name: Load the Falco module at boot
+  become: true
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/falco.conf
+    content: "falco\n"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Check whether the Falco module is currently loaded
+  become: true
+  ansible.builtin.command: lsmod
+  register: raspberrypi_falco_lsmod
+  changed_when: false
+
+- name: Load the Falco module now
+  become: true
+  ansible.builtin.command: modprobe falco
+  changed_when: true
+  when: raspberrypi_falco_lsmod.stdout is not search('(^|\n)falco\s')
