@@ -4,9 +4,12 @@ sshConfig: ../../ssh_config
 
 projects:
   # Falco (ランタイムセキュリティ監視)。modern eBPF ドライバを使用。
+  # 永続データを持たないため、他プロジェクト (/var) と異なりデフォルトの
+  # /opt/compose に置く。/var は SSH ユーザーが sudo 無しで mkdir できず初回
+  # apply が失敗するが、/opt/compose は ansible_user 所有で cmt がそのまま作成
+  # できるため、事前 bootstrap 不要で apply 経路が完結する。
   # cmt がアップロードする設定ファイルは 0600 になるため 0644 に直す。
   falco:
-    remotePath: /var
     postSyncCommand: chmod 0644 falco.yaml falco_rules.local.yaml
 
   grafana:

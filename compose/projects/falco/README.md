@@ -24,16 +24,14 @@ modern eBPF はカーネルの **BTF (CO-RE)** 対応が前提
 (`/sys/kernel/btf/vmlinux` が存在すること)。arm-srv (OCI ARM / Ubuntu 系) は
 BTF 有効で問題なく動作する。
 
-## 初回セットアップ (arm-srv の /var)
+## 配置先 (arm-srv)
 
-arm-srv の compose プロジェクトは `/var` 配下に置く運用で、cmt は初回同期時の
-`mkdir -p` を通常 SSH ユーザー (sudo なし) で行うため、`/var/falco` を**事前に
-作成**しておく必要がある (arm-srv は Ansible 管理外で、既存の `/var` 配下
-プロジェクトも同様に一度だけ手動 bootstrap している)。
-
-```sh
-ssh arm-srv.shiron.dev 'sudo mkdir -p /var/falco && sudo chown ansible_user: /var/falco'
-```
+arm-srv の他プロジェクトは `/var` 配下だが、falco は**デフォルトの
+`/opt/compose` に置く** (`remotePath` を指定しない)。`/var` は SSH ユーザーが
+sudo 無しで `mkdir` できず初回 apply が失敗するのに対し、`/opt/compose` は
+`ansible_user` 所有のため cmt がそのまま作成でき、事前 bootstrap 不要で
+`make cmt-apply` だけで完結する。falco は永続データを持たないので `/var` に
+置く必要はない。
 
 ## デプロイ
 
