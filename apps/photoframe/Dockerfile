@@ -1,4 +1,6 @@
 # syntax=docker/dockerfile:1
+# multi-arch cross-compile のため意図的に --platform=$BUILDPLATFORM を使う。
+# kics-scan ignore-line
 FROM --platform=$BUILDPLATFORM golang:1.26.4-alpine AS build
 ARG TARGETOS
 ARG TARGETARCH
@@ -14,4 +16,6 @@ WORKDIR /app
 COPY --from=build /out/photoframe /app/photoframe
 EXPOSE 8080
 USER nonroot:nonroot
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD ["/app/photoframe", "healthcheck"]
 ENTRYPOINT ["/app/photoframe"]
