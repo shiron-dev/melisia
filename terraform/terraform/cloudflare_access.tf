@@ -246,6 +246,10 @@ resource "cloudflare_zero_trust_access_application" "nas_services" {
       type = "public"
       uri  = "calibre.melisia.net"
     },
+    {
+      type = "public"
+      uri  = "vault.melisia.net"
+    },
   ]
 
   policies = local.cloudflare_access_policy_refs.nas_services
