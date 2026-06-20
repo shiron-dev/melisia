@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import http.client
 import json
+import os
 import socket
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
 DOCKER_SOCKET = "/var/run/docker.sock"
+DOCKER_CONTAINERS_ROOT = "/docker-containers"
 LISTEN_ADDR = "0.0.0.0"
 LISTEN_PORT = 9487
 
@@ -50,6 +52,27 @@ def metric(name: str, labels_map: dict[str, object], value: object) -> str:
     return name + "{" + labels(labels_map) + "} " + str(value)
 
 
+def remapped_log_path(log_path: object) -> str | None:
+    if not isinstance(log_path, str) or not log_path:
+        return None
+
+    prefix = "/var/lib/docker/containers/"
+    if not log_path.startswith(prefix):
+        return None
+
+    return os.path.join(DOCKER_CONTAINERS_ROOT, log_path.removeprefix(prefix))
+
+
+def file_size(path: str | None) -> int:
+    if path is None:
+        return 0
+
+    try:
+        return os.stat(path).st_size
+    except OSError:
+        return 0
+
+
 def collect_metrics() -> str:
     now = int(time.time())
     lines = [
@@ -64,6 +87,8 @@ def collect_metrics() -> str:
         "# TYPE docker_compose_container_restart_count gauge",
         "# HELP docker_compose_container_created_timestamp_seconds Docker container creation timestamp.",
         "# TYPE docker_compose_container_created_timestamp_seconds gauge",
+        "# HELP docker_compose_container_log_bytes Docker JSON log file size for Docker Compose containers.",
+        "# TYPE docker_compose_container_log_bytes gauge",
         "# HELP docker_compose_exporter_scrape_timestamp_seconds Last successful scrape timestamp.",
         "# TYPE docker_compose_exporter_scrape_timestamp_seconds gauge",
     ]
@@ -106,6 +131,7 @@ def collect_metrics() -> str:
         lines.append(metric("docker_compose_container_health", {**base_labels, "health": health}, 1))
         lines.append(metric("docker_compose_container_restart_count", base_labels, inspect.get("RestartCount", 0)))
         lines.append(metric("docker_compose_container_created_timestamp_seconds", base_labels, container.get("Created", 0)))
+        lines.append(metric("docker_compose_container_log_bytes", base_labels, file_size(remapped_log_path(inspect.get("LogPath")))))
 
     lines.append(f"docker_compose_exporter_scrape_timestamp_seconds {now}")
     return "\n".join(lines) + "\n"
