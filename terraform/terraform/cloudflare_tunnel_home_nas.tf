@@ -6,10 +6,6 @@ locals {
   # TrueNAS cloudflared が接続している既存トンネル ID。
   home_nas_tunnel_id = "6d6847fe-06ba-415d-a4bf-b697b24dc27c"
 
-  # nas_services Access アプリ (cloudflare_access.tf) の AUD。nas / nas-files の
-  # ingress に埋め込まれた tunnel レベルの Access 検証で参照される。
-  home_nas_access_aud = "ec2530ab3aa027d8832395a3156c38986b729a42619f82ba5340265e609dda89"
-
   # terraform で DNS レコードまで管理するホスト名。cloud.shiron.org は
   # shiron.org ゾーン (cloudflare_zone_ids 未定義) のため ingress には残すが
   # DNS レコードは管理対象外とする。
@@ -70,7 +66,7 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "home_nas" {
         service  = "http://127.0.0.1"
         origin_request = {
           access = {
-            aud_tag   = [local.home_nas_access_aud]
+            aud_tag   = [cloudflare_zero_trust_access_application.nas_services.aud]
             required  = true
             team_name = "shiron-dev"
           }
@@ -103,7 +99,7 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "home_nas" {
         service  = "http://127.0.0.1:30051"
         origin_request = {
           access = {
-            aud_tag   = [local.home_nas_access_aud]
+            aud_tag   = [cloudflare_zero_trust_access_application.nas_services.aud]
             required  = true
             team_name = "shiron-dev"
           }
