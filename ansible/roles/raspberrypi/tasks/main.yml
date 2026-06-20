@@ -8,10 +8,6 @@
   ansible.builtin.import_tasks: journald.yml
 - name: Configure Wi-Fi fallback
   ansible.builtin.import_tasks: wifi.yml
-- name: Install kernel headers (Falco kmod driver)
-  ansible.builtin.import_tasks: kernel_headers.yml
-- name: Build and load the Falco kernel module (host-side dkms)
-  ansible.builtin.import_tasks: falco_driver.yml
 
 - name: Generate en_US.UTF-8 locale
   become: true
