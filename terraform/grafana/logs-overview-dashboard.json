@@ -36,7 +36,7 @@
             "uid": "loki_localhost"
           },
           "editorMode": "code",
-          "expr": "sum by (host, compose_project) (count_over_time({host=~\"$host\", compose_project=~\"$compose_project\", container=~\"$container\"}[$__interval]))",
+          "expr": "sum by (host, compose_project) (count_over_time({host=~\"$host\"} | compose_project=~\"$compose_project\" | container=~\"$container\" [$__interval]))",
           "legendFormat": "{{host}} / {{compose_project}}",
           "queryType": "range",
           "refId": "A"
@@ -74,7 +74,7 @@
             "uid": "loki_localhost"
           },
           "editorMode": "code",
-          "expr": "{host=~\"$host\", compose_project=~\"$compose_project\", container=~\"$container\"}",
+          "expr": "{host=~\"$host\"} | compose_project=~\"$compose_project\" | container=~\"$container\"",
           "queryType": "range",
           "refId": "A"
         }
@@ -103,6 +103,7 @@
         },
         "definition": "label_values(host)",
         "hide": 0,
+        "allValue": ".+",
         "includeAll": true,
         "multi": true,
         "name": "host",
@@ -157,7 +158,7 @@
     ]
   },
   "time": {
-    "from": "now-1h",
+    "from": "now-7d",
     "to": "now"
   },
   "timepicker": {},

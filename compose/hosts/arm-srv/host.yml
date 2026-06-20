@@ -75,6 +75,8 @@ projects:
 
   discord-webhook:
 
+  photoframe:
+
   snipeit:
     composeAction: down
     dirs:
