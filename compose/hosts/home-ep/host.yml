@@ -16,7 +16,7 @@ projects:
 
   network-monitor:
     removeOrphans: true
-    postSyncCommand: chmod 0644 icmp-ping-exporter.py cloudflare-speedtest-exporter.py vmagent.yml promtail.yml
+    postSyncCommand: chmod 0644 icmp-ping-exporter.py cloudflare-speedtest-exporter.py docker-compose-exporter.py vmagent.yml promtail.yml
     dirs:
       # vmagent の remote_write オンディスクバッファ (arm-srv VM 断時の取りこぼし防止)
       - vmagent_data:

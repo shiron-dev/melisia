@@ -124,7 +124,7 @@ application には共通 e2e ポリシーを付与しない (`skip_e2e_policy = 
 
 ## E2E Alert Exclusion
 
-特定のターゲットをアラート対象から除外するには、`compose/projects/grafana/files/vmagent.yml` の該当 static_configs エントリに `alert_excluded: "true"` ラベルを付ける。メトリクス収集とダッシュボード表示はそのまま継続される。
+特定のターゲットをアラート対象から除外するには、`compose/projects/grafana/files/vmagent.yml` の該当 static_configs エントリで `alert_excluded` ラベルを `"true"` にする。ラベルはジョイン時の列重複や疎なラベルによる混乱を避けるため、全ターゲットに明示的に付与する（除外しないターゲットは `"false"`）。メトリクス収集は除外対象も含めて継続される。
 
 ```yaml
 static_configs:
@@ -137,6 +137,11 @@ static_configs:
 ```
 
 `cloudflare_tunnel_e2e` と `cloudflare_access_block_e2e` の両アラートルールが `alert_excluded!="true"` でフィルタしているため、ラベルを付けるだけで両方から除外される。
+
+ダッシュボード `Cloudflare Tunnel E2E` での表示挙動:
+
+- 上部の全体ステータス系パネル（Healthy / Failed Endpoints、Endpoint Status、Server Endpoint Status）は `alert_excluded!="true"` でフィルタし、除外対象を集計に含めない。
+- 明細系パネル（Current Probe Status、Probe Duration / Success、HTTP Status Code）は除外対象も含めて表示する。Current Probe Status には `Alert Excluded` 列で各エンドポイントの除外状態を表示する。
 
 ## Existing Resources
 

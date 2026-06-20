@@ -38,6 +38,19 @@ locals {
         precedence = 2
       }
     ]
+    # photoframe.melisia.net 用。tunnel の Access アプリは concat([e2e(prec1)], ...)
+    # で生成されるため、precedence は 2 以降を使う (e2e の 1 と衝突回避)。
+    # 据置フォトフレーム設置先の home IP は bypass で SSO 不要、それ以外は shiron SSO。
+    photoframe = [
+      {
+        id         = local.cloudflare_access_policies.home_ip_bypass
+        precedence = 2
+      },
+      {
+        id         = local.cloudflare_access_policies.shiron
+        precedence = 3
+      }
+    ]
   }
 
   cloudflare_access_e2e_policy_ref = {
@@ -67,6 +80,23 @@ locals {
       }
     ]
   }
+
+  # cloud.melisia.net (Nextcloud) の Access アプリに付与する photoframe 専用の
+  # non-identity ポリシー。arm-srv の photoframe が WebDAV へ service token で
+  # 到達できるようにする。precedence は既存ポリシーと衝突しない値を
+  # cloud.melisia.net 取り込み時に調整すること。
+  cloudflare_access_photoframe_policy_ref = {
+    name       = "Allow Photoframe Service Token"
+    decision   = "non_identity"
+    precedence = 1
+    include = [
+      {
+        service_token = {
+          token_id = cloudflare_zero_trust_access_service_token.photoframe.id
+        }
+      }
+    ]
+  }
 }
 
 resource "cloudflare_zero_trust_access_service_token" "e2e" {
@@ -78,6 +108,18 @@ resource "cloudflare_zero_trust_access_service_token" "e2e" {
 resource "cloudflare_zero_trust_access_service_token" "vm_write" {
   account_id = local.cloudflare_account_id
   name       = "vm-write${local.cloudflare_resource_name_suffix}"
+  duration   = "8760h"
+}
+
+# photoframe (arm-srv) が TrueNAS Nextcloud の WebDAV (Cloudflare Access 保護)
+# へアクセスするための専用 service token。他用途のトークンとは分離し、漏洩時の
+# 影響を写真取得経路のみに限定する。client_id / client_secret は
+# cloudflare_tunnel_secrets.tf で compose の secret として書き出す。
+# このトークンを Nextcloud 公開ホスト名の Access アプリケーションのポリシーに
+# 追加する必要がある (Nextcloud の Access アプリは本リポジトリ管理外)。
+resource "cloudflare_zero_trust_access_service_token" "photoframe" {
+  account_id = local.cloudflare_account_id
+  name       = "photoframe${local.cloudflare_resource_name_suffix}"
   duration   = "8760h"
 }
 

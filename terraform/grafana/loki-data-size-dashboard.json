@@ -36,29 +36,33 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "red",
+                "color": "green",
                 "value": null
               },
               {
-                "color": "green",
-                "value": 1
+                "color": "yellow",
+                "value": 5368709120
+              },
+              {
+                "color": "red",
+                "value": 10737418240
               }
             ]
           },
-          "unit": "short"
+          "unit": "bytes"
         },
         "overrides": []
       },
       "gridPos": {
         "h": 4,
-        "w": 5,
+        "w": 6,
         "x": 0,
         "y": 0
       },
       "id": 1,
       "options": {
         "colorMode": "background",
-        "graphMode": "none",
+        "graphMode": "area",
         "justifyMode": "center",
         "orientation": "auto",
         "reduceOptions": {
@@ -68,7 +72,7 @@
           "fields": "",
           "values": false
         },
-        "showPercentChange": false,
+        "showPercentChange": true,
         "textMode": "auto",
         "wideLayout": true
       },
@@ -80,14 +84,14 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "sum(docker_compose_container_state{job=\"docker_compose\",state=\"running\"})",
-          "instant": true,
-          "legendFormat": "running",
-          "range": false,
+          "expr": "loki_storage_bytes{job=\"loki_storage\",name=\"total\"}",
+          "instant": false,
+          "legendFormat": "total",
+          "range": true,
           "refId": "A"
         }
       ],
-      "title": "Running Compose Containers",
+      "title": "Loki Data Size",
       "type": "stat"
     },
     {
@@ -105,23 +109,27 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "red",
+                "color": "green",
                 "value": null
               },
               {
-                "color": "green",
-                "value": 1
+                "color": "yellow",
+                "value": 1073741824
+              },
+              {
+                "color": "red",
+                "value": 5368709120
               }
             ]
           },
-          "unit": "short"
+          "unit": "bytes"
         },
         "overrides": []
       },
       "gridPos": {
         "h": 4,
-        "w": 5,
-        "x": 5,
+        "w": 6,
+        "x": 6,
         "y": 0
       },
       "id": 2,
@@ -149,14 +157,14 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "count(count by (project) (docker_compose_container_state{job=\"docker_compose\"}))",
+          "expr": "sum(docker_compose_container_log_bytes{job=\"docker_compose\"})",
           "instant": true,
-          "legendFormat": "projects",
+          "legendFormat": "docker logs",
           "range": false,
           "refId": "A"
         }
       ],
-      "title": "Compose Projects",
+      "title": "Docker JSON Log Files Total",
       "type": "stat"
     },
     {
@@ -175,12 +183,12 @@
                 "0": {
                   "color": "red",
                   "index": 0,
-                  "text": "DOWN"
+                  "text": "NOT READY"
                 },
                 "1": {
                   "color": "green",
                   "index": 1,
-                  "text": "UP"
+                  "text": "READY"
                 }
               },
               "type": "value"
@@ -205,8 +213,8 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 5,
-        "x": 10,
+        "w": 6,
+        "x": 12,
         "y": 0
       },
       "id": 3,
@@ -234,14 +242,14 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "up{job=\"docker_compose\"}",
+          "expr": "max(probe_success{job=\"loki_ready\",host=\"arm-srv\"}) or vector(0)",
           "instant": true,
-          "legendFormat": "exporter",
+          "legendFormat": "ready",
           "range": false,
           "refId": "A"
         }
       ],
-      "title": "Docker Compose Exporter",
+      "title": "Loki Ready",
       "type": "stat"
     },
     {
@@ -274,8 +282,8 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 4,
-        "x": 15,
+        "w": 6,
+        "x": 18,
         "y": 0
       },
       "id": 4,
@@ -303,14 +311,14 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "sum(docker_compose_container_state{job=\"docker_compose\",state!=\"running\"}) or vector(0)",
+          "expr": "sum(promtail_dropped_entries_total{job=\"promtail\"}) or vector(0)",
           "instant": true,
-          "legendFormat": "not running",
+          "legendFormat": "dropped",
           "range": false,
           "refId": "A"
         }
       ],
-      "title": "Not Running",
+      "title": "Promtail Dropped Entries",
       "type": "stat"
     },
     {
@@ -320,97 +328,12 @@
       },
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 1
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 5,
-        "x": 19,
-        "y": 0
-      },
-      "id": 10,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showPercentChange": false,
-        "textMode": "auto",
-        "wideLayout": true
-      },
-      "pluginVersion": "13.0.2",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "P95B22FBE6FE890D0"
-          },
-          "editorMode": "code",
-          "expr": "sum(docker_compose_container_health{job=\"docker_compose\",health=\"unhealthy\"}) or vector(0)",
-          "instant": true,
-          "legendFormat": "unhealthy",
-          "range": false,
-          "refId": "A"
-        }
-      ],
-      "title": "Unhealthy",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "P95B22FBE6FE890D0"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
           "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
             "drawStyle": "line",
-            "fillOpacity": 15,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
+            "fillOpacity": 20,
+            "gradientMode": "opacity",
             "lineInterpolation": "linear",
-            "lineWidth": 1,
+            "lineWidth": 2,
             "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
@@ -435,13 +358,13 @@
               }
             ]
           },
-          "unit": "short"
+          "unit": "bytes"
         },
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
-        "w": 12,
+        "h": 9,
+        "w": 24,
         "x": 0,
         "y": 4
       },
@@ -449,10 +372,11 @@
       "options": {
         "legend": {
           "calcs": [
-            "lastNotNull"
+            "lastNotNull",
+            "max"
           ],
           "displayMode": "table",
-          "placement": "bottom",
+          "placement": "right",
           "showLegend": true
         },
         "tooltip": {
@@ -469,13 +393,13 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "sum by (project) (docker_compose_container_state{job=\"docker_compose\",state=\"running\"})",
-          "legendFormat": "{{ project }}",
+          "expr": "loki_storage_bytes{job=\"loki_storage\",name=\"total\"}",
+          "legendFormat": "total",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Running Containers By Project",
+      "title": "Total Size Trend",
       "type": "timeseries"
     },
     {
@@ -485,28 +409,12 @@
       },
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
           "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
             "drawStyle": "line",
             "fillOpacity": 15,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
+            "gradientMode": "opacity",
             "lineInterpolation": "linear",
-            "lineWidth": 1,
+            "lineWidth": 2,
             "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
@@ -515,7 +423,7 @@
             "spanNulls": false,
             "stacking": {
               "group": "A",
-              "mode": "none"
+              "mode": "normal"
             },
             "thresholdsStyle": {
               "mode": "off"
@@ -531,15 +439,15 @@
               }
             ]
           },
-          "unit": "short"
+          "unit": "bytes"
         },
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 4
+        "h": 9,
+        "w": 14,
+        "x": 0,
+        "y": 13
       },
       "id": 6,
       "options": {
@@ -565,13 +473,13 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "sum by (project, service) (docker_compose_container_restart_count{job=\"docker_compose\"})",
-          "legendFormat": "{{ project }} / {{ service }}",
+          "expr": "loki_storage_bytes{job=\"loki_storage\",name!=\"total\"}",
+          "legendFormat": "{{name}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Restart Count By Service",
+      "title": "Size By Directory",
       "type": "timeseries"
     },
     {
@@ -581,9 +489,6 @@
       },
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
           "custom": {
             "align": "auto",
             "cellOptions": {
@@ -600,16 +505,34 @@
                 "value": null
               }
             ]
-          },
-          "unit": "short"
+          }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Value"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
-        "h": 12,
-        "w": 24,
-        "x": 0,
-        "y": 12
+        "h": 9,
+        "w": 10,
+        "x": 14,
+        "y": 13
       },
       "id": 7,
       "options": {
@@ -622,17 +545,7 @@
           ],
           "show": false
         },
-        "showHeader": true,
-        "sortBy": [
-          {
-            "desc": false,
-            "displayName": "Project"
-          },
-          {
-            "desc": false,
-            "displayName": "Service"
-          }
-        ]
+        "showHeader": true
       },
       "pluginVersion": "13.0.2",
       "targets": [
@@ -642,41 +555,35 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "docker_compose_container_state{job=\"docker_compose\"}",
+          "expr": "sort_desc(loki_storage_bytes{job=\"loki_storage\",name!=\"total\"})",
           "format": "table",
           "instant": true,
-          "legendFormat": "__auto",
+          "legendFormat": "{{name}}",
           "range": false,
           "refId": "A"
         }
       ],
-      "title": "Container State",
+      "title": "Current Directory Size",
       "transformations": [
         {
           "id": "organize",
           "options": {
             "excludeByName": {
               "Time": true,
-              "Value": true,
               "__name__": true,
+              "host": true,
               "instance": true,
-              "job": true
+              "job": true,
+              "path": true,
+              "probe_server": true
             },
             "indexByName": {
-              "probe_server": 0,
-              "project": 1,
-              "service": 2,
-              "container": 3,
-              "state": 4,
-              "image": 5
+              "Value": 1,
+              "name": 0
             },
             "renameByName": {
-              "container": "Container",
-              "image": "Image",
-              "probe_server": "Server",
-              "project": "Project",
-              "service": "Service",
-              "state": "State"
+              "Value": "Size",
+              "name": "Directory"
             }
           }
         }
@@ -690,9 +597,6 @@
       },
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
           "custom": {
             "align": "auto",
             "cellOptions": {
@@ -709,16 +613,56 @@
                 "value": null
               }
             ]
-          },
-          "unit": "short"
+          }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Bytes"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "File Share"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 10,
-        "w": 12,
+        "w": 24,
         "x": 0,
-        "y": 24
+        "y": 22
       },
       "id": 8,
       "options": {
@@ -741,137 +685,73 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "docker_compose_container_health{job=\"docker_compose\",health!=\"none\"}",
+          "expr": "sort_desc(docker_compose_container_log_bytes{job=\"docker_compose\"})",
           "format": "table",
           "instant": true,
-          "legendFormat": "__auto",
+          "legendFormat": "{{project}} / {{service}} / {{container}}",
           "range": false,
           "refId": "A"
-        }
-      ],
-      "title": "Health Checks",
-      "transformations": [
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {
-              "Time": true,
-              "Value": true,
-              "__name__": true,
-              "image": true,
-              "instance": true,
-              "job": true
-            },
-            "indexByName": {
-              "probe_server": 0,
-              "project": 1,
-              "service": 2,
-              "container": 3,
-              "health": 4
-            },
-            "renameByName": {
-              "container": "Container",
-              "health": "Health",
-              "probe_server": "Server",
-              "project": "Project",
-              "service": "Service"
-            }
-          }
-        }
-      ],
-      "type": "table"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "P95B22FBE6FE890D0"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "custom": {
-            "align": "auto",
-            "cellOptions": {
-              "type": "auto"
-            },
-            "inspect": false
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "short"
         },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 10,
-        "w": 12,
-        "x": 12,
-        "y": 24
-      },
-      "id": 9,
-      "options": {
-        "cellHeight": "sm",
-        "footer": {
-          "countRows": false,
-          "fields": "",
-          "reducer": [
-            "sum"
-          ],
-          "show": false
-        },
-        "showHeader": true
-      },
-      "pluginVersion": "13.0.2",
-      "targets": [
         {
           "datasource": {
             "type": "prometheus",
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "docker_compose_container_restart_count{job=\"docker_compose\"}",
+          "expr": "100 * docker_compose_container_log_bytes{job=\"docker_compose\"} / scalar(sum(docker_compose_container_log_bytes{job=\"docker_compose\"}))",
           "format": "table",
           "instant": true,
-          "legendFormat": "__auto",
+          "legendFormat": "{{project}} / {{service}} / {{container}}",
           "range": false,
-          "refId": "A"
+          "refId": "B"
         }
       ],
-      "title": "Restart Counts",
+      "title": "Docker JSON Log Files By Source",
       "transformations": [
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "container",
+            "mode": "outer"
+          }
+        },
         {
           "id": "organize",
           "options": {
             "excludeByName": {
-              "Time": true,
+              "Time 1": true,
+              "Time 2": true,
               "__name__": true,
+              "__name__ 1": true,
+              "__name__ 2": true,
               "image": true,
+              "image 1": true,
+              "image 2": true,
               "instance": true,
-              "job": true
+              "instance 1": true,
+              "instance 2": true,
+              "job": true,
+              "job 1": true,
+              "job 2": true,
+              "probe_server": true,
+              "probe_server 1": true,
+              "probe_server 2": true,
+              "project 2": true,
+              "service 2": true
             },
             "indexByName": {
-              "probe_server": 0,
-              "project": 1,
-              "service": 2,
-              "container": 3,
-              "Value": 4
+              "Value #A": 3,
+              "Value #B": 4,
+              "container": 2,
+              "project 1": 0,
+              "service 1": 1
             },
             "renameByName": {
-              "Value": "Restarts",
+              "Value #A": "Bytes",
+              "Value #B": "File Share",
               "container": "Container",
-              "probe_server": "Server",
-              "project": "Project",
-              "service": "Service"
+              "project 1": "Project",
+              "service 1": "Service"
             }
           }
         }
@@ -879,24 +759,23 @@
       "type": "table"
     }
   ],
-  "preload": false,
-  "refresh": "30s",
-  "schemaVersion": 42,
+  "refresh": "1m",
+  "schemaVersion": 39,
   "tags": [
-    "docker",
-    "compose",
-    "arm-srv"
+    "loki",
+    "storage"
   ],
   "templating": {
     "list": []
   },
   "time": {
-    "from": "now-6h",
+    "from": "now-7d",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "Docker Compose Containers",
-  "uid": "docker-compose-containers",
-  "version": 2
+  "title": "Loki Data Size",
+  "uid": "loki-data-size",
+  "version": 1,
+  "weekStart": ""
 }
