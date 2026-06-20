@@ -17,11 +17,13 @@ resource "grafana_rule_group" "falco_alerts" {
   interval_seconds = 60
 
   rule {
-    name           = "Falco high-severity event detected"
-    condition      = "C"
-    for            = "0s"
+    name      = "Falco high-severity event detected"
+    condition = "C"
+    for       = "0s"
+    # 検知ゼロ (NoData) は正常。ただしクエリ失敗等の実行エラーは監視自体の
+    # 故障なので通知する (Alerting)。
     no_data_state  = "OK"
-    exec_err_state = "OK"
+    exec_err_state = "Alerting"
     annotations = {
       summary     = "[{{ $labels.host }}] Falco high-severity event(s) detected"
       description = "Falco reported {{ $values.B }} high-severity (Error 以上) event(s) on {{ $labels.host }} in the last 5m. Grafana の Falco Security ダッシュボード / Explore ({container=\"falco\"}) で詳細を確認すること。"
