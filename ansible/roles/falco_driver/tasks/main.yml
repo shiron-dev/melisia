@@ -8,6 +8,12 @@
 # docker ロールより後に実行すること (docker 未導入だと取得に失敗する)。
 # falco_driver_kmod_* 変数は compose/projects/falco-kmod の image と揃える。
 
+# docker ロールは docker-ce 本体を handler (Install docker) で導入するため、
+# 初回構築では play 末尾までフラッシュされず、この時点で docker が未導入になる。
+# 後続の docker run が失敗しないよう、保留中の handler をここで明示的に flush する。
+- name: Flush handlers so Docker is installed before the driver build
+  ansible.builtin.meta: flush_handlers
+
 - name: Install kernel headers for the Falco kmod build
   become: true
   ansible.builtin.apt:
