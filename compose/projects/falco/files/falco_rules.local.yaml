@@ -1,0 +1,16 @@
+# Falco ローカルルール / チューニング。
+#
+# イメージ同梱の falco_rules.yaml を上書き・補完する。ノイズの多いルールを
+# 環境に合わせて無効化したり、独自ルールを追加したりする場合はここに書く。
+# falco_rules.yaml 本体は編集せず、必ずこのファイルで上書きすること
+# (イメージ更新時の差分を最小化するため)。
+#
+# 例: 特定ルールを無効化する場合
+#   - rule: Read sensitive file untrusted
+#     enabled: false
+#
+# 例: 許可リスト (macro) を環境向けに上書きする場合
+#   - macro: user_known_packet_socket_binaries
+#     condition: (proc.name in (my_trusted_binary))
+#
+# 現時点では標準ルールをそのまま使用するため、上書きは未定義。

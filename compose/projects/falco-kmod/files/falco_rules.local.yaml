@@ -1,0 +1,6 @@
+# Falco ローカルルール / チューニング (home-ep)。
+# arm-srv 側 (compose/projects/falco/files/falco_rules.local.yaml) と同方針。
+# ノイズの多いルールの無効化や独自ルールの追加はここに記述し、
+# イメージ同梱の falco_rules.yaml 本体は編集しない。
+#
+# 現時点では標準ルールをそのまま使用するため、上書きは未定義。

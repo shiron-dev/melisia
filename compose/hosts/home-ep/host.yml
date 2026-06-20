@@ -5,6 +5,15 @@ sshConfig: ssh_config
 projects:
   host-monitor: {}
 
+  # Falco (ランタイムセキュリティ監視)。home-ep の Raspberry Pi カーネルは
+  # modern eBPF 非対応のため kmod ドライバを使う。カーネルモジュールはホスト側で
+  # dkms によりビルド/ロードし (ansible raspberrypi ロールの falco_driver タスク)、
+  # コンテナはロード済みモジュールを使う。arm-srv は modern eBPF 版 (falco)。
+  # 詳細は compose/projects/falco-kmod/README.md。
+  # cmt がアップロードする設定ファイルは 0600 になるため 0644 に直す。
+  falco-kmod:
+    postSyncCommand: chmod 0644 falco.yaml falco_rules.local.yaml
+
   network-monitor:
     removeOrphans: true
     postSyncCommand: chmod 0644 icmp-ping-exporter.py cloudflare-speedtest-exporter.py docker-compose-exporter.py vmagent.yml promtail.yml

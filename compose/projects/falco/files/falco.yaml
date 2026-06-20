@@ -1,0 +1,55 @@
+# Falco 設定。検知イベントは JSON として stdout に出力し、promtail 経由で
+# Loki へ集約する。詳細は ../README.md を参照。
+
+# 読み込むルールファイル。falco_rules.yaml はイメージ同梱の標準ルール、
+# falco_rules.local.yaml はこのリポジトリで管理するローカルチューニング。
+rules_files:
+  - /etc/falco/falco_rules.yaml
+  - /etc/falco/falco_rules.local.yaml
+  - /etc/falco/rules.d
+
+# ドライバは modern eBPF (CO-RE) を使用。カーネルの BTF 対応が前提。
+engine:
+  kind: modern_ebpf
+  modern_ebpf:
+    # CPU あたりのリングバッファ共有数。値を上げるとバッファ数が減り
+    # メモリ消費を抑えられる (Raspberry Pi 等のリソース制約向け)。
+    cpus_for_each_buffer: 2
+    buf_size_preset: 4
+    drop_failed_exit: false
+
+# 読み込む/出力するルールの最小プライオリティ。informational/debug は
+# 家庭内環境ではノイズが多いため notice 以上に絞る。
+priority: notice
+
+# 出力は JSON 1 行に統一し、ルール名・タグ・出力フィールドを含める。
+# これにより Loki 側で `| json` パースして priority/rule で集計できる。
+json_output: true
+json_include_output_property: true
+json_include_tags_property: true
+
+# 出力は標準出力チャネルのみ有効化 (promtail が回収)。
+# file/program/http/syslog 等の他チャネルは Falco のデフォルトで無効のため、
+# ここでは定義しない (無効でも required サブフィールドを要求されスキーマ警告に
+# なるため、明示的な無効化ブロックは置かない)。
+stdout_output:
+  enabled: true
+
+# gRPC / 組み込み Web サーバは使わないため無効化し、攻撃面を最小化する。
+grpc:
+  enabled: false
+webserver:
+  enabled: false
+
+# Falco 自身のログ。コンテナの stderr に出す。
+log_stderr: true
+log_syslog: false
+log_level: info
+
+# syscall ドロップ時の挙動。バッファ溢れは Falco 自身のログに記録する。
+syscall_event_drops:
+  threshold: 0.1
+  actions:
+    - log
+  rate: 0.03333
+  max_burst: 1

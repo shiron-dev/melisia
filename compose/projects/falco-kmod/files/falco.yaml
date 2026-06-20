@@ -1,0 +1,41 @@
+# Falco 設定 (home-ep / kmod ドライバ版)。
+# arm-srv の falco プロジェクト (modern_ebpf) と差分はドライバ種別のみ。
+# 検知イベントは JSON で stdout に出力し、promtail 経由で Loki へ集約する。
+
+rules_files:
+  - /etc/falco/falco_rules.yaml
+  - /etc/falco/falco_rules.local.yaml
+  - /etc/falco/rules.d
+
+# Raspberry Pi カーネルは modern eBPF 非対応のためカーネルモジュールを使う。
+# フルイメージのエントリポイントが falcoctl でこのモジュールをビルド/ロードする。
+engine:
+  kind: kmod
+
+# 読み込む/出力するルールの最小プライオリティ。
+priority: notice
+
+json_output: true
+json_include_output_property: true
+json_include_tags_property: true
+
+# 標準出力チャネルのみ有効化 (promtail が回収)。
+stdout_output:
+  enabled: true
+
+# gRPC / 組み込み Web サーバは使わないため無効化。
+grpc:
+  enabled: false
+webserver:
+  enabled: false
+
+log_stderr: true
+log_syslog: false
+log_level: info
+
+syscall_event_drops:
+  threshold: 0.1
+  actions:
+    - log
+  rate: 0.03333
+  max_burst: 1

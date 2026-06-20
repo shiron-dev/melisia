@@ -1,0 +1,75 @@
+# home-ep の Falco は kmod ドライバを使う。Pi カーネルのヘッダ構成では
+# falcosecurity/falco イメージのコンテナ内 dkms ビルドが成立しない
+# (相対 build symlink がバインドマウント越しに解決しない) ため、カーネル
+# モジュールはホスト側で dkms によりビルド/ロードする。dkms に登録するので
+# kernel 更新時は autoinstall が自動再ビルドする。
+#
+# ドライバソースの取り出しに docker を使うため、このロールは home_servers.yml で
+# docker ロールより後に実行すること (docker 未導入だと取得に失敗する)。
+# falco_driver_kmod_* 変数は compose/projects/falco-kmod の image と揃える。
+
+# docker ロールは docker-ce 本体を handler (Install docker) で導入するため、
+# 初回構築では play 末尾までフラッシュされず、この時点で docker が未導入になる。
+# 後続の docker run が失敗しないよう、保留中の handler をここで明示的に flush する。
+- name: Flush handlers so Docker is installed before the driver build
+  ansible.builtin.meta: flush_handlers
+
+- name: Install kernel headers for the Falco kmod build
+  become: true
+  ansible.builtin.apt:
+    # 現行カーネル用ヘッダを引き込むメタパッケージ。
+    # /lib/modules/<ver>/build symlink を提供する。
+    name: linux-headers-rpi-2712
+    state: present
+    update_cache: true
+
+- name: Install dkms for the Falco kernel module build
+  become: true
+  ansible.builtin.apt:
+    name: dkms
+    state: present
+    update_cache: true
+
+- name: Stage the Falco driver source from the Falco image
+  become: true
+  ansible.builtin.command:
+    cmd: >-
+      docker run --rm
+      -v /usr/src:/dest
+      --entrypoint cp
+      {{ falco_driver_kmod_image }}
+      -rn /usr/src/{{ falco_driver_kmod_pkg }} /dest/
+    creates: "/usr/src/{{ falco_driver_kmod_pkg }}"
+
+- name: Register the Falco driver source with dkms
+  become: true
+  ansible.builtin.command:
+    cmd: "dkms add -m falco -v {{ falco_driver_kmod_version }}"
+    creates: "/var/lib/dkms/falco/{{ falco_driver_kmod_version }}/source"
+
+- name: Build and install the Falco kernel module via dkms
+  become: true
+  ansible.builtin.command:
+    cmd: "dkms install -m falco -v {{ falco_driver_kmod_version }} --force"
+    creates: "/lib/modules/{{ ansible_kernel }}/updates/dkms/falco.ko.xz"
+
+- name: Load the Falco module at boot
+  become: true
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/falco.conf
+    content: "falco\n"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Check whether the Falco module is currently loaded
+  become: true
+  ansible.builtin.command: lsmod
+  register: falco_driver_lsmod
+  changed_when: false
+
+- name: Load the Falco module now
+  become: true
+  ansible.builtin.command: modprobe falco
+  changed_when: true
+  when: falco_driver_lsmod.stdout is not search('(^|\n)falco\s')

@@ -1,0 +1,62 @@
+# Falco は監視のためホスト名前空間・/proc・docker.sock・eBPF 用 capability を
+# 必要とする。これらは意図的な構成なので該当 KICS クエリをこのファイルで無効化する
+# (Docker Socket / Sensitive Volume / Capabilities / Host Namespace / Healthcheck)。
+# kics-scan disable=d6355c88-1e8d-49e9-b2f2-f8a1ca12c75b,1c1325ff-831d-43a1-973e-839ae57dfcc0,ce76b7d0-9e77-464d-b86f-c5c48e03e22d,4f31dd9f-2cc3-4751-9b53-67e4af83dac0,698ed579-b239-4f8f-a388-baa4bcb13ef8
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # Falco によるランタイムセキュリティ監視。modern eBPF ドライバ
+  # (engine.kind=modern_ebpf) を使うため、カーネルは BTF (CO-RE) 対応が前提。
+  # arm-srv (OCI ARM / Ubuntu 系) は対応。home-ep (Raspberry Pi) はカーネル
+  # 次第のため、初回デプロイ後に `docker logs falco` で起動を確認すること
+  # (詳細は README.md)。
+  #
+  # 検知イベントは JSON として stdout に出力する。各ホストの promtail は
+  # 全コンテナの docker ログをスクレイプして Loki へ集約しているため、
+  # Falco のイベントも自動的に Loki に入り、Grafana の Falco ダッシュボード
+  # (terraform/grafana/falco-security-dashboard.json) から参照できる。
+  #
+  # falco は syscall ソースを開く特性上ヘルスチェックの口を持たない
+  # (Web サーバは無効)。死活は stdout (Loki) と docker のコンテナ状態で見る。
+  # modern eBPF はカーネルからシステム全体の syscall を取得するため、ホストの
+  # PID 名前空間と /host/proc が必要。HOST_ROOT 経由でコンテナメタデータ
+  # (container.name 等) を docker.sock から補完する。
+  falco:
+    container_name: falco
+    # falco-no-driver イメージには modern eBPF プローブが静的に同梱されており、
+    # ドライバの追加インストールは不要。
+    image: falcosecurity/falco-no-driver:0.39.2@sha256:ba05dfb209cc1c2e912ce116d230b5f59c4542e7286f05b663c499066d5d6a42
+    logging: *default-logging
+    pid: host
+    environment:
+      HOST_ROOT: /host
+    volumes:
+      - "./falco.yaml:/etc/falco/falco.yaml:ro"
+      - "./falco_rules.local.yaml:/etc/falco/falco_rules.local.yaml:ro"
+      - "/proc:/host/proc:ro"
+      - "/var/run/docker.sock:/host/var/run/docker.sock:ro"
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # modern eBPF の最小権限セット。BPF/PERFMON は eBPF プログラムのロードと
+    # perf イベント、SYS_RESOURCE は BPF マップの memlock 上限緩和、SYS_PTRACE は
+    # /proc 経由のプロセス情報取得に必要。
+    cap_add:
+      - BPF
+      - PERFMON
+      - SYS_RESOURCE
+      - SYS_PTRACE
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M

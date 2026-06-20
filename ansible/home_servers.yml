@@ -6,3 +6,6 @@
     - cloudflare_mesh_dns_updater
     - cloudflare_access_infrastructure_ssh
     - docker
+    # falco_driver は docker ロールの後に実行する
+    # (ドライバソースの取り出しに docker run を使うため)。
+    - falco_driver

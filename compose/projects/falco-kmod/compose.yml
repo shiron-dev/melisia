@@ -1,0 +1,60 @@
+# Falco は監視のため特権・ホスト名前空間・/proc・/dev・docker.sock を必要とする。
+# これらは意図的な構成なので該当 KICS クエリをこのファイルで無効化する
+# (Privileged / Docker Socket / Sensitive Volume / Capabilities /
+#  Host Namespace / Healthcheck / Security Opt)。
+# kics-scan disable=ae5b6871-7f45-42e0-bb4c-ab300c4d2026,d6355c88-1e8d-49e9-b2f2-f8a1ca12c75b,1c1325ff-831d-43a1-973e-839ae57dfcc0,ce76b7d0-9e77-464d-b86f-c5c48e03e22d,4f31dd9f-2cc3-4751-9b53-67e4af83dac0,698ed579-b239-4f8f-a388-baa4bcb13ef8,610e266e-6c12-4bca-9925-1ed0cd29742b
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # home-ep (Raspberry Pi 5 / kernel 6.12.x +rpt) 専用の Falco。
+  # この Pi カーネルは modern eBPF プローブ非対応のため kmod ドライバを使う。
+  #
+  # kmod のビルドはコンテナ内 dkms ではこの Pi のヘッダ構成で成立しないため
+  # (相対 build symlink がバインドマウント越しに解決しない)、カーネルモジュールは
+  # ホスト側で dkms によりビルド/ロードする (ansible falco_driver ロール。
+  # kernel 更新時は dkms が自動再ビルド)。
+  # よってコンテナはドライバローダを実行せず (SKIP_DRIVER_LOADER)、ホストで
+  # ロード済みのモジュール (/dev/falcoN) を開くだけ。詳細は README.md。
+  #
+  # 検知イベントは JSON で stdout に出力し、既存の promtail が Loki へ集約する
+  # (arm-srv の falco プロジェクトと同じ Grafana ダッシュボードで参照可能)。
+  # falco は syscall ソースを開く特性上ヘルスチェックの口を持たない。
+  falco:
+    container_name: falco
+    image: falcosecurity/falco:0.39.2@sha256:6aac44f74a105c2de47018c570da2128c84228c75dedddfcedf6a13adc0b5204
+    logging: *default-logging
+    environment:
+      HOST_ROOT: /host
+      # ホストでロード済みのモジュールを使うため、コンテナ内でのドライバ
+      # 取得/ビルド/ロードを一切行わない。
+      SKIP_DRIVER_LOADER: "yes"
+    command:
+      - /usr/bin/falco
+      - -o
+      - engine.kind=kmod
+    # kmod エンジンは /dev/falcoN を開きリングバッファを mmap するため特権が必要
+    # (モジュールのロード自体はホスト側で完了済み)。
+    privileged: true
+    pid: host
+    volumes:
+      - "./falco.yaml:/etc/falco/falco.yaml:ro"
+      - "./falco_rules.local.yaml:/etc/falco/falco_rules.local.yaml:ro"
+      # 起動時の既存プロセス走査用。
+      - "/proc:/host/proc:ro"
+      # コンテナメタデータ補完用。
+      - "/var/run/docker.sock:/host/var/run/docker.sock:ro"
+      # ホストでロード済みの kmod が公開する文字デバイス (/dev/falcoN)。
+      - "/dev:/host/dev"
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
