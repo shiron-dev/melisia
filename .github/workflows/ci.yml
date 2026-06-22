@@ -254,7 +254,7 @@ jobs:
     if: ${{ github.event_name == 'pull_request' && startsWith(github.head_ref, 'renovate/') }}
     continue-on-error: true
     steps:
-      - uses: shiron-dev/actions/renovate-deps-comment@0cc65c3143f6a0d119fa8085c8b2ae3dd25e657b # v1.6.3
+      - uses: shiron-dev/actions/renovate-deps-comment@8780bd20d1ef046844aa1a1c2e9d96fefaa1384b # v1.7.0
 
   gitleaks:
     runs-on: ubuntu-latest
