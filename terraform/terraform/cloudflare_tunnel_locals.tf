@@ -5,7 +5,7 @@ locals {
       zone_name       = "shiron.dev"
       service         = "http://grafana:3000"
       secret_yaml_dir = "${path.module}/../../compose/hosts/arm-srv/grafana"
-      policies        = local.cloudflare_access_policy_refs.shiron
+      policies        = local.cloudflare_access_policy_refs.grafana
       extra_ingress = [
         # influxdb は退役済み (メトリクス永続化は Mimir に一本化)。
         # コンテナ削除に伴い公開 tunnel ingress と e2e probe 対象も撤去した。
