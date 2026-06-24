@@ -51,6 +51,19 @@ locals {
         precedence = 3
       }
     ]
+    # grafana.shiron.dev 用。tunnel の Access アプリは concat([e2e(prec1)], ...)
+    # で生成されるため、precedence は 2 以降を使う (e2e の 1 と衝突回避)。
+    # 自宅 IP は bypass で SSO 不要、それ以外は shiron SSO。
+    grafana = [
+      {
+        id         = local.cloudflare_access_policies.home_ip_bypass
+        precedence = 2
+      },
+      {
+        id         = local.cloudflare_access_policies.shiron
+        precedence = 3
+      }
+    ]
   }
 
   cloudflare_access_e2e_policy_ref = {
