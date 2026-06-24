@@ -1,0 +1,56 @@
+#!/bin/sh
+# Managed by ansible kiosk role.
+# Launches Chromium full-screen with the DevTools port the agent drives.
+# Screen power is owned by Home Assistant (via the kiosk-agent), so disable any
+# compositor-side idle blanking that would fight it.
+
+# labwc does not reliably export WAYLAND_DISPLAY into the autostart environment,
+# so resolve the compositor socket explicitly for Chromium (and the agent).
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+if [ -z "$WAYLAND_DISPLAY" ]; then
+  for sock in "$XDG_RUNTIME_DIR"/wayland-*; do
+    [ -S "$sock" ] || continue
+    WAYLAND_DISPLAY="$(basename "$sock")"
+    break
+  done
+  export WAYLAND_DISPLAY
+fi
+
+# Make the session env available to the systemd --user manager (kiosk-agent).
+systemctl --user import-environment WAYLAND_DISPLAY XDG_RUNTIME_DIR 2>/dev/null || true
+
+# No idle blanking — Home Assistant owns screen power.
+pkill -x swayidle 2>/dev/null || true
+
+# Chromium, (re)launched only while the kiosk-agent's enable flag exists.
+# The agent creates/removes this flag from the "Screensaver rotation" switch:
+#   * rotation ON  -> flag present  -> browser is kept alive (relaunched on exit)
+#   * rotation OFF -> flag absent   -> a running browser is left as-is, and if the
+#                                      user closes it, it is NOT relaunched.
+while true; do
+  if [ -f "$XDG_RUNTIME_DIR/kiosk-browser.enabled" ]; then
+    # NOTE: deliberately NOT --kiosk. --kiosk hard-locks fullscreen, so F11 (and
+    # the HA "fullscreen" switch, which taps F11 via uinput) cannot release it.
+    # --start-fullscreen alone clamped the window to ~945x1060 on this labwc
+    # because Chromium had no initial size; pairing it with an explicit
+    # --window-size matching the output makes it boot full-screen AND makes F11
+    # toggle to a same-size windowed (operable) view and back.
+    {{ kiosk_chromium_bin }} \
+      --ozone-platform=wayland \
+      --start-fullscreen \
+      --window-size={{ kiosk_screen_width }},{{ kiosk_screen_height }} \
+      --window-position=0,0 \
+      --remote-debugging-port={{ kiosk_cdp_port }} \
+      --remote-allow-origins=* \
+      --user-data-dir={{ kiosk_chromium_profile }} \
+      --no-first-run \
+      --noerrordialogs \
+      --disable-session-crashed-bubble \
+      --disable-infobars \
+      --disable-features=Translate \
+      --check-for-update-interval=31536000 \
+      --password-store=basic \
+      about:blank >"$XDG_RUNTIME_DIR/kiosk-chromium.log" 2>&1
+  fi
+  sleep 3
+done &

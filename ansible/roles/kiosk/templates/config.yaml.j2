@@ -1,0 +1,19 @@
+# Managed by ansible kiosk role
+mqtt:
+  host: {{ kiosk_mqtt_host }}
+  port: {{ kiosk_mqtt_port }}
+  username: {{ kiosk_mqtt_username }}
+  password: "{{ kiosk_mqtt_password }}"
+device_id: {{ kiosk_device_id }}
+discovery_prefix: {{ kiosk_discovery_prefix }}
+output: {{ kiosk_output }}
+cdp_port: {{ kiosk_cdp_port }}
+idle_timeout: {{ kiosk_idle_timeout }}
+slots: {{ kiosk_slots }}
+state_path: {{ kiosk_state_dir }}/state.json
+chromium_bin: {{ kiosk_chromium_bin }}
+default_playlist:
+{% for item in kiosk_default_playlist %}
+  - url: "{{ item.url }}"
+    seconds: {{ item.seconds }}
+{% endfor %}

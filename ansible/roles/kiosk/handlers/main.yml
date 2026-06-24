@@ -1,0 +1,24 @@
+- name: Restart kiosk-agent
+  become: true
+  become_user: "{{ kiosk_user }}"
+  ansible.builtin.systemd_service:
+    name: kiosk-agent
+    scope: user
+    state: restarted
+    daemon_reload: true
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ kiosk_uid }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ kiosk_uid }}/bus"
+
+- name: Reload udev rules
+  become: true
+  ansible.builtin.command: udevadm control --reload-rules
+  changed_when: false
+
+# Re-reads labwc autostart and relaunches Chromium with new flags. The agent
+# survives (it runs under the lingering user manager, not the graphical session).
+- name: Restart kiosk session
+  become: true
+  ansible.builtin.systemd_service:
+    name: lightdm
+    state: restarted

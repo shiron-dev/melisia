@@ -1,0 +1,27 @@
+kiosk_user: "{{ ansible_user }}"
+kiosk_agent_dir: /opt/kiosk
+kiosk_config_dir: /etc/kiosk
+kiosk_state_dir: /var/lib/kiosk
+kiosk_device_id: home-kiosk
+kiosk_discovery_prefix: homeassistant
+kiosk_output: HDMI-A-1
+kiosk_cdp_port: 9222
+kiosk_idle_timeout: 1
+kiosk_slots: 6
+# Output resolution. Chromium is launched with an explicit --window-size matching
+# this so it boots full-screen filling the output AND F11 (the HA fullscreen
+# switch) can toggle back to a same-size windowed view instead of being locked by
+# --kiosk. Override per host in group_vars if the panel is not 1920x1080.
+kiosk_screen_width: 1920
+kiosk_screen_height: 1080
+kiosk_chromium_bin: /usr/bin/chromium
+kiosk_chromium_profile: "/home/{{ kiosk_user }}/.cache/kiosk-chromium"
+
+kiosk_mqtt_host: 192.168.1.61
+kiosk_mqtt_port: 1884
+kiosk_mqtt_username: kiosk
+# kiosk_mqtt_password is provided by group_vars/home_kiosk/kiosk.secrets.yml (sops)
+
+# Seed playlist; once deployed, edit per-slot URL/seconds from Home Assistant.
+kiosk_default_playlist:
+  - { url: "https://example.com", seconds: 30 }

@@ -11,6 +11,13 @@ Host home-ep
   IdentitiesOnly yes
   IdentityAgent none
 
+Host home-kiosk
+  HostName 192.168.1.76
+  User shiron
+  IdentityFile ../.local/ssh/home_kiosk_key
+  IdentitiesOnly yes
+  IdentityAgent none
+
 Host storage-srv
   HostName storage-srv.network.melisia.net
   User melisia_ops
