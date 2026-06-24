@@ -1,3 +1,7 @@
+# whisper_data / piper_data は各 1 コンテナ専用の名前付きボリュームで共有していないが、
+# KICS の "Shared Volumes Between Containers" は誤検知する。この query は ignore-line で
+# 抑制できない (v2.1.20) ため、ファイル単位で無効化する。
+# kics-scan disable=8c978947-0ff6-485c-b0c2-0bfca6026466
 networks:
   home-automation:
     driver: bridge
@@ -102,6 +106,9 @@ services:
       - ./mosquitto_passwd:/mosquitto/config/passwd:ro
       - ./mosquitto_data:/mosquitto/data:rw
       - ./mosquitto_log:/mosquitto/log:rw
+    # 1884 は home-kiosk 等の外部クライアント向け認証付き LAN リスナー。
+    # 全インターフェース公開は意図的なので kics の host-interface 警告を抑制する。
+    # kics-scan ignore-line
     ports:
       - "127.0.0.1:1883:1883"
       - "1884:1884"
