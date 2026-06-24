@@ -42,7 +42,7 @@ services:
       start_period: 60s
 
   freshrss-db:
-    image: mariadb:10.11@sha256:8d9046cdb0b0961b3d2119bcb4bea62a185f11944be5968bc42b81d47801902e
+    image: mariadb:10.11@sha256:5a5c675881ef3fd1c1da9b0a3bfd6ee82edbe39cd9e32e06be18034c37235e0e
     container_name: freshrss-db
     restart: unless-stopped
     environment:
