@@ -25,7 +25,7 @@ services:
   # falco は syscall ソースを開く特性上ヘルスチェックの口を持たない。
   falco:
     container_name: falco
-    image: falcosecurity/falco:0.39.2@sha256:6aac44f74a105c2de47018c570da2128c84228c75dedddfcedf6a13adc0b5204
+    image: falcosecurity/falco:0.44.1@sha256:d0cfe422d6ac0e0f20857798f46c7d7273210e1b064b22821e4e6e7f843cde6b
     logging: *default-logging
     environment:
       HOST_ROOT: /host
