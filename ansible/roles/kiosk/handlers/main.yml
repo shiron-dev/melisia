@@ -1,3 +1,13 @@
+# Restart the lingering `systemd --user` manager so it (and the kiosk-agent it
+# runs) picks up freshly-added supplementary groups (e.g. `input`). This restarts
+# the user-scope services only; the logind graphical session (labwc/Chromium) and
+# our SSH session are separate logind scopes and are left running.
+- name: Restart kiosk user manager
+  become: true
+  ansible.builtin.systemd_service:
+    name: "user@{{ kiosk_uid }}.service"
+    state: restarted
+
 - name: Restart kiosk-agent
   become: true
   become_user: "{{ kiosk_user }}"

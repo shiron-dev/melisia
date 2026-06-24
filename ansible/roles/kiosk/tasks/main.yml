@@ -18,6 +18,11 @@
     name: "{{ kiosk_user }}"
     groups: input
     append: true
+  # The lingering `systemd --user` manager (and the kiosk-agent under it) keeps
+  # the supplementary groups it had at start, so a fresh `input` membership only
+  # takes effect after that manager is restarted — otherwise the agent can't open
+  # /dev/input/event* or /dev/uinput until the next login/reboot.
+  notify: Restart kiosk user manager
 
 - name: Load uinput module at boot (virtual keyboard for HA fullscreen toggle)
   become: true
