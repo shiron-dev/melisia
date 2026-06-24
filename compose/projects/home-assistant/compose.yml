@@ -37,9 +37,16 @@ x-resource-profiles:
     mem_limit: 1g
     mem_reservation: 256m
     memswap_limit: 1g
+  stt: &resource-stt
+    cpus: 2.0
+    mem_limit: 2g
+    mem_reservation: 256m
+    memswap_limit: 2g
 
 volumes:
   esphome_build_cache:
+  whisper_data:
+  piper_data:
 
 services:
   homeassistant:
@@ -56,8 +63,9 @@ services:
       - ./config:/config:rw
       # kics-scan ignore-line
       - /etc/localtime:/etc/localtime:ro
-      # kics-scan ignore-line
-      - /run/dbus:/run/dbus:ro
+      # Bluetooth は ESPHome Bluetooth プロキシ (m5stack-atom-s3-lite) に移行したため、
+      # 本体 BlueZ への dbus アクセス (/run/dbus) は外す。Pi のオンボード BT (hci0) の
+      # エラーログも止まる。再び本体 BT を使う場合は /run/dbus:/run/dbus:ro を戻す。
     restart: unless-stopped
     privileged: false
     logging: *default-logging
@@ -91,10 +99,12 @@ services:
     user: "1883:1883"
     volumes:
       - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto_passwd:/mosquitto/config/passwd:ro
       - ./mosquitto_data:/mosquitto/data:rw
       - ./mosquitto_log:/mosquitto/log:rw
     ports:
       - "127.0.0.1:1883:1883"
+      - "1884:1884"
     networks:
       - home-automation
     restart: unless-stopped
@@ -168,6 +178,8 @@ services:
         FORWARDS = (
             ("127.0.0.1", 1883, "mosquitto", 1883),
             ("127.0.0.1", 10400, "openwakeword", 10400),
+            ("127.0.0.1", 10300, "whisper", 10300),
+            ("127.0.0.1", 10200, "piper", 10200),
             ("127.0.0.1", 5580, "172.19.0.1", 5580),
         )
 
@@ -219,6 +231,10 @@ services:
         condition: service_started
       openwakeword:
         condition: service_started
+      whisper:
+        condition: service_started
+      piper:
+        condition: service_started
     healthcheck:
       test:
         - CMD
@@ -228,6 +244,8 @@ services:
           import socket;
           socket.create_connection(("127.0.0.1", 1883), 3).close();
           socket.create_connection(("127.0.0.1", 10400), 3).close();
+          socket.create_connection(("127.0.0.1", 10300), 3).close();
+          socket.create_connection(("127.0.0.1", 10200), 3).close();
           socket.create_connection(("127.0.0.1", 5580), 3).close()
       interval: 30s
       timeout: 10s
@@ -291,7 +309,7 @@ services:
     healthcheck:
       test:
         - CMD
-        - python
+        - python3
         - -c
         - >
           import socket;
@@ -301,6 +319,114 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+  # Wyoming STT (faster-whisper)。Assist パイプラインの音声認識を担当。
+  # 多言語 small モデルで日本語+英語を auto 検出。Pi では負荷が高いので
+  # 軽くしたい場合は --model を base / tiny-int8 に下げる。
+  whisper:
+    <<: *resource-stt
+    container_name: whisper
+    image: rhasspy/wyoming-whisper:latest@sha256:9501d2659eee83b6eead98d53842193e5fed011eda6c5b1c3ad36f3146b28fed
+    command:
+      - --uri
+      - tcp://0.0.0.0:10300
+      - --model
+      - small
+      - --language
+      - auto
+      - --beam-size
+      - "1"
+      - --data-dir
+      - /data
+      - --download-dir
+      - /data
+    volumes:
+      - whisper_data:/data
+      # kics-scan ignore-line
+      - /etc/localtime:/etc/localtime:ro
+    networks:
+      - home-automation
+    ports:
+      - "127.0.0.1:10300:10300"
+    restart: unless-stopped
+    logging: *default-logging
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - -c
+        - >
+          import socket;
+          s = socket.create_connection(("127.0.0.1", 10300), 3);
+          s.close()
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.1'
+          memory: 256M
+
+  # Wyoming TTS (Piper)。Assist パイプラインの音声合成を担当。
+  # 日本語の高品質 Piper ボイスは未提供のため、日本語応答は要検討
+  # (README 参照)。英語は en_US-lessac-medium を使用。
+  piper:
+    <<: *resource-medium
+    container_name: piper
+    image: rhasspy/wyoming-piper:latest@sha256:c874e4a04657ae3381332ee5d0c8c70a310dae6722892840f530ac0890b44eb3
+    command:
+      - --uri
+      - tcp://0.0.0.0:10200
+      - --voice
+      - en_US-lessac-medium
+      - --data-dir
+      - /data
+      - --download-dir
+      - /data
+    volumes:
+      - piper_data:/data
+      # kics-scan ignore-line
+      - /etc/localtime:/etc/localtime:ro
+    networks:
+      - home-automation
+    ports:
+      - "127.0.0.1:10200:10200"
+    restart: unless-stopped
+    logging: *default-logging
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - -c
+        - >
+          import socket;
+          s = socket.create_connection(("127.0.0.1", 10200), 3);
+          s.close()
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     deploy:
       resources:
         limits:
