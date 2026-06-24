@@ -1,10 +1,13 @@
 homeassistant:
+  # 音声サテライト等の LAN クライアントが TTS 音声を取得するための内部 URL。
+  # 未設定だと HA が URL を生成できず ESPHome media_player の取得が失敗する。
+  internal_url: "http://192.168.1.61:8123"
   auth_providers:
     - type: trusted_networks
       trusted_networks:
-        - 192.168.1.74/32
+        - 192.168.1.0/24
       trusted_users:
-        "192.168.1.74/32": afaa574e993e4ac4898586fe035d1b23
+        "192.168.1.0/24": afaa574e993e4ac4898586fe035d1b23
       allow_bypass_login: true
     - type: homeassistant
 
