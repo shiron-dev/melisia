@@ -562,8 +562,16 @@ def main():
     global screen_on
     screen_on = screen_read()
 
-    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2,
-                         client_id=f"kiosk-{DEVICE_ID}")
+    # paho-mqtt 2.x requires an explicit callback API version; 1.x (shipped by
+    # some distro python3-paho-mqtt packages) has no CallbackAPIVersion and uses
+    # the positional client_id constructor. Our on_connect/on_message callbacks
+    # are written to be compatible with both APIs (on_connect's `properties` is
+    # optional; on_message is unchanged), so only the constructor differs.
+    if hasattr(mqtt, "CallbackAPIVersion"):
+        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2,
+                             client_id=f"kiosk-{DEVICE_ID}")
+    else:
+        client = mqtt.Client(client_id=f"kiosk-{DEVICE_ID}")
     client.username_pw_set(CFG["mqtt"]["username"], str(CFG["mqtt"]["password"]))
     client.will_set(AVAIL_TOPIC, "offline", retain=True)
     client.on_connect = on_connect
