@@ -10,15 +10,19 @@ name: Codex Auth Refresh
 # never on pull_request, and never runs `codex exec` or any PR-controlled code.
 # It is the ONLY place that holds a secrets:write credential, so the untrusted
 # Codex review run shares no runner with it.
-
-# SECURITY: schedule is the ONLY trigger on purpose. Scheduled runs always use
-# the workflow definition from the default branch, which is a real trust
-# boundary. workflow_dispatch is intentionally NOT used: it would run the
-# definition from the dispatcher's chosen ref, so a PR branch could remove any
-# in-file guard and run this privileged job (it holds CODEX_AUTH_JSON and a
-# secrets:write token) from PR-controlled code. To refresh out-of-band, update
-# the CODEX_AUTH_JSON secret directly (e.g. after `codex login`).
+#
+# SECURITY: manual dispatch must run from the default branch. The job-level guard
+# below refuses other refs because this privileged workflow holds CODEX_AUTH_JSON
+# and a secrets:write token. When running by CLI, use:
+#   gh workflow run codex-auth-refresh.yaml --ref <default-branch>
 on:
+  workflow_dispatch:
+    inputs:
+      force_refresh:
+        description: "Refresh even when the bundle is still fresh"
+        required: false
+        type: boolean
+        default: false
   schedule:
     # Every 6 hours. Combined with the ~24h pre-expiry refresh margin below, the
     # secret's access token is always valid by a wide margin, so review jobs never
@@ -35,10 +39,9 @@ concurrency:
 
 jobs:
   refresh:
-    # Defense in depth: this job holds CODEX_AUTH_JSON and a secrets:write token,
-    # so refuse to run unless on the default branch. With schedule as the only
-    # trigger this is always true, but it guards against a future trigger being
-    # added without re-reviewing this constraint.
+    # This job holds CODEX_AUTH_JSON and a secrets:write token, so refuse to run
+    # unless on the default branch. This keeps manual dispatches scoped to the
+    # trusted workflow definition.
     if: ${{ github.ref_name == github.event.repository.default_branch }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -64,6 +67,7 @@ jobs:
           REFRESH_BEFORE_EXP_HOURS: "24"
           # Fallback only used when the access token has no parseable JWT exp.
           REFRESH_AFTER_DAYS: "7"
+          FORCE_REFRESH: ${{ github.event_name == 'workflow_dispatch' && inputs.force_refresh }}
         run: |
           if [[ -z "$CODEX_AUTH_JSON" ]]; then
             echo "Missing required Codex auth JSON" >&2
@@ -92,6 +96,7 @@ jobs:
           out_path = os.environ["AUTH_OUT"]
           refresh_before_exp_hours = float(os.environ.get("REFRESH_BEFORE_EXP_HOURS", "24"))
           refresh_after_days = float(os.environ.get("REFRESH_AFTER_DAYS", "7"))
+          force_refresh = os.environ.get("FORCE_REFRESH", "false").lower() == "true"
           now = datetime.now(timezone.utc)
 
           def emit(name, value):
@@ -129,6 +134,8 @@ jobs:
           # secret must therefore stay fresh on BOTH axes, or a review run would
           # fail. Refresh here if either signal is stale.
           reasons = []
+          if force_refresh:
+              reasons.append("manual force_refresh requested")
 
           # Axis 1: access-token expiry.
           exp = jwt_expiry(tokens.get("access_token") or "")
