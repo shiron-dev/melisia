@@ -359,7 +359,7 @@ services:
   switchbot-mqtt:
     <<: *resource-medium
     container_name: switchbot-mqtt
-    image: ghcr.io/hsakoh/switchbotmqtt-aarch64:latest@sha256:ff3d2652e7b5d59bc97ceab65b75e9fe4a0a00cc6684ed7896a2e63a6dc5d501
+    image: ghcr.io/hsakoh/switchbotmqtt-aarch64:latest@sha256:ace568aa51e9d22b81ca7ac841f62c1b7fdb31bed30eb4caf91c37542457a191
     volumes:
       - ./switchbot-mqtt:/data:rw
       # kics-scan ignore-line
