@@ -67,12 +67,23 @@
         const message = document.getElementById("message");
 
         let images = [];
+        let playlist = []; // shuffled copy of images for random display order
         let intervalMs = 10000;
         let refreshMs = 60000;
         let index = 0;
         let front = 0;
         let timer = null;
         let loadTimer = null;
+
+        // Fisher-Yates shuffle into a new array, leaving the source untouched.
+        function shuffle(arr) {
+          const out = arr.slice();
+          for (let i = out.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [out[i], out[j]] = [out[j], out[i]];
+          }
+          return out;
+        }
 
         function scheduleLoad() {
           if (loadTimer) clearInterval(loadTimer);
@@ -89,9 +100,14 @@
 
         // Cross-fade to the next image, preloading before swapping.
         function next() {
-          if (images.length === 0) return;
-          const url = images[index % images.length];
-          index = (index + 1) % images.length;
+          if (playlist.length === 0) return;
+          // Reshuffle for a fresh random pass once the playlist is exhausted.
+          if (index >= playlist.length) {
+            playlist = shuffle(images);
+            index = 0;
+          }
+          const url = playlist[index];
+          index += 1;
 
           const incoming = slides[1 - front];
           const outgoing = slides[front];
@@ -144,12 +160,15 @@
 
             if (images.length === 0) {
               if (timer) clearInterval(timer);
+              playlist = [];
               showMessage(data.error ? "エラー: " + data.error : "表示できる画像がありません");
               return;
             }
 
             if (changed) {
-              index = Math.min(index, images.length);
+              // Build a fresh randomized playback order for the new image set.
+              playlist = shuffle(images);
+              index = 0;
               next();
               restartTimer();
             }
