@@ -210,7 +210,20 @@ jobs:
               print(f"::warning::Could not reach Codex token endpoint: {exc.reason}. Will retry next run.")
               sys.exit(0)
 
-          # Keep prior values for any field the response omits.
+          # The endpoint uses refresh token rotation: the old refresh_token is
+          # invalidated the moment the request is made.  If the response omits the
+          # new refresh_token we must NOT fall back to the old one — it is already
+          # dead and saving it would corrupt the secret permanently.
+          new_refresh = refreshed.get("refresh_token")
+          if not new_refresh:
+              sys.exit(
+                  "Codex token endpoint returned no refresh_token in the response. "
+                  "The old refresh_token has already been invalidated by rotation. "
+                  "Run `codex login` and update the CODEX_AUTH_JSON secret."
+              )
+
+          # Keep prior values for any field the response omits (except
+          # refresh_token, which is guarded above).
           for field in ("id_token", "access_token", "refresh_token"):
               value = refreshed.get(field)
               if value:
