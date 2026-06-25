@@ -1,0 +1,171 @@
+- name: Install kiosk dependencies
+  become: true
+  ansible.builtin.apt:
+    name:
+      - chromium
+      - wlopm
+      - python3-paho-mqtt
+      - python3-evdev
+      - python3-yaml
+      - python3-websocket
+      - python3-requests
+    state: present
+    update_cache: true
+
+- name: Ensure kiosk user can read input devices and /dev/uinput
+  become: true
+  ansible.builtin.user:
+    name: "{{ kiosk_user }}"
+    groups: input
+    append: true
+  # The lingering `systemd --user` manager (and the kiosk-agent under it) keeps
+  # the supplementary groups it had at start, so a fresh `input` membership only
+  # takes effect after that manager is restarted — otherwise the agent can't open
+  # /dev/input/event* or /dev/uinput until the next login/reboot.
+  notify: Restart kiosk user manager
+
+- name: Load uinput module at boot (virtual keyboard for HA fullscreen toggle)
+  become: true
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/kiosk-uinput.conf
+    content: "uinput\n"
+    mode: "0644"
+
+- name: Ensure uinput module is loaded now
+  become: true
+  community.general.modprobe:
+    name: uinput
+    state: present
+
+- name: Grant the input group access to /dev/uinput
+  become: true
+  ansible.builtin.copy:
+    dest: /etc/udev/rules.d/99-kiosk-uinput.rules
+    content: |
+      KERNEL=="uinput", GROUP="input", MODE="0660", OPTIONS+="static_node=uinput"
+    mode: "0644"
+  notify: Reload udev rules
+
+- name: Apply /dev/uinput permissions now
+  become: true
+  ansible.builtin.file:
+    path: /dev/uinput
+    group: input
+    mode: "0660"
+
+- name: Resolve kiosk user uid
+  ansible.builtin.command: "id -u {{ kiosk_user }}"
+  register: kiosk_uid_result
+  changed_when: false
+
+- name: Set kiosk_uid fact
+  ansible.builtin.set_fact:
+    kiosk_uid: "{{ kiosk_uid_result.stdout | trim }}"
+
+- name: Create kiosk system directories
+  become: true
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ kiosk_agent_dir }}", owner: root, group: root, mode: "0755" }
+    - { path: "{{ kiosk_config_dir }}", owner: root, group: root, mode: "0755" }
+    - { path: "{{ kiosk_state_dir }}", owner: "{{ kiosk_user }}", group: "{{ kiosk_user }}", mode: "0755" }
+
+- name: Deploy kiosk agent
+  become: true
+  ansible.builtin.copy:
+    src: agent.py
+    dest: "{{ kiosk_agent_dir }}/agent.py"
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Restart kiosk-agent
+
+- name: Deploy kiosk config (contains MQTT credentials)
+  become: true
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: "{{ kiosk_config_dir }}/config.yaml"
+    owner: "{{ kiosk_user }}"
+    group: "{{ kiosk_user }}"
+    mode: "0600"
+  notify: Restart kiosk-agent
+
+- name: Boot to the graphical target (auto-start the desktop session on power-on)
+  become: true
+  ansible.builtin.file:
+    src: /lib/systemd/system/graphical.target
+    dest: /etc/systemd/system/default.target
+    state: link
+    force: true
+
+- name: Ensure the display manager starts at boot
+  become: true
+  ansible.builtin.systemd_service:
+    name: lightdm
+    enabled: true
+
+- name: Enable lightdm autologin for the kiosk user (no manual login on power-on)
+  become: true
+  ansible.builtin.lineinfile:
+    path: /etc/lightdm/lightdm.conf
+    regexp: '^#?\s*autologin-user\s*='
+    line: "autologin-user={{ kiosk_user }}"
+    insertafter: '^\[Seat:\*\]'
+
+- name: Enable linger for kiosk user (kiosk-agent runs at boot, before login)
+  become: true
+  ansible.builtin.command: "loginctl enable-linger {{ kiosk_user }}"
+  args:
+    creates: "/var/lib/systemd/linger/{{ kiosk_user }}"
+
+- name: Ensure user systemd directory exists
+  become: true
+  become_user: "{{ kiosk_user }}"
+  ansible.builtin.file:
+    path: "/home/{{ kiosk_user }}/.config/systemd/user"
+    state: directory
+    mode: "0755"
+
+- name: Deploy kiosk-agent user service
+  become: true
+  become_user: "{{ kiosk_user }}"
+  ansible.builtin.template:
+    src: kiosk-agent.service.j2
+    dest: "/home/{{ kiosk_user }}/.config/systemd/user/kiosk-agent.service"
+    mode: "0644"
+  notify: Restart kiosk-agent
+
+- name: Ensure labwc config directory exists
+  become: true
+  become_user: "{{ kiosk_user }}"
+  ansible.builtin.file:
+    path: "/home/{{ kiosk_user }}/.config/labwc"
+    state: directory
+    mode: "0755"
+
+- name: Deploy labwc autostart (Chromium kiosk launcher)
+  become: true
+  become_user: "{{ kiosk_user }}"
+  ansible.builtin.template:
+    src: labwc-autostart.j2
+    dest: "/home/{{ kiosk_user }}/.config/labwc/autostart"
+    mode: "0755"
+  notify: Restart kiosk session
+
+- name: Enable and start kiosk-agent (user service)
+  become: true
+  become_user: "{{ kiosk_user }}"
+  ansible.builtin.systemd_service:
+    name: kiosk-agent
+    scope: user
+    enabled: true
+    state: started
+    daemon_reload: true
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ kiosk_uid }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ kiosk_uid }}/bus"

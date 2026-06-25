@@ -4,6 +4,8 @@ UV_ANSIBLE := uv run --project tools/ansible --
 PROJECT_ID := shiron-dev
 HOME_EP_SSH_PRIVATE_KEY_SECRET := github-actions-home-ep-ssh-private-key
 HOME_EP_SSH_KEY := .local/ssh/home_ep_key
+HOME_KIOSK_SSH_PRIVATE_KEY_SECRET := github-actions-home-kiosk-ssh-private-key
+HOME_KIOSK_SSH_KEY := .local/ssh/home_kiosk_key
 
 CHECK_SECRETS_SCRIPT := scripts/check-secrets.sh
 KICS_IMAGE ?= checkmarx/kics:v2.1.20
@@ -43,8 +45,10 @@ auth: init
 	$(call check_gcloud_auth)
 	gcloud config set project $(PROJECT_ID)
 	$(MAKE) home-ep-ssh-key
+	$(MAKE) home-kiosk-ssh-key
 	ssh -o BatchMode=yes -o ConnectTimeout=5 -F $(ANSIBLE_DIR)/ssh_config ansible_user@arm-srv.shiron.dev exit
 	cd $(ANSIBLE_DIR) && ssh -o BatchMode=yes -o ConnectTimeout=5 -F ssh_config home-ep exit
+	cd $(ANSIBLE_DIR) && ssh -o BatchMode=yes -o ConnectTimeout=5 -F ssh_config home-kiosk exit
 
 .PHONY: home-ep-ssh-key
 home-ep-ssh-key: init
@@ -56,6 +60,17 @@ home-ep-ssh-key: init
 	gcloud secrets versions access latest --project="$(PROJECT_ID)" --secret="$(HOME_EP_SSH_PRIVATE_KEY_SECRET)" > "$$tmp"; \
 	install -m 600 "$$tmp" "$(HOME_EP_SSH_KEY)"
 	@echo "Wrote $(HOME_EP_SSH_KEY)"
+
+.PHONY: home-kiosk-ssh-key
+home-kiosk-ssh-key: init
+	@set -eu; \
+	dir="$$(dirname "$(HOME_KIOSK_SSH_KEY)")"; \
+	install -m 700 -d "$$dir"; \
+	tmp="$$(mktemp "$$dir/home_kiosk_key.XXXXXX")"; \
+	trap 'rm -f "$$tmp"' EXIT; \
+	gcloud secrets versions access latest --project="$(PROJECT_ID)" --secret="$(HOME_KIOSK_SSH_PRIVATE_KEY_SECRET)" > "$$tmp"; \
+	install -m 600 "$$tmp" "$(HOME_KIOSK_SSH_KEY)"
+	@echo "Wrote $(HOME_KIOSK_SSH_KEY)"
 
 .PHONY: ansible-ci
 ansible-ci: ansible-lint

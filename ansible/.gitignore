@@ -10,3 +10,7 @@
 # From private-infra repository
 
 .lock
+
+# Python bytecode cache (e.g. roles/kiosk/files/__pycache__)
+__pycache__/
+*.pyc

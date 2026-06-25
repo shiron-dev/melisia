@@ -9,3 +9,9 @@
     # falco_driver は docker ロールの後に実行する
     # (ドライバソースの取り出しに docker run を使うため)。
     - falco_driver
+
+- name: Home kiosk
+  hosts: home_kiosk
+  roles:
+    - raspberrypi
+    - kiosk

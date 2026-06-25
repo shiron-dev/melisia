@@ -1,0 +1,13 @@
+[Unit]
+Description=home-kiosk Home Assistant MQTT agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/bin/python3 {{ kiosk_agent_dir }}/agent.py
+Environment=KIOSK_CONFIG={{ kiosk_config_dir }}/config.yaml
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

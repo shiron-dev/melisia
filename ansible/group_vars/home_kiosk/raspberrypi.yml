@@ -1,0 +1,7 @@
+raspberrypi_wifi_connection_name: home-kiosk-wifi
+raspberrypi_wifi_interface: wlan0
+raspberrypi_wifi_autoconnect_priority: -999
+raspberrypi_wifi_ipv4_route_metric: 600
+raspberrypi_wifi_ipv6_route_metric: 600
+raspberrypi_boot_partuuid: 022d4277-01
+raspberrypi_root_partuuid: 022d4277-02
