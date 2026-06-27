@@ -85,6 +85,9 @@ projects:
   discord-webhook:
 
   rsshub:
+    # FreshRSS と共有する rss-internal ネットワークを compose up 前に用意する
+    # (cmt は postSyncCommand を composeAction より前に実行)。冪等なのでデプロイ順非依存。
+    postSyncCommand: docker network create rss-internal 2>/dev/null || true
     dirs:
       - redis_data:
         owner: 1000
@@ -93,6 +96,7 @@ projects:
         become: true
 
   freshrss:
+    postSyncCommand: docker network create rss-internal 2>/dev/null || true
     dirs:
       - data:
         become: true
