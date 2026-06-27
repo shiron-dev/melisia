@@ -59,6 +59,13 @@ services:
     image: "ghcr.io/home-assistant/home-assistant:2026.5.4@sha256:ceb1202133a5a036e8b03e20a10eb113186cc2f871968323c6fc6c3fc4205716"
     networks:
       - home-automation
+    # ホストの DNS は Tailscale MagicDNS (100.100.100.100 + IPv6 fd7a:...::53) だが
+    # コンテナからは Tailscale DNS に到達できず、外部名の解決が毎回 ~4 秒タイムアウト
+    # していた (Assist の STT 等クラウド呼び出しが軒並み +4 秒)。さらに外部 DNS
+    # (1.1.1.1/8.8.8.8) はこの回線では遮断されている。LAN ルータの DNS に固定して
+    # 回避する (コンテナ名解決は Docker 組込み DNS 127.0.0.11 のまま)。
+    dns:
+      - 192.168.1.1
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:

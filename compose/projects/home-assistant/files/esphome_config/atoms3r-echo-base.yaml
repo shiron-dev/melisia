@@ -1,0 +1,36 @@
+# AtomS3R + Atomic Echo Base voice assistant (M5Stack A149)
+#
+# AtomS3R 本体 + Atomic Echo Base (ES8311 codec / MEMS mic / NS4150B amp) を
+# Home Assistant の音声アシスタント端末にする構成。
+# ピン定義・ES8311・micro_wake_word 等の本体は M5Stack 公式パッケージを参照し、
+# Wi-Fi / API 暗号鍵だけをこのファイルで上書きする。
+#
+# 公式パッケージ: https://github.com/m5stack/esphome-yaml
+# ドキュメント: https://docs.m5stack.com/en/homeassistant/voice_assistant/atoms3r_with_atomic_echo_base_voice_assistant
+#
+# wifi_ssid / wifi_password / api_encryption_key / ota_password は
+# このディレクトリの secrets.yaml (git 非管理・リモート専用) を参照する。
+# 公開リポジトリに資格情報を残さないため、値はインラインにしない。
+
+substitutions:
+  name: atoms3r-echo-base
+  friendly_name: AtomS3R Echo Base
+
+packages:
+  # m5stack/esphome-yaml の 2026.4.4 リリースのコミットに固定 (可変な @main を避ける)
+  m5stack.atoms3r-with-echo-base: github://m5stack/esphome-yaml/common/atoms3r-with-echo-base.yaml@7d6982c3238e0786b80d43343403aa1a2e872dd0
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  # ルータ側で DHCP 予約済み。ダッシュボード/OTA の接続先ヒント (既存デバイスと同じ運用)
+  use_address: 192.168.1.77
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+# パッケージが定義済みの ota_esphome に !extend でパスワードのみ追記する
+ota:
+  - id: !extend ota_esphome
+    password: !secret ota_password
