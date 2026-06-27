@@ -3,6 +3,12 @@ services:
     image: diygod/rsshub:latest
     container_name: rsshub
     restart: unless-stopped
+    # 既定ネットワーク (redis/tunnel との通信) に加え、同一ホストの FreshRSS が
+    # Cloudflare Access を介さず http://rsshub:1200 で直接フィードを取得するための
+    # 共有ネットワーク rss-internal に参加する。
+    networks:
+      - default
+      - rss-internal
     environment:
       NODE_ENV: production
       CACHE_TYPE: redis
@@ -84,3 +90,12 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+
+networks:
+  default:
+  # FreshRSS との同一ホスト内通信用の共有ネットワーク。host.yml の
+  # postSyncCommand が compose up 前に `docker network create rss-internal` で
+  # 用意するため external として参照する (デプロイ順に依存しない)。
+  rss-internal:
+    external: true
+    name: rss-internal

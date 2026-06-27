@@ -3,6 +3,11 @@ services:
     image: freshrss/freshrss:1.29.1@sha256:ab6b363102ccdbc39f6a62db926f567c61a5289bf25ba460f1c34423d8cc1a4d
     container_name: freshrss
     restart: unless-stopped
+    # 既定ネットワーク (db/tunnel) に加え、同一ホストの RSSHub へ Cloudflare Access
+    # を介さず http://rsshub:1200 で直接アクセスするための共有ネットワークに参加する。
+    networks:
+      - default
+      - rss-internal
     environment:
       TZ: Asia/Tokyo
       CRON_MIN: "{{ .freshrss_cron_min }}"
@@ -100,3 +105,11 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+
+networks:
+  default:
+  # RSSHub との同一ホスト内通信用の共有ネットワーク。host.yml の postSyncCommand
+  # が compose up 前に `docker network create rss-internal` で用意する。
+  rss-internal:
+    external: true
+    name: rss-internal
