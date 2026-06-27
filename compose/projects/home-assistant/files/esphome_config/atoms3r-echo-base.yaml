@@ -17,7 +17,8 @@ substitutions:
   friendly_name: AtomS3R Echo Base
 
 packages:
-  m5stack.atoms3r-with-echo-base: github://m5stack/esphome-yaml/common/atoms3r-with-echo-base.yaml@main
+  # m5stack/esphome-yaml の 2026.4.4 リリースのコミットに固定 (可変な @main を避ける)
+  m5stack.atoms3r-with-echo-base: github://m5stack/esphome-yaml/common/atoms3r-with-echo-base.yaml@7d6982c3238e0786b80d43343403aa1a2e872dd0
 
 wifi:
   ssid: !secret wifi_ssid
