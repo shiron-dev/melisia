@@ -14,6 +14,9 @@ homeassistant:
 # Loads default set of integrations. Do not remove.
 default_config:
 
+# Example configuration.yaml entry
+assist_pipeline:
+
 # Load frontend themes from the themes folder
 frontend:
   themes: !include_dir_merge_named themes
