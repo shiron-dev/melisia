@@ -61,16 +61,15 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "home_nas" {
 
   config = {
     ingress = [
+      # nas.shiron.dev は nas_services アプリで Access 保護する。nas_services は
+      # home-ip-bypass (bypass decision) ポリシーを持ち、自宅 IP からは JWT を
+      # 発行しないため、cloudflared 側で access.required=true にすると
+      # "AccessJWTValidator: no access token in request" で弾かれる。
+      # calibre/vault と同じく origin_request は空にして edge Access のみで保護する。
       {
-        hostname = "nas.shiron.dev"
-        service  = "http://127.0.0.1"
-        origin_request = {
-          access = {
-            aud_tag   = [cloudflare_zero_trust_access_application.nas_services.aud]
-            required  = true
-            team_name = "shiron-dev"
-          }
-        }
+        hostname       = "nas.shiron.dev"
+        service        = "http://127.0.0.1"
+        origin_request = {}
       },
       {
         hostname = "nas-srv.shiron.dev"
@@ -94,16 +93,12 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "home_nas" {
           }
         }
       },
+      # nas-files.shiron.dev も nas.shiron.dev と同じ理由 (nas_services の
+      # home-ip-bypass が JWT を発行しない) で origin_request を空にする。
       {
-        hostname = "nas-files.shiron.dev"
-        service  = "http://127.0.0.1:30051"
-        origin_request = {
-          access = {
-            aud_tag   = [cloudflare_zero_trust_access_application.nas_services.aud]
-            required  = true
-            team_name = "shiron-dev"
-          }
-        }
+        hostname       = "nas-files.shiron.dev"
+        service        = "http://127.0.0.1:30051"
+        origin_request = {}
       },
       {
         hostname       = "calibre.melisia.net"
