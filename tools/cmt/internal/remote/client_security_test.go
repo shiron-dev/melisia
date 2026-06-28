@@ -54,30 +54,44 @@ func makeExitError(t *testing.T, code int) error {
 // TestShellQuote_InjectionRoundTrip は、シェルのメタ文字を含む入力を
 // shellQuote した結果が POSIX シェルで「ちょうど元の文字列1つ」に
 // 復元されること（=展開・コマンド実行が起きないこと）を実プロセスで検証します。
+//
+// 重要: 万一 shellQuote が壊れてペイロードが sh により実行されても CI 環境を
+// 破壊しないよう、(1) 埋め込むコマンドは echo / 無害なリダイレクトのみとし、
+// rm・reboot・touch といった破壊的・永続的な操作は一切使わない。
+// (2) 作業ディレクトリを使い捨ての一時ディレクトリに固定し、リダイレクトや
+// グロブ展開が漏れても副作用をその中に閉じ込める。
+// 引用が正しければ各ペイロードはリテラル出力となり (round-trip 一致)、
+// 壊れていれば出力が一致せずテストが失敗して回帰を検知する。
 func TestShellQuote_InjectionRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	requireBinary(t, "sh")
 
-	dangerous := []string{
-		`; rm -rf /`,
-		`$(whoami)`,
-		"`id`",
-		`&& reboot`,
-		`| cat /etc/passwd`,
-		`$HOME`,
-		`"double"`,
-		`it's a 'trap'`,
-		`a\b`,
+	// 副作用を閉じ込める使い捨てディレクトリ。
+	sandbox := t.TempDir()
+
+	// シェルのメタ文字を網羅しつつ、各コマンドは無害なものに留める。
+	payloads := []string{
+		`; echo injected`, // コマンド区切り
+		`$(echo sub)`,     // コマンド置換
+		"`echo backtick`", // バッククォート置換
+		`&& echo and`,     // AND リスト
+		`|| echo or`,      // OR リスト
+		`x | echo pipe`,   // パイプ
+		`> sentinel.txt`,  // リダイレクト (漏れても sandbox 内に閉じる)
+		`$HOME`,           // 変数展開
+		`${PATH}`,         // 変数展開 (波括弧)
+		`"double"`,        // ダブルクォート
+		`it's a 'trap'`,   // シングルクォート (エスケープの肝)
+		`a\b`,             // バックスラッシュ
 		`new
-line`,
-		`*`,
-		`-rf`,
-		`x; touch /tmp/pwned`,
-		``,
+line`, // 改行
+		`*`,   // グロブ
+		`-rf`, // 先頭ハイフン
+		``,    // 空文字列
 	}
 
-	for _, input := range dangerous {
+	for _, input := range payloads {
 		t.Run(input, func(t *testing.T) {
 			t.Parallel()
 
@@ -85,8 +99,9 @@ line`,
 
 			// printf %s <quoted> は、引数が安全に1トークン化されていれば
 			// 元の文字列をそのまま出力する。展開やコマンド実行が起きれば一致しない。
-			//nolint:gosec // G204: 引用の安全性を実シェルで検証するのが本テストの目的。
+			//nolint:gosec // G204: 引用の安全性を実シェルで検証するのが目的。無害なペイロードのみ使用。
 			cmd := exec.CommandContext(context.Background(), "sh", "-c", "printf %s "+quoted)
+			cmd.Dir = sandbox // リダイレクト/グロブが漏れても使い捨てディレクトリに閉じ込める
 
 			out, err := cmd.CombinedOutput()
 			if err != nil {
