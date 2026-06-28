@@ -35,6 +35,7 @@ jobs:
             src:
               - ".github/workflows/**"
               - "tools/cmt/**"
+              - "mise.toml"
 
   cmt-status-check:
     runs-on: ubuntu-latest

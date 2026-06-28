@@ -390,7 +390,6 @@ type HostEntry struct {
 	Port       int    `json:"port,omitempty"       yaml:"port,omitempty"`
 	User       string `json:"user"                 yaml:"user"`
 	SSHKeyPath string `json:"sshKeyPath,omitempty" yaml:"sshKeyPath,omitempty"`
-	SSHAgent   bool   `json:"sshAgent,omitempty"   yaml:"sshAgent,omitempty"`
 
 	ProxyCommand  string   `json:"-" yaml:"-"`
 	IdentityFiles []string `json:"-" yaml:"-"`
