@@ -40,19 +40,22 @@ projects:
       sudo find zigbee2mqtt_data -type d -exec chmod 0770 {} + &&
       sudo find zigbee2mqtt_data -type f -exec chmod 0660 {} + &&
       sudo chmod 0644 mosquitto.conf
+    # config/ (HA の Jinja2) と esphome_config/ (ESPHome の lambda / !secret) は
+    # 本文が Go テンプレートのデリミタ {{ }} と衝突するため、変数展開をスキップして
+    # 素のまま同期する。これにより automations.yaml 等を {{"{{"}} エスケープ無しで
+    # repo 管理できる。switchbot-mqtt/options.json は {{ .switchbot_* }} 変数を使うため
+    # 対象に含めない。
+    templateIgnore:
+      - config
+      - esphome_config
     preserveRemoteFiles:
-      - config/automations.yaml
-      - config/scripts.yaml
-      - config/scenes.yaml
       # mosquitto の 1884 認証リスナー用パスワードファイル。`mosquitto_passwd` CLI で
       # リモート生成・管理しており、ハッシュ済み資格情報のため repo には置かない。
       - mosquitto_passwd
-      # ESPHome のデバイス設定はリモートのダッシュボードで管理されており repo に存在しない。
-      # cmt が orphan として削除しないよう明示的に保護する。
-      - esphome_config/README.md
-      - esphome_config/m5stack-atom-s3-lite.yaml
-      - esphome_config/m5stick-s3-voice.yaml
-      - esphome_config/secrets.yaml.example
+      # ESPHome の実シークレット (wifi_ssid / wifi_password)。資格情報のため repo に
+      # 置かず、リモート (ESPHome ダッシュボードの Secrets エディタ) で管理する。
+      # サンプルは repo の esphome_config/secrets.yaml.example を参照。
+      - esphome_config/secrets.yaml
     dirs:
       - config:
         permission: "0770"

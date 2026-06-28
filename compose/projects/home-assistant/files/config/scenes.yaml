@@ -1,0 +1,26 @@
+- id: '1775994796598'
+  name: 休む
+  entities:
+    light.sumatodian_qiu_ao:
+      min_color_temp_kelvin: 2700
+      max_color_temp_kelvin: 6500
+      supported_color_modes:
+      - color_temp
+      - rgb
+      color_mode: rgb
+      brightness: 20
+      color_temp_kelvin:
+      hs_color:
+      - 349.176
+      - 100
+      rgb_color:
+      - 255
+      - 0
+      - 46
+      xy_color:
+      - 0.682
+      - 0.291
+      friendly_name: 部屋 ライト
+      supported_features: 0
+      state: 'on'
+  metadata: {}

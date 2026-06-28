@@ -2,15 +2,15 @@
     # - name: "Color Bulbs Group"
     #   unique_id: color_bulbs_group
     #   state: >-
-    #     {{"{{"}}
+    #     {{
     #       is_state('light.color_bulb_13ce', 'on')
     #       or is_state('light.color_bulb_e1f6', 'on')
     #       or is_state('light.color_bulb_eb42', 'on')
-    #     {{"}}"}}
+    #     }}
     #   level: >-
-    #     {{"{{"}} state_attr('light.color_bulb_13ce', 'brightness') {{"}}"}}
+    #     {{ state_attr('light.color_bulb_13ce', 'brightness') }}
     #   rgb: >-
-    #     {{"{{"}} state_attr('light.color_bulb_13ce', 'rgb_color') {{"}}"}}
+    #     {{ state_attr('light.color_bulb_13ce', 'rgb_color') }}
     #   turn_on:
     #     - parallel:
     #         - action: light.turn_on
@@ -64,19 +64,19 @@
     #             entity_id: light.color_bulb_13ce
     #           data:
     #             brightness: >-
-    #               {{"{{"}} brightness {{"}}"}}
+    #               {{ brightness }}
     #         - action: light.turn_on
     #           target:
     #             entity_id: light.color_bulb_e1f6
     #           data:
     #             brightness: >-
-    #               {{"{{"}} brightness {{"}}"}}
+    #               {{ brightness }}
     #         - action: light.turn_on
     #           target:
     #             entity_id: light.color_bulb_eb42
     #           data:
     #             brightness: >-
-    #               {{"{{"}} brightness {{"}}"}}
+    #               {{ brightness }}
     #   set_rgb:
     #     - parallel:
     #         - action: light.turn_on
@@ -84,24 +84,24 @@
     #             entity_id: light.color_bulb_13ce
     #           data:
     #             rgb_color: >-
-    #               {{"{{"}} rgb {{"}}"}}
+    #               {{ rgb }}
     #         - action: light.turn_on
     #           target:
     #             entity_id: light.color_bulb_e1f6
     #           data:
     #             rgb_color: >-
-    #               {{"{{"}} rgb {{"}}"}}
+    #               {{ rgb }}
     #         - action: light.turn_on
     #           target:
     #             entity_id: light.color_bulb_eb42
     #           data:
     #             rgb_color: >-
-    #               {{"{{"}} rgb {{"}}"}}
+    #               {{ rgb }}
 
     - name: "Washroom Light"
       unique_id: washroom_light_template
       state: >-
-        {{"{{"}} is_state('switch.washroom_light', 'on') {{"}}"}}
+        {{ is_state('switch.washroom_light', 'on') }}
       turn_on:
         action: switch.turn_on
         target:
@@ -114,7 +114,7 @@
     - name: "Bathroom Light"
       unique_id: bathroom_light_template
       state: >-
-        {{"{{"}} is_state('switch.bathroom_light', 'on') {{"}}"}}
+        {{ is_state('switch.bathroom_light', 'on') }}
       turn_on:
         action: switch.turn_on
         target:
@@ -127,7 +127,7 @@
     - name: "Toilet Light"
       unique_id: toilet_light_template
       state: >-
-        {{"{{"}} is_state('switch.toilet_light', 'on') {{"}}"}}
+        {{ is_state('switch.toilet_light', 'on') }}
       turn_on:
         action: switch.turn_on
         target:
@@ -140,7 +140,7 @@
     - name: "Hallway Light"
       unique_id: hallway_light_template
       state: >-
-        {{"{{"}} is_state('switch.hallway_light', 'on') {{"}}"}}
+        {{ is_state('switch.hallway_light', 'on') }}
       turn_on:
         action: switch.turn_on
         target:
@@ -153,7 +153,7 @@
     - name: "Kitchen Light"
       unique_id: kitchen_light_template
       state: >-
-        {{"{{"}} is_state('switch.kitchen_light', 'on') {{"}}"}}
+        {{ is_state('switch.kitchen_light', 'on') }}
       turn_on:
         action: switch.turn_on
         target:
@@ -166,7 +166,7 @@
     - name: "Kitchen Sink Light"
       unique_id: kitchen_sink_light_template
       state: >-
-        {{"{{"}} is_state('switch.sink_light', 'on') {{"}}"}}
+        {{ is_state('switch.sink_light', 'on') }}
       turn_on:
         action: switch.turn_on
         target:
@@ -181,26 +181,26 @@
       unique_id: curtains_template
       device_class: curtain
       availability: >-
-        {{"{{"}}
+        {{
           states('cover.main_curtain') not in ['unknown', 'unavailable']
           and states('cover.sub_curtain') not in ['unknown', 'unavailable']
-        {{"}}"}}
+        }}
       state: >-
-        {{"{%"}} set main_state = states('cover.main_curtain') {{"%}"}}
-        {{"{%"}} set sub_state = states('cover.sub_curtain') {{"%}"}}
-        {{"{{"}}
+        {% set main_state = states('cover.main_curtain') %}
+        {% set sub_state = states('cover.sub_curtain') %}
+        {{
           'opening' if main_state == 'opening' or sub_state == 'opening' else
           'closing' if main_state == 'closing' or sub_state == 'closing' else
           'closed' if main_state == 'closed' and sub_state == 'closed' else
           'open'
-        {{"}}"}}
+        }}
       position: >-
-        {{"{{"}}
+        {{
           (
             state_attr('cover.main_curtain', 'current_position') | int(0) +
             state_attr('cover.sub_curtain', 'current_position') | int(0)
           ) // 2
-        {{"}}"}}
+        }}
       open_cover:
         action: cover.open_cover
         target:
@@ -227,4 +227,4 @@
             - cover.sub_curtain
         data:
           position: >-
-            {{"{{"}} position {{"}}"}}
+            {{ position }}

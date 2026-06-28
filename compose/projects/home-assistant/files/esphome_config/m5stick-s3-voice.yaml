@@ -1,0 +1,217 @@
+# =============================================================================
+# M5Stack StickS3 — Home Assistant 音声サテライト
+# =============================================================================
+# StickS3 (ESP32-S3-PICO-1-N8R8: 8MB Flash + 8MB PSRAM) は ES8311 + MEMS マイク
+# + AW8737 アンプ + 8Ω スピーカーを内蔵し、PSRAM があるため AtomS3-Lite で
+# 問題になった音声バッファの ESP_ERR_NO_MEM が起きない。
+#
+# ⚠️ 未検証の推定を含む (M5 公式 ESPHome パッケージが StickS3 用にまだ無いため):
+#   1. PSRAM mode: N8R8 は octal が定説だが、boot 失敗時は quad を試す。
+#   2. M5PM1 (電源管理 0x6E): LCD/MIC/SPK 電源 (L3B) は PYG2=M5PM1 GPIO2 で給電。
+#      PYG2 は **アクティブ LOW** (M5 公式) — on_boot で GPIO2 を push-pull 出力 LOW に
+#      して給電する。HIGH だと給電されず音声回路が動かない (「ジジ」)。
+#   3. ES8311 マイク経路: StickS3 はマイクが ES8311 ADC 経由と推定 (use_microphone:
+#      true)。マイクが拾わない場合は use_microphone と microphone 側 adc_type を見直す。
+#
+# ピン配置 (M5 docs StickS3):
+#   I2C: SDA G47 / SCL G48  (ES8311@0x18, IMU@0x68, M5PM1@0x6E)
+#   I2S: MCLK G18 / BCLK G17 / LRCK G15 / DOUT(SPK) G14 / DIN(MIC) G16
+#   LCD(ST7789P3, 今回は未使用): MOSI G39/SCK G40/DC G45/CS G41/RST G21/BL G38
+#   ボタン: KEY1 G11 / KEY2 G12
+#
+# シークレット: wifi_ssid / wifi_password を secrets.yaml で参照。
+#   API 暗号化キー / OTA パスワードは新規生成して直書き済み。HA 初回採用時にこの
+#   API キーを入力する。
+# =============================================================================
+
+esphome:
+  name: m5stick-s3-voice
+  friendly_name: M5StickS3 Voice
+  min_version: 2025.5.0
+  on_boot:
+    # M5PM1 (0x6E) の PYG2 = GPIO2 を push-pull 出力 LOW (アクティブ LOW) にして
+    # LCD/MIC/SPK 電源レベルを給電する。ESPHome に M5PM1 対応が無いため I2C 直叩き。
+    # レジスタ: FUNC0=0x16(bit5:4=GPIO), MODE=0x10(bit2=out), DRV=0x13(bit2=pushpull),
+    #           OUT=0x11(bit2=LOW で給電)。全て read-modify-write。
+    # 【診断モード】priority 200: ロガーが確実に出力する段階で M5PM1 の到達性を
+    # プローブしログに出す。0x6E が読めれば 47/48 にいる(=給電順序の問題)、
+    # 読めなければ別バス/別初期化が必要。確認後に正しい priority へ戻す。
+    priority: 200
+    then:
+      - lambda: |-
+          auto *bus = id(bus_a);
+          const uint8_t ADDR = 0x6E;
+          // 診断: M5PM1 がこのバスで応答するか (device ID reg 0x00 を読む)
+          {
+            uint8_t reg = 0x00;
+            auto werr = bus->write(ADDR, &reg, 1, false);
+            uint8_t id = 0xFF;
+            auto rerr = bus->read(ADDR, &id, 1);
+            ESP_LOGI("m5pm1", "probe 0x6E: write_err=%d read_err=%d device_id=0x%02X",
+                     (int) werr, (int) rerr, id);
+          }
+          auto rmw = [&](uint8_t reg, uint8_t clear_mask, uint8_t set_mask) {
+            bus->write(ADDR, &reg, 1, false);
+            uint8_t v = 0;
+            bus->read(ADDR, &v, 1);
+            v = (uint8_t)((v & ~clear_mask) | set_mask);
+            uint8_t buf[2] = {reg, v};
+            auto e = bus->write(ADDR, buf, 2, true);
+            ESP_LOGI("m5pm1", "reg 0x%02X <- 0x%02X (err=%d)", reg, v, (int) e);
+          };
+          rmw(0x16, 0x30, 0x00);  // FUNC0: GPIO2 -> GPIO function (bits[5:4]=00)
+          rmw(0x10, 0x00, 0x04);  // MODE:  GPIO2 -> output (bit2=1)
+          rmw(0x13, 0x04, 0x00);  // DRV:   GPIO2 -> push-pull (bit2=0)
+          rmw(0x11, 0x04, 0x00);  // OUT:   GPIO2 -> LOW (bit2=0) — PYG2 はアクティブ LOW、
+                                  //        LOW で LCD/MIC/SPK 電源 (L3B) を有効化 (M5 公式)
+      - delay: 200ms
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  flash_size: 8MB
+  framework:
+    type: esp-idf
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+logger:
+
+api:
+  encryption:
+    key: "BFdukLEdHRQmY2/F/79rm53P17WFmjm7dyZdp5cLX0w="
+
+ota:
+  - platform: esphome
+    password: "b8374c9af0ca7181df54c82b6e86101c"
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  use_address: 192.168.1.75
+  ap:
+    ssid: "M5StickS3 Voice Setup"
+
+captive_portal:
+
+# ---- I2C (ES8311 / IMU / M5PM1) --------------------------------------------
+i2c:
+  - id: bus_a
+    sda: GPIO47
+    scl: GPIO48
+    frequency: 400kHz
+    scan: true
+
+# ---- オーディオ -------------------------------------------------------------
+i2s_audio:
+  - id: i2s_bus
+    i2s_lrclk_pin: GPIO15
+    i2s_bclk_pin: GPIO17
+    i2s_mclk_pin: GPIO18
+
+audio_dac:
+  - platform: es8311
+    id: es8311_dac
+    i2c_id: bus_a
+    address: 0x18
+    bits_per_sample: 16bit
+    sample_rate: 48000
+    # use_mclk / use_microphone は M5 の動作実績構成 (AtomEchoS3R) に合わせ未指定。
+    # 真の原因は M5PM1 電源を ES8311 設定より前に入れていなかったこと (上の on_boot
+    # priority 900 で対処)。use_microphone: true は DAC を壊す (「ピー」) ので指定しない。
+
+microphone:
+  - platform: i2s_audio
+    id: stick_microphone
+    i2s_audio_id: i2s_bus
+    i2s_din_pin: GPIO16
+    adc_type: external
+    sample_rate: 16000
+    bits_per_sample: 16bit
+    channel: left
+
+speaker:
+  - platform: i2s_audio
+    id: stick_speaker
+    i2s_audio_id: i2s_bus
+    i2s_dout_pin: GPIO14
+    dac_type: external
+    audio_dac: es8311_dac
+    bits_per_sample: 16bit
+    sample_rate: 48000
+    channel: left
+
+media_player:
+  - platform: speaker
+    id: stick_media_player
+    name: "M5StickS3 Media Player"
+    volume_min: 0.4
+    volume_max: 0.9
+    announcement_pipeline:
+      speaker: stick_speaker
+      format: FLAC
+      sample_rate: 48000
+      num_channels: 1
+
+# ---- 音声アシスタント (ウェイクワードは HA 側 openWakeWord) -----------------
+voice_assistant:
+  id: stick_va
+  microphone: stick_microphone
+  media_player: stick_media_player
+  noise_suppression_level: 2
+  auto_gain: 31dBFS
+  volume_multiplier: 2.0
+  on_client_connected:
+    - delay: 2s
+    - script.execute: start_va
+  on_client_disconnected:
+    - voice_assistant.stop:
+
+script:
+  - id: start_va
+    then:
+      - if:
+          condition:
+            and:
+              - switch.is_off: mute
+              - not:
+                  voice_assistant.is_running:
+          then:
+            - voice_assistant.start_continuous:
+
+# ---- ボタン / ミュート ------------------------------------------------------
+switch:
+  - platform: template
+    id: mute
+    name: "M5StickS3 Mute"
+    icon: "mdi:microphone-off"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    on_turn_on:
+      - voice_assistant.stop:
+    on_turn_off:
+      - script.execute: start_va
+
+binary_sensor:
+  - platform: gpio
+    id: key1
+    name: "M5StickS3 Button A"
+    pin:
+      number: GPIO11
+      inverted: true
+      mode:
+        input: true
+        pullup: true
+    on_click:
+      - switch.toggle: mute
+  - platform: gpio
+    id: key2
+    name: "M5StickS3 Button B"
+    pin:
+      number: GPIO12
+      inverted: true
+      mode:
+        input: true
+        pullup: true

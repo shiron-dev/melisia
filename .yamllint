@@ -2,6 +2,11 @@ extends: default
 
 ignore: |
   tools/ansible/.venv/
+  # Home Assistant の UI が書き出す YAML はシーケンスを親と同じインデントで出力する
+  # (yamllint の indent-sequences と非互換)。HA がフォーマットを管理するため除外する。
+  compose/projects/home-assistant/files/config/automations.yaml
+  compose/projects/home-assistant/files/config/scripts.yaml
+  compose/projects/home-assistant/files/config/scenes.yaml
 
 rules:
   braces:

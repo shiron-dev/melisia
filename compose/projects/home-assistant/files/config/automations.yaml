@@ -1,0 +1,350 @@
+- id: '1775537824651'
+  alias: 家を出た時
+  description: ''
+  triggers:
+  - trigger: zone
+    entity_id: person.shiron
+    zone: zone.home
+    event: leave
+  conditions: []
+  actions:
+  - action: script.turn_on
+    metadata: {}
+    target:
+      entity_id: script.1775903120462
+    data: {}
+  - action: climate.turn_off
+    data: {}
+    target:
+      entity_id: climate.eakon
+  mode: single
+- id: '1775537852223'
+  alias: 家に帰った時
+  description: ''
+  triggers:
+  - trigger: zone
+    entity_id: person.shiron
+    zone: zone.home
+    event: enter
+  conditions: []
+  actions:
+  - action: alarmo.disarm
+    metadata: {}
+    data:
+      entity_id: alarm_control_panel.alarmo
+  - if:
+    - condition: device
+      device_id: 47daa74be8b50e31c8f0dd2a5cdc4dd8
+      domain: cover
+      entity_id: a2a870ca6966347cac1d3aa2a70ed80a
+      type: is_position
+      below: 50
+    then:
+    - action: light.turn_on
+      metadata: {}
+      target:
+        area_id: main_room
+      data: {}
+  - action: light.turn_on
+    metadata: {}
+    target:
+      area_id: hallway
+    data: {}
+  mode: single
+- id: '1775903051866'
+  alias: 外にいる
+  description: ''
+  triggers:
+  - trigger: time_pattern
+    minutes: /30
+    hours: '*'
+    seconds: '0'
+  conditions:
+  - condition: not
+    conditions:
+    - condition: zone
+      entity_id: person.shiron
+      zone: zone.home
+  actions:
+  - action: script.turn_on
+    metadata: {}
+    data: {}
+    target:
+      entity_id: script.1775903120462
+  mode: single
+- id: '1776041025363'
+  alias: 日没
+  description: ''
+  triggers:
+  - trigger: sun
+    event: sunset
+    offset: 0
+  conditions: []
+  actions:
+  - device_id: 5b8fe2afcd4e0d9f880292fc16b2626c
+    domain: cover
+    entity_id: cd20d6a778dfdeab50e403fff34ae2f5
+    type: close
+  - device_id: 47daa74be8b50e31c8f0dd2a5cdc4dd8
+    domain: cover
+    entity_id: a2a870ca6966347cac1d3aa2a70ed80a
+    type: close
+  - if:
+    - condition: template
+      value_template: "{{\n  label_entities('occupancy_sensor')\n  | select('in',
+        area_entities('main_room'))\n  | select('is_state', 'on')\n  | list\n  | count
+        > 0\n}}\n"
+    then:
+    - target:
+        entity_id: '{{ main_lights }}'
+      action: light.turn_on
+      data: {}
+      enabled: true
+  mode: single
+- id: '1777093765525'
+  alias: 毎日(軽め)
+  description: ''
+  triggers:
+  - trigger: sun
+    event: sunrise
+    offset: 0
+  conditions: []
+  actions:
+  - action: script.turn_on
+    metadata: {}
+    target:
+      entity_id: script.unknown_2
+    data: {}
+  mode: single
+- id: '1777706664556'
+  alias: メインルーム以外：入室で点灯
+  description: ''
+  triggers:
+  - trigger: event
+    event_type: state_changed
+  conditions:
+  - condition: template
+    value_template: "{{\n  trigger.event.data.entity_id in label_entities('occupancy_sensor')\n
+      \ and trigger.event.data.new_state is not none\n  and trigger.event.data.new_state.state
+      == 'on'\n  and area_id(trigger.event.data.entity_id) != 'main_room'\n}}\n"
+  actions:
+  - variables:
+      sensor: '{{ trigger.event.data.entity_id }}'
+      area: '{{ area_id(sensor) }}'
+      lights: "{{\n  label_entities('living_light')\n  | select('in', area_entities(area))\n
+        \ | list\n}}\n"
+  - condition: template
+    value_template: '{{ lights | count > 0 }}'
+  - action: light.turn_on
+    target:
+      entity_id: '{{ lights }}'
+  mode: parallel
+  max: 20
+- id: '1777706681264'
+  alias: メインルーム以外：退出で消灯
+  description: ''
+  triggers:
+  - event_type: state_changed
+    trigger: event
+  conditions:
+  - condition: template
+    value_template: "{{\n  trigger.event.data.entity_id in label_entities('occupancy_sensor')\n
+      \ and trigger.event.data.new_state is not none\n  and trigger.event.data.new_state.state
+      == 'off'\n  and area_id(trigger.event.data.entity_id) != 'main_room'\n}}\n"
+  actions:
+  - variables:
+      area: '{{ area_id(trigger.event.data.entity_id) }}'
+      occupancy_sensors: "{{\n  label_entities('occupancy_sensor')\n  | select('in',
+        area_entities(area))\n  | list\n}}\n"
+      lights: "{{\n  label_entities('living_light')\n  | select('in', area_entities(area))\n
+        \ | list\n}}\n"
+  - condition: template
+    value_template: "{{\n  lights | count > 0\n  and occupancy_sensors | select('is_state',
+      'on') | list | count == 0\n}}\n"
+  - delay:
+      seconds: 30
+  - condition: template
+    value_template: "{{\n  occupancy_sensors | select('is_state', 'on') | list | count
+      == 0\n}}\n"
+  - target:
+      entity_id: '{{ lights }}'
+    action: light.turn_off
+  mode: parallel
+  max: 20
+- id: '1777706724886'
+  alias: 3. 全エリア不在ならメインルーム消灯
+  description: ''
+  triggers:
+  - event_type: state_changed
+    trigger: event
+  conditions:
+  - condition: template
+    value_template: "{{\n  trigger.event.data.entity_id in label_entities('occupancy_sensor')\n
+      \ and trigger.event.data.new_state is not none\n  and trigger.event.data.new_state.state
+      == 'off'\n}}\n"
+  actions:
+  - variables:
+      main_area: main_room
+      all_occupancy_sensors: '{{ label_entities(''occupancy_sensor'') | list }}'
+      main_lights: "{{\n  label_entities('living_light')\n  | select('in', area_entities(main_area))\n
+        \ | list\n}}\n"
+  - condition: template
+    value_template: "{{\n  main_lights | count > 0\n  and all_occupancy_sensors |
+      select('is_state', 'on') | list | count == 0\n}}\n"
+  - delay:
+      seconds: 30
+  - condition: template
+    value_template: "{{\n  all_occupancy_sensors | select('is_state', 'on') | list
+      | count == 0\n}}\n"
+  - target:
+      entity_id: '{{ main_lights }}'
+    action: light.turn_off
+  mode: restart
+- id: '1777706754095'
+  alias: Occupancy - Turn on main room lights when curtain closed and occupied
+  triggers:
+  - trigger: template
+    value_template: "{{\n  label_entities('occupancy_sensor')\n  | select('in', area_entities('main_room'))\n
+      \ | select('is_state', 'on')\n  | list\n  | count > 0\n}}\n"
+  - trigger: state
+    entity_id: cover.main_curtain
+    attribute: current_position
+  conditions:
+  - condition: template
+    value_template: "{{\n  label_entities('occupancy_sensor')\n  | select('in', area_entities('main_room'))\n
+      \ | select('is_state', 'on')\n  | list\n  | count > 0\n}}\n"
+  - condition: template
+    value_template: "{{\n  state_attr('cover.main_curtain', 'current_position') is
+      not none\n  and state_attr('cover.main_curtain', 'current_position') | int <=
+      50\n}}\n"
+  actions:
+  - variables:
+      main_lights: "{{\n  label_entities('living_light')\n  | select('in', area_entities('main_room'))\n
+        \ | list\n}}\n"
+  - condition: template
+    value_template: '{{ main_lights | count > 0 }}'
+  - target:
+      entity_id: '{{ main_lights }}'
+    action: light.turn_on
+  mode: restart
+- id: '1777706773479'
+  alias: Occupancy - Periodic cleanup lights (15m)
+  triggers:
+  - minutes: /5
+    trigger: time_pattern
+    seconds: /10
+  actions:
+  - variables:
+      main_area: main_room
+      all_occupancy_sensors: '{{ label_entities(''occupancy_sensor'') | list }}'
+      main_lights: "{{\n  label_entities('living_light')\n  | select('in', area_entities(main_area))\n
+        \ | list\n}}\n"
+  - repeat:
+      for_each: '{{ areas() | reject(''eq'', main_area) | list }}'
+      sequence:
+      - variables:
+          area: '{{ repeat.item }}'
+          occupancy_sensors: "{{\n  label_entities('occupancy_sensor')\n  | select('in',
+            area_entities(area))\n  | list\n}}\n"
+          lights: "{{\n  label_entities('living_light')\n  | select('in', area_entities(area))\n
+            \ | list\n}}\n"
+      - if:
+        - condition: template
+          value_template: "{{\n  lights | count > 0\n  and occupancy_sensors | count
+            > 0\n  and occupancy_sensors | select('is_state', 'on') | list | count
+            == 0\n  and (\n    occupancy_sensors\n    | map('states')\n    | map(attribute='last_changed')\n
+            \   | map('as_timestamp')\n    | max\n  ) < as_timestamp(now() - timedelta(minutes=15))\n}}\n"
+        then:
+        - target:
+            entity_id: '{{ lights }}'
+          action: light.turn_off
+  - if:
+    - condition: template
+      value_template: "{{\n  main_lights | count > 0\n  and all_occupancy_sensors
+        | count > 0\n  and all_occupancy_sensors | select('is_state', 'on') | list
+        | count == 0\n  and (\n    all_occupancy_sensors\n    | map('states')\n    |
+        map(attribute='last_changed')\n    | map('as_timestamp')\n    | max\n  ) <
+        as_timestamp(now() - timedelta(minutes=15))\n}}\n"
+    then:
+    - target:
+        entity_id: '{{ main_lights }}'
+      action: light.turn_off
+  mode: single
+- id: '1778079918555'
+  alias: CO2濃度警告
+  description: ''
+  triggers:
+  - trigger: numeric_state
+    entity_id:
+    - sensor.m5stack_atom_s3_lite_m5stack_atom_s3_lite_co2
+    above: 900
+  conditions: []
+  actions:
+  - action: notify.notify
+    data:
+      message: 'CO2濃度が {{ states(''sensor.m5stack_atom_s3_lite_m5stack_atom_s3_lite_co2'')
+        }} ppm です
+
+        '
+  mode: single
+- id: '1778167092524'
+  alias: エアコン オフタイマー終了
+  description: ''
+  triggers:
+  - event_type: timer.finished
+    event_data:
+      entity_id: timer.aircon_off_timer
+    trigger: event
+  actions:
+  - action: climate.turn_off
+    data: {}
+    target:
+      entity_id: climate.eakon
+  mode: single
+- id: '1782154502322'
+  alias: 部屋のKiosk
+  description: ''
+  triggers:
+  - trigger: state
+    entity_id:
+    - light.sumatodian_qiu_ao
+    attribute: brightness
+  conditions: []
+  actions:
+  - if:
+    - condition: state
+      entity_id: light.sumatodian_qiu_ao
+      state:
+      - 'on'
+    then:
+    - type: turn_on
+      device_id: 6f2efb45559ce397a63bee63460c06ac
+      entity_id: 4b0f2f87e9e572d9deb0cc944c3295de
+      domain: switch
+    else:
+    - type: turn_off
+      device_id: 6f2efb45559ce397a63bee63460c06ac
+      entity_id: 4b0f2f87e9e572d9deb0cc944c3295de
+      domain: switch
+  mode: single
+- id: '1782154612190'
+  alias: Kisok画面操作
+  description: ''
+  triggers:
+  - type: motion
+    device_id: 6f2efb45559ce397a63bee63460c06ac
+    entity_id: aa007993ee9fa8b60418b185875cddd8
+    domain: binary_sensor
+    trigger: device
+  conditions: []
+  actions:
+  - type: turn_on
+    device_id: 6f2efb45559ce397a63bee63460c06ac
+    entity_id: 4b0f2f87e9e572d9deb0cc944c3295de
+    domain: switch
+  - device_id: 6f2efb45559ce397a63bee63460c06ac
+    domain: select
+    entity_id: b439a27ecda40d54f585674409fd6e61
+    type: select_option
+    option: URL 1
+  mode: single
