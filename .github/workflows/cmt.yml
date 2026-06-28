@@ -88,7 +88,14 @@ jobs:
       - name: Build cmt
         run: go build -o cmt .
       - name: Check go fmt
-        run: go fmt
+        run: |
+          set -euo pipefail
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-ed:"
+            echo "$unformatted"
+            exit 1
+          fi
 
   go-test:
     name: Go test
