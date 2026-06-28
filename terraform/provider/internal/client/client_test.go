@@ -571,6 +571,122 @@ func TestUpdateAppConfigWaitsForJobBeforeRead(t *testing.T) {
 	}
 }
 
+func TestCreateCustomAppSendsCustomComposeAndWaitsForJob(t *testing.T) {
+	restoreJobSettings := setJobSettings(t, time.Millisecond, time.Second)
+	defer restoreJobSettings()
+
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		switch requests {
+		case 1:
+			requireMethodPath(t, r, http.MethodPost, "/api/v2.0/app")
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatal(err)
+			}
+			if body["custom_app"] != true {
+				t.Fatalf("custom_app must be true, got %v", body["custom_app"])
+			}
+			if body["app_name"] != "node-exporter" {
+				t.Fatalf("got app_name %v, want node-exporter", body["app_name"])
+			}
+			if _, ok := body["custom_compose_config"]; !ok {
+				t.Fatal("body must include custom_compose_config")
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`123`))
+		case 2:
+			requireMethodPath(t, r, http.MethodGet, "/api/v2.0/core/get_jobs")
+			if r.URL.Query().Get("id") != "123" {
+				t.Fatalf("got job id query %q, want 123", r.URL.RawQuery)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`[{"id":123,"state":"SUCCESS"}]`))
+		default:
+			t.Fatalf("unexpected request %d %s", requests, r.URL.String())
+		}
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	if err := client.CreateCustomApp(context.Background(), "node-exporter", json.RawMessage(`{"services":{"node-exporter":{"image":"x"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if requests != 2 {
+		t.Fatalf("got %d requests, want 2", requests)
+	}
+}
+
+func TestUpdateCustomAppSendsCustomComposeToEscapedID(t *testing.T) {
+	restoreJobSettings := setJobSettings(t, time.Millisecond, time.Second)
+	defer restoreJobSettings()
+
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		switch requests {
+		case 1:
+			requireMethodPath(t, r, http.MethodPut, "/api/v2.0/app/id/node-exporter")
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatal(err)
+			}
+			if _, ok := body["custom_compose_config"]; !ok {
+				t.Fatal("update body must include custom_compose_config")
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`456`))
+		case 2:
+			requireMethodPath(t, r, http.MethodGet, "/api/v2.0/core/get_jobs")
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`[{"id":456,"state":"SUCCESS"}]`))
+		default:
+			t.Fatalf("unexpected request %d %s", requests, r.URL.String())
+		}
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	if err := client.UpdateCustomApp(context.Background(), "node-exporter", json.RawMessage(`{"services":{}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if requests != 2 {
+		t.Fatalf("got %d requests, want 2", requests)
+	}
+}
+
+func TestDeleteCustomAppUsesEscapedIDAndWaitsForJob(t *testing.T) {
+	restoreJobSettings := setJobSettings(t, time.Millisecond, time.Second)
+	defer restoreJobSettings()
+
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		switch requests {
+		case 1:
+			requireMethodPath(t, r, http.MethodDelete, "/api/v2.0/app/id/node-exporter")
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`789`))
+		case 2:
+			requireMethodPath(t, r, http.MethodGet, "/api/v2.0/core/get_jobs")
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`[{"id":789,"state":"SUCCESS"}]`))
+		default:
+			t.Fatalf("unexpected request %d %s", requests, r.URL.String())
+		}
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	if err := client.DeleteCustomApp(context.Background(), "node-exporter"); err != nil {
+		t.Fatal(err)
+	}
+	if requests != 2 {
+		t.Fatalf("got %d requests, want 2", requests)
+	}
+}
+
 func TestWaitForJobReturnsFailure(t *testing.T) {
 	restoreJobSettings := setJobSettings(t, time.Millisecond, time.Second)
 	defer restoreJobSettings()

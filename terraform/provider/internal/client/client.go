@@ -474,6 +474,68 @@ func (c *Client) UpdateAppConfig(ctx context.Context, config AppConfig) (AppConf
 	return c.GetAppConfig(ctx, config.Name)
 }
 
+// CreateCustomApp installs a custom (docker-compose) TrueNAS app. The compose
+// argument is the canonical JSON form of the compose document and is sent as the
+// custom_compose_config object to app.create. The app config can subsequently be
+// read back with GetAppConfig.
+func (c *Client) CreateCustomApp(ctx context.Context, name string, compose json.RawMessage) error {
+	composeValue, err := decodeComposeConfig(compose)
+	if err != nil {
+		return err
+	}
+
+	body := map[string]any{
+		"custom_app":            true,
+		"app_name":              name,
+		"custom_compose_config": composeValue,
+	}
+
+	var job any
+	if err := c.do(ctx, http.MethodPost, "/api/v2.0/app", body, &job); err != nil {
+		return err
+	}
+
+	return c.waitForJobResponse(ctx, "app.create", job)
+}
+
+// UpdateCustomApp replaces the compose document of an installed custom app.
+func (c *Client) UpdateCustomApp(ctx context.Context, name string, compose json.RawMessage) error {
+	composeValue, err := decodeComposeConfig(compose)
+	if err != nil {
+		return err
+	}
+
+	body := map[string]any{
+		"custom_compose_config": composeValue,
+	}
+
+	var job any
+	if err := c.doEscaped(ctx, http.MethodPut, "/api/v2.0/app/id/"+name, "/api/v2.0/app/id/"+url.PathEscape(name), body, &job); err != nil {
+		return err
+	}
+
+	return c.waitForJobResponse(ctx, "app.update", job)
+}
+
+// DeleteCustomApp removes an installed custom app.
+func (c *Client) DeleteCustomApp(ctx context.Context, name string) error {
+	var job any
+	if err := c.doEscaped(ctx, http.MethodDelete, "/api/v2.0/app/id/"+name, "/api/v2.0/app/id/"+url.PathEscape(name), nil, &job); err != nil {
+		return err
+	}
+
+	return c.waitForJobResponse(ctx, "app.delete", job)
+}
+
+func decodeComposeConfig(compose json.RawMessage) (any, error) {
+	var value any
+	if err := json.Unmarshal(compose, &value); err != nil {
+		return nil, fmt.Errorf("decode custom app compose config: %w", err)
+	}
+
+	return value, nil
+}
+
 func (c *Client) waitForJobResponse(ctx context.Context, method string, rawJob any) error {
 	jobID, ok := jobID(rawJob)
 	if !ok {
