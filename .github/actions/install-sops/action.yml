@@ -1,5 +1,5 @@
 name: Install sops
-description: Install sops using mise (version defined in .mise.toml)
+description: Install sops using mise (version defined in mise.toml)
 runs:
   using: composite
   steps:

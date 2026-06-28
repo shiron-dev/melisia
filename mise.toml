@@ -1,3 +1,5 @@
 [tools]
 go = "1.26.4"
 terraform = "1.15.6"
+sops = "3.13.1"
+shfmt = "3.13.1"
