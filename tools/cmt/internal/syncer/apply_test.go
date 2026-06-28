@@ -2,6 +2,7 @@ package syncer
 
 import (
 	"bytes"
+	"context"
 	"strings"
 	"testing"
 
@@ -36,7 +37,7 @@ func TestApplyWithDeps_Cancelled(t *testing.T) {
 
 	var out bytes.Buffer
 
-	err := ApplyWithDeps(&config.CmtConfig{}, plan, false, false, &out, ApplyDependencies{
+	err := ApplyWithDeps(context.Background(), &config.CmtConfig{}, plan, false, false, &out, ApplyDependencies{
 		ClientFactory: factory,
 		Input:         strings.NewReader("n\n"),
 	})
@@ -92,17 +93,17 @@ func TestApplyWithDeps_UsesInjectedClientFactory(t *testing.T) {
 		factory.EXPECT().
 			NewClient(config.HostEntry{Name: "server1"}).
 			Return(client, nil),
-		client.EXPECT().MkdirAll("/srv/grafana/data").Return(nil),
-		client.EXPECT().WriteFile("/srv/grafana/compose.yml", []byte("services: {}")).Return(nil),
-		client.EXPECT().Remove("/srv/grafana/old.txt").Return(nil),
-		client.EXPECT().WriteFile("/srv/grafana/.cmt-manifest.json", gomock.Any()).Return(nil),
-		client.EXPECT().RunCommand("/srv/grafana", "echo done").Return("ok", nil),
+		client.EXPECT().MkdirAll(gomock.Any(), "/srv/grafana/data").Return(nil),
+		client.EXPECT().WriteFile(gomock.Any(), "/srv/grafana/compose.yml", []byte("services: {}")).Return(nil),
+		client.EXPECT().Remove(gomock.Any(), "/srv/grafana/old.txt").Return(nil),
+		client.EXPECT().WriteFile(gomock.Any(), "/srv/grafana/.cmt-manifest.json", gomock.Any()).Return(nil),
+		client.EXPECT().RunCommand(gomock.Any(), "/srv/grafana", "echo done").Return("ok", nil),
 		client.EXPECT().Close().Return(nil),
 	)
 
 	var out bytes.Buffer
 
-	err := ApplyWithDeps(&config.CmtConfig{}, plan, true, false, &out, ApplyDependencies{
+	err := ApplyWithDeps(context.Background(), &config.CmtConfig{}, plan, true, false, &out, ApplyDependencies{
 		ClientFactory: factory,
 	})
 	if err != nil {
@@ -143,13 +144,13 @@ func TestApplyWithDeps_BeforeApplyPromptHook_Rejected(t *testing.T) {
 		},
 	}
 
-	mockRunner := func(_ string, _ string, _ []byte) (int, string, error) {
+	mockRunner := func(_ context.Context, _ string, _ string, _ []byte) (int, string, error) {
 		return 1, "rejected by policy", nil
 	}
 
 	var out bytes.Buffer
 
-	err := ApplyWithDeps(cfg, plan, true, false, &out, ApplyDependencies{
+	err := ApplyWithDeps(context.Background(), cfg, plan, true, false, &out, ApplyDependencies{
 		ClientFactory: factory,
 		HookRunner:    mockRunner,
 	})
@@ -192,13 +193,13 @@ func TestApplyWithDeps_BeforeApplyHook_Rejected(t *testing.T) {
 		},
 	}
 
-	mockRunner := func(_ string, _ string, _ []byte) (int, string, error) {
+	mockRunner := func(_ context.Context, _ string, _ string, _ []byte) (int, string, error) {
 		return 1, "", nil
 	}
 
 	var out bytes.Buffer
 
-	err := ApplyWithDeps(cfg, plan, true, false, &out, ApplyDependencies{
+	err := ApplyWithDeps(context.Background(), cfg, plan, true, false, &out, ApplyDependencies{
 		ClientFactory: factory,
 		HookRunner:    mockRunner,
 	})
@@ -241,13 +242,13 @@ func TestApplyWithDeps_BeforeApplyPromptHook_ErrorExitCode(t *testing.T) {
 		},
 	}
 
-	mockRunner := func(_ string, _ string, _ []byte) (int, string, error) {
+	mockRunner := func(_ context.Context, _ string, _ string, _ []byte) (int, string, error) {
 		return 2, "unexpected error", nil
 	}
 
 	var out bytes.Buffer
 
-	err := ApplyWithDeps(cfg, plan, true, false, &out, ApplyDependencies{
+	err := ApplyWithDeps(context.Background(), cfg, plan, true, false, &out, ApplyDependencies{
 		ClientFactory: factory,
 		HookRunner:    mockRunner,
 	})
@@ -294,8 +295,8 @@ func TestApplyWithDeps_AllHooks_Pass(t *testing.T) {
 		factory.EXPECT().
 			NewClient(config.HostEntry{Name: "server1"}).
 			Return(client, nil),
-		client.EXPECT().WriteFile("/srv/grafana/compose.yml", []byte("services: {}")).Return(nil),
-		client.EXPECT().WriteFile("/srv/grafana/.cmt-manifest.json", gomock.Any()).Return(nil),
+		client.EXPECT().WriteFile(gomock.Any(), "/srv/grafana/compose.yml", []byte("services: {}")).Return(nil),
+		client.EXPECT().WriteFile(gomock.Any(), "/srv/grafana/.cmt-manifest.json", gomock.Any()).Return(nil),
 		client.EXPECT().Close().Return(nil),
 	)
 
@@ -308,7 +309,7 @@ func TestApplyWithDeps_AllHooks_Pass(t *testing.T) {
 	}
 
 	hookCalls := 0
-	mockRunner := func(_ string, _ string, _ []byte) (int, string, error) {
+	mockRunner := func(_ context.Context, _ string, _ string, _ []byte) (int, string, error) {
 		hookCalls++
 
 		return 0, "", nil
@@ -316,7 +317,7 @@ func TestApplyWithDeps_AllHooks_Pass(t *testing.T) {
 
 	var out bytes.Buffer
 
-	err := ApplyWithDeps(cfg, plan, true, false, &out, ApplyDependencies{
+	err := ApplyWithDeps(context.Background(), cfg, plan, true, false, &out, ApplyDependencies{
 		ClientFactory: factory,
 		HookRunner:    mockRunner,
 	})
@@ -369,14 +370,14 @@ func TestApplyWithDeps_RefreshManifestOnNoop(t *testing.T) {
 			NewClient(config.HostEntry{Name: "server1"}).
 			Return(client, nil),
 		client.EXPECT().
-			WriteFile("/srv/grafana/.cmt-manifest.json", gomock.Any()).
+			WriteFile(gomock.Any(), "/srv/grafana/.cmt-manifest.json", gomock.Any()).
 			Return(nil),
 		client.EXPECT().Close().Return(nil),
 	)
 
 	var out bytes.Buffer
 
-	err := ApplyWithDeps(&config.CmtConfig{}, plan, true, true, &out, ApplyDependencies{
+	err := ApplyWithDeps(context.Background(), &config.CmtConfig{}, plan, true, true, &out, ApplyDependencies{
 		ClientFactory: factory,
 	})
 	if err != nil {
@@ -432,14 +433,14 @@ func TestApplyWithDeps_ComposeUp(t *testing.T) {
 		factory.EXPECT().
 			NewClient(config.HostEntry{Name: "server1"}).
 			Return(client, nil),
-		client.EXPECT().WriteFile("/srv/grafana/.cmt-manifest.json", gomock.Any()).Return(nil),
-		client.EXPECT().RunCommand("/srv/grafana", "docker compose up -d").Return("ok", nil),
+		client.EXPECT().WriteFile(gomock.Any(), "/srv/grafana/.cmt-manifest.json", gomock.Any()).Return(nil),
+		client.EXPECT().RunCommand(gomock.Any(), "/srv/grafana", "docker compose up -d").Return("ok", nil),
 		client.EXPECT().Close().Return(nil),
 	)
 
 	var out bytes.Buffer
 
-	err := ApplyWithDeps(&config.CmtConfig{}, plan, true, false, &out, ApplyDependencies{
+	err := ApplyWithDeps(context.Background(), &config.CmtConfig{}, plan, true, false, &out, ApplyDependencies{
 		ClientFactory: factory,
 	})
 	if err != nil {
@@ -499,15 +500,15 @@ func TestApplyWithDeps_ComposeRecreate(t *testing.T) {
 		factory.EXPECT().
 			NewClient(config.HostEntry{Name: "server1"}).
 			Return(client, nil),
-		client.EXPECT().WriteFile("/srv/grafana/compose.yml", gomock.Any()).Return(nil),
-		client.EXPECT().WriteFile("/srv/grafana/.cmt-manifest.json", gomock.Any()).Return(nil),
-		client.EXPECT().RunCommand("/srv/grafana", composeCmd).Return("ok", nil),
+		client.EXPECT().WriteFile(gomock.Any(), "/srv/grafana/compose.yml", gomock.Any()).Return(nil),
+		client.EXPECT().WriteFile(gomock.Any(), "/srv/grafana/.cmt-manifest.json", gomock.Any()).Return(nil),
+		client.EXPECT().RunCommand(gomock.Any(), "/srv/grafana", composeCmd).Return("ok", nil),
 		client.EXPECT().Close().Return(nil),
 	)
 
 	var out bytes.Buffer
 
-	err := ApplyWithDeps(&config.CmtConfig{}, plan, true, false, &out, ApplyDependencies{
+	err := ApplyWithDeps(context.Background(), &config.CmtConfig{}, plan, true, false, &out, ApplyDependencies{
 		ClientFactory: factory,
 	})
 	if err != nil {
@@ -563,14 +564,14 @@ func TestApplyWithDeps_ComposeDown(t *testing.T) {
 		factory.EXPECT().
 			NewClient(config.HostEntry{Name: "server1"}).
 			Return(client, nil),
-		client.EXPECT().WriteFile("/srv/grafana/.cmt-manifest.json", gomock.Any()).Return(nil),
-		client.EXPECT().RunCommand("/srv/grafana", "docker compose down").Return("", nil),
+		client.EXPECT().WriteFile(gomock.Any(), "/srv/grafana/.cmt-manifest.json", gomock.Any()).Return(nil),
+		client.EXPECT().RunCommand(gomock.Any(), "/srv/grafana", "docker compose down").Return("", nil),
 		client.EXPECT().Close().Return(nil),
 	)
 
 	var out bytes.Buffer
 
-	err := ApplyWithDeps(&config.CmtConfig{}, plan, true, false, &out, ApplyDependencies{
+	err := ApplyWithDeps(context.Background(), &config.CmtConfig{}, plan, true, false, &out, ApplyDependencies{
 		ClientFactory: factory,
 	})
 	if err != nil {
@@ -623,14 +624,14 @@ func TestApplyWithDeps_ComposeDownWithRemoveOrphans(t *testing.T) {
 		factory.EXPECT().
 			NewClient(config.HostEntry{Name: "server1"}).
 			Return(client, nil),
-		client.EXPECT().WriteFile("/srv/grafana/.cmt-manifest.json", gomock.Any()).Return(nil),
-		client.EXPECT().RunCommand("/srv/grafana", "docker compose down --remove-orphans").Return("", nil),
+		client.EXPECT().WriteFile(gomock.Any(), "/srv/grafana/.cmt-manifest.json", gomock.Any()).Return(nil),
+		client.EXPECT().RunCommand(gomock.Any(), "/srv/grafana", "docker compose down --remove-orphans").Return("", nil),
 		client.EXPECT().Close().Return(nil),
 	)
 
 	var out bytes.Buffer
 
-	err := ApplyWithDeps(&config.CmtConfig{}, plan, true, false, &out, ApplyDependencies{
+	err := ApplyWithDeps(context.Background(), &config.CmtConfig{}, plan, true, false, &out, ApplyDependencies{
 		ClientFactory: factory,
 	})
 	if err != nil {
@@ -742,17 +743,17 @@ func TestApplyWithDeps_DirWithPermissionAndOwner(t *testing.T) {
 		factory.EXPECT().
 			NewClient(config.HostEntry{Name: "server1"}).
 			Return(client, nil),
-		client.EXPECT().MkdirAll("/srv/grafana/data").Return(nil),
-		client.EXPECT().RunCommand("", "chown app:app '/srv/grafana/data'").Return("", nil),
-		client.EXPECT().RunCommand("", "chmod 0755 '/srv/grafana/data'").Return("", nil),
-		client.EXPECT().WriteFile("/srv/grafana/compose.yml", []byte("services: {}")).Return(nil),
-		client.EXPECT().WriteFile("/srv/grafana/.cmt-manifest.json", gomock.Any()).Return(nil),
+		client.EXPECT().MkdirAll(gomock.Any(), "/srv/grafana/data").Return(nil),
+		client.EXPECT().RunCommand(gomock.Any(), "", "chown app:app '/srv/grafana/data'").Return("", nil),
+		client.EXPECT().RunCommand(gomock.Any(), "", "chmod 0755 '/srv/grafana/data'").Return("", nil),
+		client.EXPECT().WriteFile(gomock.Any(), "/srv/grafana/compose.yml", []byte("services: {}")).Return(nil),
+		client.EXPECT().WriteFile(gomock.Any(), "/srv/grafana/.cmt-manifest.json", gomock.Any()).Return(nil),
 		client.EXPECT().Close().Return(nil),
 	)
 
 	var out bytes.Buffer
 
-	err := ApplyWithDeps(&config.CmtConfig{}, plan, true, false, &out, ApplyDependencies{
+	err := ApplyWithDeps(context.Background(), &config.CmtConfig{}, plan, true, false, &out, ApplyDependencies{
 		ClientFactory: factory,
 	})
 	if err != nil {
@@ -808,16 +809,16 @@ func TestApplyWithDeps_DirPermissionOnly(t *testing.T) {
 		factory.EXPECT().
 			NewClient(config.HostEntry{Name: "server1"}).
 			Return(client, nil),
-		client.EXPECT().MkdirAll("/srv/grafana/data").Return(nil),
-		client.EXPECT().RunCommand("", "chmod 0700 '/srv/grafana/data'").Return("", nil),
-		client.EXPECT().WriteFile("/srv/grafana/compose.yml", []byte("services: {}")).Return(nil),
-		client.EXPECT().WriteFile("/srv/grafana/.cmt-manifest.json", gomock.Any()).Return(nil),
+		client.EXPECT().MkdirAll(gomock.Any(), "/srv/grafana/data").Return(nil),
+		client.EXPECT().RunCommand(gomock.Any(), "", "chmod 0700 '/srv/grafana/data'").Return("", nil),
+		client.EXPECT().WriteFile(gomock.Any(), "/srv/grafana/compose.yml", []byte("services: {}")).Return(nil),
+		client.EXPECT().WriteFile(gomock.Any(), "/srv/grafana/.cmt-manifest.json", gomock.Any()).Return(nil),
 		client.EXPECT().Close().Return(nil),
 	)
 
 	var out bytes.Buffer
 
-	err := ApplyWithDeps(&config.CmtConfig{}, plan, true, false, &out, ApplyDependencies{
+	err := ApplyWithDeps(context.Background(), &config.CmtConfig{}, plan, true, false, &out, ApplyDependencies{
 		ClientFactory: factory,
 	})
 	if err != nil {
@@ -874,16 +875,16 @@ func TestApplyWithDeps_DirPermissionWithBecomeDefaultRoot(t *testing.T) {
 		factory.EXPECT().
 			NewClient(config.HostEntry{Name: "server1"}).
 			Return(client, nil),
-		client.EXPECT().MkdirAll("/srv/grafana/data").Return(nil),
-		client.EXPECT().RunCommand("", "sudo -n chmod 0700 '/srv/grafana/data'").Return("", nil),
-		client.EXPECT().WriteFile("/srv/grafana/compose.yml", []byte("services: {}")).Return(nil),
-		client.EXPECT().WriteFile("/srv/grafana/.cmt-manifest.json", gomock.Any()).Return(nil),
+		client.EXPECT().MkdirAll(gomock.Any(), "/srv/grafana/data").Return(nil),
+		client.EXPECT().RunCommand(gomock.Any(), "", "sudo -n chmod 0700 '/srv/grafana/data'").Return("", nil),
+		client.EXPECT().WriteFile(gomock.Any(), "/srv/grafana/compose.yml", []byte("services: {}")).Return(nil),
+		client.EXPECT().WriteFile(gomock.Any(), "/srv/grafana/.cmt-manifest.json", gomock.Any()).Return(nil),
 		client.EXPECT().Close().Return(nil),
 	)
 
 	var out bytes.Buffer
 
-	err := ApplyWithDeps(&config.CmtConfig{}, plan, true, false, &out, ApplyDependencies{
+	err := ApplyWithDeps(context.Background(), &config.CmtConfig{}, plan, true, false, &out, ApplyDependencies{
 		ClientFactory: factory,
 	})
 	if err != nil {
@@ -940,14 +941,14 @@ func TestApplyWithDeps_DirPermissionWithBecomeSpecificUser(t *testing.T) {
 		factory.EXPECT().
 			NewClient(config.HostEntry{Name: "server1"}).
 			Return(client, nil),
-		client.EXPECT().RunCommand("", "sudo -n -u 'ops' chmod 0750 '/srv/grafana/data'").Return("", nil),
-		client.EXPECT().WriteFile("/srv/grafana/.cmt-manifest.json", gomock.Any()).Return(nil),
+		client.EXPECT().RunCommand(gomock.Any(), "", "sudo -n -u 'ops' chmod 0750 '/srv/grafana/data'").Return("", nil),
+		client.EXPECT().WriteFile(gomock.Any(), "/srv/grafana/.cmt-manifest.json", gomock.Any()).Return(nil),
 		client.EXPECT().Close().Return(nil),
 	)
 
 	var out bytes.Buffer
 
-	err := ApplyWithDeps(&config.CmtConfig{}, plan, true, false, &out, ApplyDependencies{
+	err := ApplyWithDeps(context.Background(), &config.CmtConfig{}, plan, true, false, &out, ApplyDependencies{
 		ClientFactory: factory,
 	})
 	if err != nil {
@@ -1001,15 +1002,15 @@ func TestApplyWithDeps_DirNoExtraCommands(t *testing.T) {
 		factory.EXPECT().
 			NewClient(config.HostEntry{Name: "server1"}).
 			Return(client, nil),
-		client.EXPECT().MkdirAll("/srv/grafana/data").Return(nil),
-		client.EXPECT().WriteFile("/srv/grafana/compose.yml", []byte("services: {}")).Return(nil),
-		client.EXPECT().WriteFile("/srv/grafana/.cmt-manifest.json", gomock.Any()).Return(nil),
+		client.EXPECT().MkdirAll(gomock.Any(), "/srv/grafana/data").Return(nil),
+		client.EXPECT().WriteFile(gomock.Any(), "/srv/grafana/compose.yml", []byte("services: {}")).Return(nil),
+		client.EXPECT().WriteFile(gomock.Any(), "/srv/grafana/.cmt-manifest.json", gomock.Any()).Return(nil),
 		client.EXPECT().Close().Return(nil),
 	)
 
 	var out bytes.Buffer
 
-	err := ApplyWithDeps(&config.CmtConfig{}, plan, true, false, &out, ApplyDependencies{
+	err := ApplyWithDeps(context.Background(), &config.CmtConfig{}, plan, true, false, &out, ApplyDependencies{
 		ClientFactory: factory,
 	})
 	if err != nil {
@@ -1070,15 +1071,15 @@ func TestApplyWithDeps_ExistingDirDriftIsReconciled(t *testing.T) {
 		factory.EXPECT().
 			NewClient(config.HostEntry{Name: "server1"}).
 			Return(client, nil),
-		client.EXPECT().RunCommand("", "chown app:app '/srv/grafana/data'").Return("", nil),
-		client.EXPECT().RunCommand("", "chmod 0750 '/srv/grafana/data'").Return("", nil),
-		client.EXPECT().WriteFile("/srv/grafana/.cmt-manifest.json", gomock.Any()).Return(nil),
+		client.EXPECT().RunCommand(gomock.Any(), "", "chown app:app '/srv/grafana/data'").Return("", nil),
+		client.EXPECT().RunCommand(gomock.Any(), "", "chmod 0750 '/srv/grafana/data'").Return("", nil),
+		client.EXPECT().WriteFile(gomock.Any(), "/srv/grafana/.cmt-manifest.json", gomock.Any()).Return(nil),
 		client.EXPECT().Close().Return(nil),
 	)
 
 	var out bytes.Buffer
 
-	err := ApplyWithDeps(&config.CmtConfig{}, plan, true, false, &out, ApplyDependencies{
+	err := ApplyWithDeps(context.Background(), &config.CmtConfig{}, plan, true, false, &out, ApplyDependencies{
 		ClientFactory: factory,
 	})
 	if err != nil {
@@ -1137,16 +1138,16 @@ func TestApplyWithDeps_DirRecursiveChown(t *testing.T) {
 		factory.EXPECT().
 			NewClient(config.HostEntry{Name: "server1"}).
 			Return(client, nil),
-		client.EXPECT().MkdirAll("/srv/snipeit/redis_data").Return(nil),
-		client.EXPECT().RunCommand("", "sudo -n chown -R 1000:1000 '/srv/snipeit/redis_data'").Return("", nil),
-		client.EXPECT().WriteFile("/srv/snipeit/compose.yml", []byte("services: {}")).Return(nil),
-		client.EXPECT().WriteFile("/srv/snipeit/.cmt-manifest.json", gomock.Any()).Return(nil),
+		client.EXPECT().MkdirAll(gomock.Any(), "/srv/snipeit/redis_data").Return(nil),
+		client.EXPECT().RunCommand(gomock.Any(), "", "sudo -n chown -R 1000:1000 '/srv/snipeit/redis_data'").Return("", nil),
+		client.EXPECT().WriteFile(gomock.Any(), "/srv/snipeit/compose.yml", []byte("services: {}")).Return(nil),
+		client.EXPECT().WriteFile(gomock.Any(), "/srv/snipeit/.cmt-manifest.json", gomock.Any()).Return(nil),
 		client.EXPECT().Close().Return(nil),
 	)
 
 	var out bytes.Buffer
 
-	err := ApplyWithDeps(&config.CmtConfig{}, plan, true, false, &out, ApplyDependencies{
+	err := ApplyWithDeps(context.Background(), &config.CmtConfig{}, plan, true, false, &out, ApplyDependencies{
 		ClientFactory: factory,
 	})
 	if err != nil {
@@ -1249,7 +1250,7 @@ func TestApplyWithDeps_ExistingDirNoDrift(t *testing.T) {
 
 	var out bytes.Buffer
 
-	err := ApplyWithDeps(&config.CmtConfig{}, plan, true, false, &out, ApplyDependencies{
+	err := ApplyWithDeps(context.Background(), &config.CmtConfig{}, plan, true, false, &out, ApplyDependencies{
 		ClientFactory: factory,
 	})
 	if err != nil {
@@ -1305,14 +1306,14 @@ func TestApplyWithDeps_ExistingDirPermissionDriftOnly(t *testing.T) {
 		factory.EXPECT().
 			NewClient(config.HostEntry{Name: "server1"}).
 			Return(client, nil),
-		client.EXPECT().RunCommand("", "chmod 0750 '/srv/grafana/data'").Return("", nil),
-		client.EXPECT().WriteFile("/srv/grafana/.cmt-manifest.json", gomock.Any()).Return(nil),
+		client.EXPECT().RunCommand(gomock.Any(), "", "chmod 0750 '/srv/grafana/data'").Return("", nil),
+		client.EXPECT().WriteFile(gomock.Any(), "/srv/grafana/.cmt-manifest.json", gomock.Any()).Return(nil),
 		client.EXPECT().Close().Return(nil),
 	)
 
 	var out bytes.Buffer
 
-	err := ApplyWithDeps(&config.CmtConfig{}, plan, true, false, &out, ApplyDependencies{
+	err := ApplyWithDeps(context.Background(), &config.CmtConfig{}, plan, true, false, &out, ApplyDependencies{
 		ClientFactory: factory,
 	})
 	if err != nil {
@@ -1370,14 +1371,14 @@ func TestApplyWithDeps_ExistingDirOwnerDriftOnly(t *testing.T) {
 		factory.EXPECT().
 			NewClient(config.HostEntry{Name: "server1"}).
 			Return(client, nil),
-		client.EXPECT().RunCommand("", "chown app:app '/srv/grafana/data'").Return("", nil),
-		client.EXPECT().WriteFile("/srv/grafana/.cmt-manifest.json", gomock.Any()).Return(nil),
+		client.EXPECT().RunCommand(gomock.Any(), "", "chown app:app '/srv/grafana/data'").Return("", nil),
+		client.EXPECT().WriteFile(gomock.Any(), "/srv/grafana/.cmt-manifest.json", gomock.Any()).Return(nil),
 		client.EXPECT().Close().Return(nil),
 	)
 
 	var out bytes.Buffer
 
-	err := ApplyWithDeps(&config.CmtConfig{}, plan, true, false, &out, ApplyDependencies{
+	err := ApplyWithDeps(context.Background(), &config.CmtConfig{}, plan, true, false, &out, ApplyDependencies{
 		ClientFactory: factory,
 	})
 	if err != nil {

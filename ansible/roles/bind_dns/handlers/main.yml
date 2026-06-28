@@ -2,5 +2,5 @@
   become: true
   ansible.builtin.service:
     name: named
-    state: Restarted
+    state: restarted
     enabled: true

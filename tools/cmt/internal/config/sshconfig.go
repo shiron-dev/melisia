@@ -15,13 +15,13 @@ import (
 )
 
 type SSHConfigRunner interface {
-	SSHOutput(args ...string) ([]byte, error)
+	SSHOutput(ctx context.Context, args ...string) ([]byte, error)
 }
 
 type ExecSSHConfigRunner struct{}
 
-func (ExecSSHConfigRunner) SSHOutput(args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(context.Background(), "ssh")
+func (ExecSSHConfigRunner) SSHOutput(ctx context.Context, args ...string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, "ssh")
 	cmd.Args = make([]string, 1+len(args))
 	cmd.Args[0] = "ssh"
 	copy(cmd.Args[1:], args)
@@ -30,33 +30,38 @@ func (ExecSSHConfigRunner) SSHOutput(args ...string) ([]byte, error) {
 }
 
 type SSHConfigResolver interface {
-	Resolve(entry *HostEntry, sshConfigPath, hostDir string) error
+	Resolve(ctx context.Context, entry *HostEntry, sshConfigPath, hostDir string) error
 }
 
 type DefaultSSHConfigResolver struct {
 	Runner SSHConfigRunner
 }
 
-func (r DefaultSSHConfigResolver) Resolve(entry *HostEntry, sshConfigPath, hostDir string) error {
+func (r DefaultSSHConfigResolver) Resolve(ctx context.Context, entry *HostEntry, sshConfigPath, hostDir string) error {
 	runner := r.Runner
 	if runner == nil {
 		runner = ExecSSHConfigRunner{}
 	}
 
-	return ResolveSSHConfigWithRunner(entry, sshConfigPath, hostDir, runner)
+	return ResolveSSHConfigWithRunner(ctx, entry, sshConfigPath, hostDir, runner)
 }
 
-func ResolveSSHConfig(entry *HostEntry, sshConfigPath, hostDir string) error {
-	return ResolveSSHConfigWithRunner(entry, sshConfigPath, hostDir, ExecSSHConfigRunner{})
+func ResolveSSHConfig(ctx context.Context, entry *HostEntry, sshConfigPath, hostDir string) error {
+	return ResolveSSHConfigWithRunner(ctx, entry, sshConfigPath, hostDir, ExecSSHConfigRunner{})
 }
 
-func ResolveSSHConfigWithRunner(entry *HostEntry, sshConfigPath, hostDir string, runner SSHConfigRunner) error {
+func ResolveSSHConfigWithRunner(
+	ctx context.Context,
+	entry *HostEntry,
+	sshConfigPath, hostDir string,
+	runner SSHConfigRunner,
+) error {
 	originalHost := entry.Host
 	args := buildSSHGArgs(entry, sshConfigPath, hostDir)
 
 	slog.Debug("running ssh -G", "command", "ssh "+strings.Join(args, " "), "host", entry.Name)
 
-	out, err := runner.SSHOutput(args...)
+	out, err := runner.SSHOutput(ctx, args...)
 	if err != nil {
 		exitErr := new(exec.ExitError)
 		if errors.As(err, &exitErr) {

@@ -53,8 +53,8 @@ func TestProviderResourcesAndDataSources(t *testing.T) {
 	truenasProvider := &TrueNASProvider{}
 
 	resources := truenasProvider.Resources(context.Background())
-	if len(resources) != 7 {
-		t.Fatalf("got %d resources, want 7", len(resources))
+	if len(resources) != 8 {
+		t.Fatalf("got %d resources, want 8", len(resources))
 	}
 	if _, ok := resources[0]().(*appConfigResource); !ok {
 		t.Fatalf("got resource %T, want *appConfigResource", resources[0]())
@@ -77,6 +77,9 @@ func TestProviderResourcesAndDataSources(t *testing.T) {
 	if _, ok := resources[6]().(*smbShareCopyResource); !ok {
 		t.Fatalf("got resource %T, want *smbShareCopyResource", resources[6]())
 	}
+	if _, ok := resources[7]().(*customAppResource); !ok {
+		t.Fatalf("got resource %T, want *customAppResource", resources[7]())
+	}
 
 	dataSources := truenasProvider.DataSources(context.Background())
 	if len(dataSources) != 2 {
@@ -87,6 +90,43 @@ func TestProviderResourcesAndDataSources(t *testing.T) {
 	}
 	if _, ok := dataSources[1]().(*poolDataSource); !ok {
 		t.Fatalf("got data source %T, want *poolDataSource", dataSources[1]())
+	}
+}
+
+func TestCustomAppResourceMetadataAndSchema(t *testing.T) {
+	customApp := &customAppResource{}
+
+	var metadataResp resource.MetadataResponse
+	customApp.Metadata(context.Background(), resource.MetadataRequest{ProviderTypeName: "truenas"}, &metadataResp)
+	if metadataResp.TypeName != "truenas_custom_app" {
+		t.Fatalf("got type name %q, want truenas_custom_app", metadataResp.TypeName)
+	}
+
+	var schemaResp resource.SchemaResponse
+	customApp.Schema(context.Background(), resource.SchemaRequest{}, &schemaResp)
+
+	name, ok := schemaResp.Schema.Attributes["name"]
+	if !ok {
+		t.Fatal("missing name attribute")
+	}
+	if !name.IsRequired() {
+		t.Fatal("name must be required")
+	}
+
+	compose, ok := schemaResp.Schema.Attributes["compose_config"]
+	if !ok {
+		t.Fatal("missing compose_config attribute")
+	}
+	if !compose.IsRequired() {
+		t.Fatal("compose_config must be required")
+	}
+
+	id, ok := schemaResp.Schema.Attributes["id"]
+	if !ok {
+		t.Fatal("missing id attribute")
+	}
+	if !id.IsComputed() {
+		t.Fatal("id must be computed")
 	}
 }
 

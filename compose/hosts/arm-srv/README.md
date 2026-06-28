@@ -70,7 +70,7 @@ so RSS clients cannot fetch through it. FreshRSS instead reaches RSSHub directly
 over the shared `default` docker network of the `rss` project. Subscribe in
 FreshRSS using the internal URL, not the public hostname:
 
-```
+```text
 http://rsshub:1200/<route>
 ```
 

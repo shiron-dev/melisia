@@ -1,11 +1,13 @@
 - name: Apt-get update
   become: true
   ansible.builtin.apt:
+    update_cache: true
 
 - name: Install fail2ban
   become: true
   ansible.builtin.apt:
     name: fail2ban
+    state: present
 
 - name: Make jail.local
   become: true

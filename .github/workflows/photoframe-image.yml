@@ -31,12 +31,18 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
+      # On pull_request the full suite (vet/test/lint) runs in photoframe.yml, so
+      # skip it here to avoid duplication. On the publish path (push to main and
+      # photoframe-v* tags) photoframe.yml does not run, so gate the image on a
+      # vet + test pass before building/pushing.
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        if: github.event_name != 'pull_request'
         with:
           go-version-file: apps/photoframe/go.mod
           cache: false
 
       - name: Test
+        if: github.event_name != 'pull_request'
         working-directory: apps/photoframe
         run: |
           go vet ./...

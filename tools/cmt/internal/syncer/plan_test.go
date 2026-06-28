@@ -2,6 +2,7 @@ package syncer
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -27,7 +28,7 @@ type mockLocalCommandRunner struct {
 	run func(name string, args []string, workdir string) (string, error)
 }
 
-func (m mockLocalCommandRunner) Run(name string, args []string, workdir string) (string, error) {
+func (m mockLocalCommandRunner) Run(_ context.Context, name string, args []string, workdir string) (string, error) {
 	return m.run(name, args, workdir)
 }
 
@@ -824,8 +825,8 @@ func TestBuildPlanWithDeps_UsesInjectedDependencies(t *testing.T) {
 	hostDir := filepath.Join(base, "hosts", "server1")
 	gomock.InOrder(
 		resolver.EXPECT().
-			Resolve(gomock.Any(), "", hostDir).
-			DoAndReturn(func(entry *config.HostEntry, _, _ string) error {
+			Resolve(gomock.Any(), gomock.Any(), "", hostDir).
+			DoAndReturn(func(_ context.Context, entry *config.HostEntry, _, _ string) error {
 				entry.Host = "10.0.0.10"
 				entry.Port = 22
 
@@ -836,19 +837,21 @@ func TestBuildPlanWithDeps_UsesInjectedDependencies(t *testing.T) {
 			Return(client, nil),
 	)
 	client.EXPECT().
-		ReadFile("/srv/compose/grafana/.cmt-manifest.json").
+		ReadFile(gomock.Any(), "/srv/compose/grafana/.cmt-manifest.json").
 		Return(nil, errTestManifestNotFound)
 	client.EXPECT().
-		ReadFile("/srv/compose/grafana/compose.yml").
+		ReadFile(gomock.Any(), "/srv/compose/grafana/compose.yml").
 		Return(nil, errTestRemoteFileMissing)
 	client.EXPECT().
 		RunCommand(
+			gomock.Any(),
 			"/srv/compose/grafana",
 			"docker compose config --services 2>/dev/null",
 		).
 		Return("", errTestNotFound)
 	client.EXPECT().
 		RunCommand(
+			gomock.Any(),
 			"/srv/compose/grafana",
 			"docker compose ps --services --filter status=running 2>/dev/null",
 		).
@@ -876,7 +879,7 @@ func TestBuildPlanWithDeps_UsesInjectedDependencies(t *testing.T) {
 		},
 	}
 
-	plan, err := BuildPlanWithDeps(cfg, nil, nil, PlanDependencies{
+	plan, err := BuildPlanWithDeps(context.Background(), cfg, nil, nil, PlanDependencies{
 		ClientFactory: factory,
 		SSHResolver:   resolver,
 		LocalRunner:   runner,
@@ -952,26 +955,28 @@ projects:
 
 	gomock.InOrder(
 		resolver.EXPECT().
-			Resolve(gomock.Any(), "", hostDir).
+			Resolve(gomock.Any(), gomock.Any(), "", hostDir).
 			Return(nil),
 		factory.EXPECT().
 			NewClient(gomock.AssignableToTypeOf(config.HostEntry{})).
 			Return(client, nil),
 	)
 	client.EXPECT().
-		ReadFile("/srv/compose/home-assistant/.cmt-manifest.json").
+		ReadFile(gomock.Any(), "/srv/compose/home-assistant/.cmt-manifest.json").
 		Return(nil, errTestManifestNotFound)
 	client.EXPECT().
-		ReadFile("/srv/compose/home-assistant/compose.yml").
+		ReadFile(gomock.Any(), "/srv/compose/home-assistant/compose.yml").
 		Return(nil, errTestRemoteFileMissing)
 	client.EXPECT().
 		RunCommand(
+			gomock.Any(),
 			"/srv/compose/home-assistant",
 			"docker compose config --services 2>/dev/null",
 		).
 		Return("", errTestNotFound)
 	client.EXPECT().
 		RunCommand(
+			gomock.Any(),
 			"/srv/compose/home-assistant",
 			"docker compose ps --services --filter status=running 2>/dev/null",
 		).
@@ -999,7 +1004,7 @@ projects:
 		},
 	}
 
-	plan, err := BuildPlanWithDeps(cfg, nil, nil, PlanDependencies{
+	plan, err := BuildPlanWithDeps(context.Background(), cfg, nil, nil, PlanDependencies{
 		ClientFactory: factory,
 		SSHResolver:   resolver,
 		LocalRunner:   runner,
@@ -1032,6 +1037,7 @@ func TestBuildHostPlan_ReturnsErrorWhenHostConfigFiltersAllProjects(t *testing.T
 	}
 
 	_, err := buildHostPlan(
+		context.Background(),
 		&config.CmtConfig{},
 		config.HostEntry{Name: "server1"},
 		hostCfg,
@@ -1081,18 +1087,18 @@ func TestBuildPlanWithDeps_ComposeValidationFails(t *testing.T) {
 
 	hostDir := filepath.Join(base, "hosts", "server1")
 	gomock.InOrder(
-		resolver.EXPECT().Resolve(gomock.Any(), "", hostDir).Return(nil),
+		resolver.EXPECT().Resolve(gomock.Any(), gomock.Any(), "", hostDir).Return(nil),
 		factory.EXPECT().NewClient(gomock.AssignableToTypeOf(config.HostEntry{})).Return(client, nil),
 	)
 	client.EXPECT().
-		ReadFile("/srv/compose/grafana/.cmt-manifest.json").
+		ReadFile(gomock.Any(), "/srv/compose/grafana/.cmt-manifest.json").
 		Return(nil, errTestManifestNotFound)
 	client.EXPECT().
-		ReadFile("/srv/compose/grafana/compose.yml").
+		ReadFile(gomock.Any(), "/srv/compose/grafana/compose.yml").
 		Return(nil, errTestRemoteFileMissing)
 	client.EXPECT().Close().Return(nil)
 
-	_, err = BuildPlanWithDeps(cfg, nil, nil, PlanDependencies{
+	_, err = BuildPlanWithDeps(context.Background(), cfg, nil, nil, PlanDependencies{
 		ClientFactory: factory,
 		SSHResolver:   resolver,
 		LocalRunner: mockLocalCommandRunner{
@@ -1575,7 +1581,9 @@ func TestBuildComposePlan_IgnoreAction(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	client := remote.NewMockRemoteClient(ctrl)
 
-	composePlan := buildComposePlan(config.ComposeActionIgnore, "/srv/compose/grafana", client, false)
+	composePlan := buildComposePlan(
+		context.Background(), config.ComposeActionIgnore, "/srv/compose/grafana", client, false,
+	)
 	if composePlan == nil {
 		t.Fatal("compose plan should not be nil")
 	}
@@ -1596,13 +1604,13 @@ func TestBuildComposePlan_UpWithFileChanges(t *testing.T) {
 	client := remote.NewMockRemoteClient(ctrl)
 
 	client.EXPECT().
-		RunCommand("/srv/compose/grafana", "docker compose config --services 2>/dev/null").
+		RunCommand(gomock.Any(), "/srv/compose/grafana", "docker compose config --services 2>/dev/null").
 		Return("grafana\ninfluxdb\n", nil)
 	client.EXPECT().
-		RunCommand("/srv/compose/grafana", "docker compose ps --services --filter status=running 2>/dev/null").
+		RunCommand(gomock.Any(), "/srv/compose/grafana", "docker compose ps --services --filter status=running 2>/dev/null").
 		Return("grafana\ninfluxdb\n", nil)
 
-	composePlan := buildComposePlan(config.ComposeActionUp, "/srv/compose/grafana", client, true)
+	composePlan := buildComposePlan(context.Background(), config.ComposeActionUp, "/srv/compose/grafana", client, true)
 	if composePlan == nil {
 		t.Fatal("compose plan should not be nil")
 	}
@@ -1627,13 +1635,13 @@ func TestBuildComposePlan_UpWithoutFileChanges(t *testing.T) {
 	client := remote.NewMockRemoteClient(ctrl)
 
 	client.EXPECT().
-		RunCommand("/srv/compose/grafana", "docker compose config --services 2>/dev/null").
+		RunCommand(gomock.Any(), "/srv/compose/grafana", "docker compose config --services 2>/dev/null").
 		Return("grafana\ninfluxdb\n", nil)
 	client.EXPECT().
-		RunCommand("/srv/compose/grafana", "docker compose ps --services --filter status=running 2>/dev/null").
+		RunCommand(gomock.Any(), "/srv/compose/grafana", "docker compose ps --services --filter status=running 2>/dev/null").
 		Return("grafana\ninfluxdb\n", nil)
 
-	composePlan := buildComposePlan(config.ComposeActionUp, "/srv/compose/grafana", client, false)
+	composePlan := buildComposePlan(context.Background(), config.ComposeActionUp, "/srv/compose/grafana", client, false)
 	if composePlan == nil {
 		t.Fatal("compose plan should not be nil")
 	}
@@ -2001,19 +2009,21 @@ func TestBuildPlanWithDeps_ProgressOutput(t *testing.T) {
 
 	hostDir := filepath.Join(base, "hosts", "server1")
 	gomock.InOrder(
-		resolver.EXPECT().Resolve(gomock.Any(), "", hostDir).Return(nil),
+		resolver.EXPECT().Resolve(gomock.Any(), gomock.Any(), "", hostDir).Return(nil),
 		factory.EXPECT().NewClient(gomock.AssignableToTypeOf(config.HostEntry{})).Return(client, nil),
 	)
-	client.EXPECT().ReadFile("/srv/compose/grafana/.cmt-manifest.json").Return(nil, errTestNotFound)
-	client.EXPECT().ReadFile("/srv/compose/grafana/compose.yml").Return(nil, errTestNotFound)
+	client.EXPECT().ReadFile(gomock.Any(), "/srv/compose/grafana/.cmt-manifest.json").Return(nil, errTestNotFound)
+	client.EXPECT().ReadFile(gomock.Any(), "/srv/compose/grafana/compose.yml").Return(nil, errTestNotFound)
 	client.EXPECT().
 		RunCommand(
+			gomock.Any(),
 			"/srv/compose/grafana",
 			"docker compose config --services 2>/dev/null",
 		).
 		Return("", errTestNotFound)
 	client.EXPECT().
 		RunCommand(
+			gomock.Any(),
 			"/srv/compose/grafana",
 			"docker compose ps --services --filter status=running 2>/dev/null",
 		).
@@ -2022,7 +2032,7 @@ func TestBuildPlanWithDeps_ProgressOutput(t *testing.T) {
 
 	var progressBuf bytes.Buffer
 
-	_, err = BuildPlanWithDeps(cfg, nil, nil, PlanDependencies{
+	_, err = BuildPlanWithDeps(context.Background(), cfg, nil, nil, PlanDependencies{
 		ClientFactory:  factory,
 		SSHResolver:    resolver,
 		LocalRunner:    mockLocalCommandRunner{run: func(string, []string, string) (string, error) { return "ok", nil }},
@@ -2108,26 +2118,28 @@ func TestBuildPlanWithDeps_NoProgressWhenWriterNil(t *testing.T) {
 
 	hostDir := filepath.Join(base, "hosts", "server1")
 	gomock.InOrder(
-		resolver.EXPECT().Resolve(gomock.Any(), "", hostDir).Return(nil),
+		resolver.EXPECT().Resolve(gomock.Any(), gomock.Any(), "", hostDir).Return(nil),
 		factory.EXPECT().NewClient(gomock.AssignableToTypeOf(config.HostEntry{})).Return(client, nil),
 	)
-	client.EXPECT().ReadFile("/srv/compose/grafana/.cmt-manifest.json").Return(nil, errTestNotFound)
-	client.EXPECT().ReadFile("/srv/compose/grafana/compose.yml").Return(nil, errTestNotFound)
+	client.EXPECT().ReadFile(gomock.Any(), "/srv/compose/grafana/.cmt-manifest.json").Return(nil, errTestNotFound)
+	client.EXPECT().ReadFile(gomock.Any(), "/srv/compose/grafana/compose.yml").Return(nil, errTestNotFound)
 	client.EXPECT().
 		RunCommand(
+			gomock.Any(),
 			"/srv/compose/grafana",
 			"docker compose config --services 2>/dev/null",
 		).
 		Return("", errTestNotFound)
 	client.EXPECT().
 		RunCommand(
+			gomock.Any(),
 			"/srv/compose/grafana",
 			"docker compose ps --services --filter status=running 2>/dev/null",
 		).
 		Return("", errTestNotFound)
 	client.EXPECT().Close().Return(nil)
 
-	_, err = BuildPlanWithDeps(cfg, nil, nil, PlanDependencies{
+	_, err = BuildPlanWithDeps(context.Background(), cfg, nil, nil, PlanDependencies{
 		ClientFactory: factory,
 		SSHResolver:   resolver,
 		LocalRunner:   mockLocalCommandRunner{run: func(string, []string, string) (string, error) { return "ok", nil }},
@@ -2328,7 +2340,7 @@ func TestComputeDirDrift_NoDrift(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	client := remote.NewMockRemoteClient(ctrl)
 
-	client.EXPECT().StatDirMetadata("/srv/data").Return(&remote.DirMetadata{
+	client.EXPECT().StatDirMetadata(gomock.Any(), "/srv/data").Return(&remote.DirMetadata{
 		Permission: "750",
 		Owner:      "app",
 		Group:      "app",
@@ -2344,7 +2356,7 @@ func TestComputeDirDrift_NoDrift(t *testing.T) {
 		Group:      "app",
 	}
 
-	computeDirDrift(plan, client)
+	computeDirDrift(context.Background(), plan, client)
 
 	if plan.Action != ActionUnchanged {
 		t.Errorf("Action = %v, want ActionUnchanged", plan.Action)
@@ -2365,7 +2377,7 @@ func TestComputeDirDrift_OwnerGroupNoDrift_WhenDesiredUsesIDs(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	client := remote.NewMockRemoteClient(ctrl)
 
-	client.EXPECT().StatDirMetadata("/srv/data").Return(&remote.DirMetadata{
+	client.EXPECT().StatDirMetadata(gomock.Any(), "/srv/data").Return(&remote.DirMetadata{
 		Permission: "750",
 		Owner:      "opc",
 		Group:      "opc",
@@ -2381,7 +2393,7 @@ func TestComputeDirDrift_OwnerGroupNoDrift_WhenDesiredUsesIDs(t *testing.T) {
 		Group:      "1000",
 	}
 
-	computeDirDrift(plan, client)
+	computeDirDrift(context.Background(), plan, client)
 
 	if plan.Action != ActionUnchanged {
 		t.Errorf("Action = %v, want ActionUnchanged", plan.Action)
@@ -2402,7 +2414,7 @@ func TestComputeDirDrift_PermissionDrift(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	client := remote.NewMockRemoteClient(ctrl)
 
-	client.EXPECT().StatDirMetadata("/srv/data").Return(&remote.DirMetadata{
+	client.EXPECT().StatDirMetadata(gomock.Any(), "/srv/data").Return(&remote.DirMetadata{
 		Permission: "700",
 		Owner:      "app",
 		Group:      "app",
@@ -2416,7 +2428,7 @@ func TestComputeDirDrift_PermissionDrift(t *testing.T) {
 		Group:      "app",
 	}
 
-	computeDirDrift(plan, client)
+	computeDirDrift(context.Background(), plan, client)
 
 	if plan.Action != ActionModify {
 		t.Errorf("Action = %v, want ActionModify", plan.Action)
@@ -2437,7 +2449,7 @@ func TestComputeDirDrift_OwnerDrift(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	client := remote.NewMockRemoteClient(ctrl)
 
-	client.EXPECT().StatDirMetadata("/srv/data").Return(&remote.DirMetadata{
+	client.EXPECT().StatDirMetadata(gomock.Any(), "/srv/data").Return(&remote.DirMetadata{
 		Permission: "750",
 		Owner:      "root",
 		Group:      "root",
@@ -2451,7 +2463,7 @@ func TestComputeDirDrift_OwnerDrift(t *testing.T) {
 		Group:      "app",
 	}
 
-	computeDirDrift(plan, client)
+	computeDirDrift(context.Background(), plan, client)
 
 	if plan.Action != ActionModify {
 		t.Errorf("Action = %v, want ActionModify", plan.Action)
@@ -2477,7 +2489,7 @@ func TestComputeDirDrift_NoDesiredMetadata(t *testing.T) {
 		Exists:     true,
 	}
 
-	computeDirDrift(plan, client)
+	computeDirDrift(context.Background(), plan, client)
 
 	if plan.Action != ActionUnchanged {
 		t.Errorf("Action = %v, want ActionUnchanged", plan.Action)
@@ -2490,7 +2502,7 @@ func TestComputeDirDrift_StatError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	client := remote.NewMockRemoteClient(ctrl)
 
-	client.EXPECT().StatDirMetadata("/srv/data").Return(nil, errTestStatFailed)
+	client.EXPECT().StatDirMetadata(gomock.Any(), "/srv/data").Return(nil, errTestStatFailed)
 
 	plan := &DirPlan{
 		RemotePath: "/srv/data",
@@ -2499,7 +2511,7 @@ func TestComputeDirDrift_StatError(t *testing.T) {
 		Owner:      "app",
 	}
 
-	computeDirDrift(plan, client)
+	computeDirDrift(context.Background(), plan, client)
 
 	if plan.Action != ActionModify {
 		t.Errorf("Action = %v, want ActionModify (assume drift on error)", plan.Action)
@@ -2520,15 +2532,15 @@ func TestBuildDirPlans_WithDriftDetection(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	client := remote.NewMockRemoteClient(ctrl)
 
-	client.EXPECT().Stat("/srv/compose/new_dir").Return(nil, errTestNotExist)
-	client.EXPECT().Stat("/srv/compose/existing_ok").Return(nil, nil)
-	client.EXPECT().StatDirMetadata("/srv/compose/existing_ok").Return(&remote.DirMetadata{
+	client.EXPECT().Stat(gomock.Any(), "/srv/compose/new_dir").Return(nil, errTestNotExist)
+	client.EXPECT().Stat(gomock.Any(), "/srv/compose/existing_ok").Return(nil, nil)
+	client.EXPECT().StatDirMetadata(gomock.Any(), "/srv/compose/existing_ok").Return(&remote.DirMetadata{
 		Permission: "750",
 		Owner:      "app",
 		Group:      "app",
 	}, nil)
-	client.EXPECT().Stat("/srv/compose/existing_drift").Return(nil, nil)
-	client.EXPECT().StatDirMetadata("/srv/compose/existing_drift").Return(&remote.DirMetadata{
+	client.EXPECT().Stat(gomock.Any(), "/srv/compose/existing_drift").Return(nil, nil)
+	client.EXPECT().StatDirMetadata(gomock.Any(), "/srv/compose/existing_drift").Return(&remote.DirMetadata{
 		Permission: "700",
 		Owner:      "root",
 		Group:      "root",
@@ -2540,7 +2552,7 @@ func TestBuildDirPlans_WithDriftDetection(t *testing.T) {
 		{Path: "existing_drift", Permission: "0750", Owner: "app", Group: "app"},
 	}
 
-	plans := buildDirPlans(dirs, "/srv/compose", client)
+	plans := buildDirPlans(context.Background(), dirs, "/srv/compose", client)
 
 	if len(plans) != 3 {
 		t.Fatalf("len = %d, want 3", len(plans))
@@ -2577,8 +2589,8 @@ func TestBuildDirPlans_Recursive(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	client := remote.NewMockRemoteClient(ctrl)
 
-	client.EXPECT().Stat("/srv/compose/redis_data").Return(nil, nil)
-	client.EXPECT().StatDirMetadata("/srv/compose/redis_data").Return(&remote.DirMetadata{
+	client.EXPECT().Stat(gomock.Any(), "/srv/compose/redis_data").Return(nil, nil)
+	client.EXPECT().StatDirMetadata(gomock.Any(), "/srv/compose/redis_data").Return(&remote.DirMetadata{
 		Permission: "755",
 		Owner:      "1000",
 		Group:      "1000",
@@ -2588,7 +2600,7 @@ func TestBuildDirPlans_Recursive(t *testing.T) {
 		{Path: "redis_data", Owner: "1000", Group: "1000", Recursive: true, Become: true},
 	}
 
-	plans := buildDirPlans(dirs, "/srv/compose", client)
+	plans := buildDirPlans(context.Background(), dirs, "/srv/compose", client)
 
 	if len(plans) != 1 {
 		t.Fatalf("len = %d, want 1", len(plans))
@@ -2613,7 +2625,7 @@ func TestBuildDeleteFilePlans_NilManifest(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	client := remote.NewMockRemoteClient(ctrl)
 
-	plans := buildDeleteFilePlans(nil, map[string]bool{}, "/srv/grafana", client, nil)
+	plans := buildDeleteFilePlans(context.Background(), nil, map[string]bool{}, "/srv/grafana", client, nil)
 	if len(plans) != 0 {
 		t.Errorf("expected no plans for nil manifest, got %d", len(plans))
 	}
@@ -2631,9 +2643,9 @@ func TestBuildDeleteFilePlans_ManagedFileGone(t *testing.T) {
 	// old.txt はローカルにないが compose.yml は残っている
 	localSet := map[string]bool{"compose.yml": true}
 
-	client.EXPECT().ReadFile("/srv/grafana/old.txt").Return([]byte("old content"), nil)
+	client.EXPECT().ReadFile(gomock.Any(), "/srv/grafana/old.txt").Return([]byte("old content"), nil)
 
-	plans := buildDeleteFilePlans(manifest, localSet, "/srv/grafana", client, nil)
+	plans := buildDeleteFilePlans(context.Background(), manifest, localSet, "/srv/grafana", client, nil)
 
 	if len(plans) != 1 {
 		t.Fatalf("expected 1 delete plan, got %d", len(plans))
@@ -2664,7 +2676,7 @@ func TestBuildDeleteFilePlans_ManifestFileExcluded(t *testing.T) {
 		ManagedFiles: []string{manifestFile},
 	}
 
-	plans := buildDeleteFilePlans(manifest, map[string]bool{}, "/srv/grafana", client, nil)
+	plans := buildDeleteFilePlans(context.Background(), manifest, map[string]bool{}, "/srv/grafana", client, nil)
 	if len(plans) != 0 {
 		t.Errorf("manifest file should not appear as delete plan, got %d plans", len(plans))
 	}
@@ -2682,7 +2694,7 @@ func TestBuildDeleteFilePlans_PreservedManagedFile(t *testing.T) {
 	localSet := map[string]bool{"compose.yml": true}
 	preserveSet := map[string]bool{"config/automations.yaml": true}
 
-	plans := buildDeleteFilePlans(manifest, localSet, "/srv/grafana", client, preserveSet)
+	plans := buildDeleteFilePlans(context.Background(), manifest, localSet, "/srv/grafana", client, preserveSet)
 	if len(plans) != 0 {
 		t.Errorf("preserved file should not appear as delete plan, got %d plans", len(plans))
 	}
@@ -2698,9 +2710,9 @@ func TestReadManifest_NotFound(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	client := remote.NewMockRemoteClient(ctrl)
 
-	client.EXPECT().ReadFile("/srv/grafana/.cmt-manifest.json").Return(nil, errTestManifestNotFound)
+	client.EXPECT().ReadFile(gomock.Any(), "/srv/grafana/.cmt-manifest.json").Return(nil, errTestManifestNotFound)
 
-	manifest := readManifest(client, "/srv/grafana")
+	manifest := readManifest(context.Background(), client, "/srv/grafana")
 	if manifest != nil {
 		t.Errorf("expected nil manifest when file not found, got %+v", manifest)
 	}
@@ -2712,9 +2724,9 @@ func TestReadManifest_InvalidJSON(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	client := remote.NewMockRemoteClient(ctrl)
 
-	client.EXPECT().ReadFile("/srv/grafana/.cmt-manifest.json").Return([]byte("not json {{{"), nil)
+	client.EXPECT().ReadFile(gomock.Any(), "/srv/grafana/.cmt-manifest.json").Return([]byte("not json {{{"), nil)
 
-	manifest := readManifest(client, "/srv/grafana")
+	manifest := readManifest(context.Background(), client, "/srv/grafana")
 	if manifest != nil {
 		t.Errorf("expected nil manifest on invalid JSON, got %+v", manifest)
 	}
@@ -2727,9 +2739,9 @@ func TestReadManifest_Valid(t *testing.T) {
 	client := remote.NewMockRemoteClient(ctrl)
 
 	jsonData := `{"managedFiles":["compose.yml","config.ini"]}`
-	client.EXPECT().ReadFile("/srv/grafana/.cmt-manifest.json").Return([]byte(jsonData), nil)
+	client.EXPECT().ReadFile(gomock.Any(), "/srv/grafana/.cmt-manifest.json").Return([]byte(jsonData), nil)
 
-	manifest := readManifest(client, "/srv/grafana")
+	manifest := readManifest(context.Background(), client, "/srv/grafana")
 	if manifest == nil {
 		t.Fatal("expected non-nil manifest")
 	}
@@ -2987,9 +2999,10 @@ func TestBuildLocalFilePlan_NewFile(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	client := remote.NewMockRemoteClient(ctrl)
-	client.EXPECT().ReadFile("/srv/grafana/compose.yml").Return(nil, errTestRemoteFileMissing)
+	client.EXPECT().ReadFile(gomock.Any(), "/srv/grafana/compose.yml").Return(nil, errTestRemoteFileMissing)
 
 	plan, err := buildLocalFilePlan(
+		context.Background(),
 		"compose.yml", localPath, "/srv/grafana", client, nil, nil, false,
 	)
 	if err != nil {
@@ -3020,9 +3033,10 @@ func TestBuildLocalFilePlan_Unchanged(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	client := remote.NewMockRemoteClient(ctrl)
 	// リモートも同じ内容
-	client.EXPECT().ReadFile("/srv/grafana/compose.yml").Return(content, nil)
+	client.EXPECT().ReadFile(gomock.Any(), "/srv/grafana/compose.yml").Return(content, nil)
 
 	plan, err := buildLocalFilePlan(
+		context.Background(),
 		"compose.yml", localPath, "/srv/grafana", client, nil, nil, false,
 	)
 	if err != nil {
@@ -3046,9 +3060,10 @@ func TestBuildLocalFilePlan_Modified(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	client := remote.NewMockRemoteClient(ctrl)
-	client.EXPECT().ReadFile("/srv/grafana/compose.yml").Return(remoteContent, nil)
+	client.EXPECT().ReadFile(gomock.Any(), "/srv/grafana/compose.yml").Return(remoteContent, nil)
 
 	plan, err := buildLocalFilePlan(
+		context.Background(),
 		"compose.yml", localPath, "/srv/grafana", client, nil, nil, false,
 	)
 	if err != nil {
@@ -3078,11 +3093,12 @@ func TestBuildLocalFilePlan_WithMaskHints(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	client := remote.NewMockRemoteClient(ctrl)
-	client.EXPECT().ReadFile("/srv/app/config.env").Return([]byte("DB_PASSWORD=old_secret\n"), nil)
+	client.EXPECT().ReadFile(gomock.Any(), "/srv/app/config.env").Return([]byte("DB_PASSWORD=old_secret\n"), nil)
 
 	hints := []MaskHint{{Prefix: "DB_PASSWORD=", Suffix: ""}}
 
 	plan, err := buildLocalFilePlan(
+		context.Background(),
 		"config.env", localPath, "/srv/app", client, nil, hints, false,
 	)
 	if err != nil {
@@ -3166,10 +3182,10 @@ func TestBuildComposePlan_DownWithRunningServices(t *testing.T) {
 	client := remote.NewMockRemoteClient(ctrl)
 
 	client.EXPECT().
-		RunCommand("/srv/grafana", "docker compose ps --services --filter status=running 2>/dev/null").
+		RunCommand(gomock.Any(), "/srv/grafana", "docker compose ps --services --filter status=running 2>/dev/null").
 		Return("grafana\ninfluxdb\n", nil)
 
-	plan := buildComposePlan(config.ComposeActionDown, "/srv/grafana", client, false)
+	plan := buildComposePlan(context.Background(), config.ComposeActionDown, "/srv/grafana", client, false)
 	if plan == nil {
 		t.Fatal("plan should not be nil")
 	}
@@ -3190,10 +3206,10 @@ func TestBuildComposePlan_DownWithNoRunningServices(t *testing.T) {
 	client := remote.NewMockRemoteClient(ctrl)
 
 	client.EXPECT().
-		RunCommand("/srv/grafana", "docker compose ps --services --filter status=running 2>/dev/null").
+		RunCommand(gomock.Any(), "/srv/grafana", "docker compose ps --services --filter status=running 2>/dev/null").
 		Return("", nil)
 
-	plan := buildComposePlan(config.ComposeActionDown, "/srv/grafana", client, false)
+	plan := buildComposePlan(context.Background(), config.ComposeActionDown, "/srv/grafana", client, false)
 	if plan == nil {
 		t.Fatal("plan should not be nil")
 	}
@@ -3215,13 +3231,13 @@ func TestBuildComposePlan_UpWithSomeServicesStopped(t *testing.T) {
 
 	// defined: web, db, cache / running: web, db → cache が止まっている
 	client.EXPECT().
-		RunCommand("/srv/app", "docker compose config --services 2>/dev/null").
+		RunCommand(gomock.Any(), "/srv/app", "docker compose config --services 2>/dev/null").
 		Return("web\ndb\ncache\n", nil)
 	client.EXPECT().
-		RunCommand("/srv/app", "docker compose ps --services --filter status=running 2>/dev/null").
+		RunCommand(gomock.Any(), "/srv/app", "docker compose ps --services --filter status=running 2>/dev/null").
 		Return("web\ndb\n", nil)
 
-	plan := buildComposePlan(config.ComposeActionUp, "/srv/app", client, false)
+	plan := buildComposePlan(context.Background(), config.ComposeActionUp, "/srv/app", client, false)
 	if plan == nil {
 		t.Fatal("plan should not be nil")
 	}
@@ -3355,13 +3371,13 @@ func TestBuildComposePlan_UpNoServicesDefinedAndNoFileChanges(t *testing.T) {
 
 	// defined services がない場合は recreate せず ComposeNoChange になる
 	client.EXPECT().
-		RunCommand("/srv/app", "docker compose config --services 2>/dev/null").
+		RunCommand(gomock.Any(), "/srv/app", "docker compose config --services 2>/dev/null").
 		Return("", nil)
 	client.EXPECT().
-		RunCommand("/srv/app", "docker compose ps --services --filter status=running 2>/dev/null").
+		RunCommand(gomock.Any(), "/srv/app", "docker compose ps --services --filter status=running 2>/dev/null").
 		Return("", nil)
 
-	plan := buildComposePlan(config.ComposeActionUp, "/srv/app", client, true)
+	plan := buildComposePlan(context.Background(), config.ComposeActionUp, "/srv/app", client, true)
 	if plan == nil {
 		t.Fatal("plan should not be nil")
 	}
@@ -3431,10 +3447,11 @@ func TestBuildLocalFilePlan_TemplateIgnored(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	client := remote.NewMockRemoteClient(ctrl)
-	client.EXPECT().ReadFile("/srv/ha/config/automations.yaml").Return(nil, errTestRemoteFileMissing)
+	client.EXPECT().ReadFile(gomock.Any(), "/srv/ha/config/automations.yaml").Return(nil, errTestRemoteFileMissing)
 
 	// 変数があっても ignoreTemplate=true なら描画されないことを確認する。
 	plan, err := buildLocalFilePlan(
+		context.Background(),
 		"config/automations.yaml", localPath, "/srv/ha", client, map[string]any{"foo": "bar"}, nil, true,
 	)
 	if err != nil {
@@ -3466,6 +3483,7 @@ func TestBuildLocalFilePlan_JinjaWithoutIgnoreErrors(t *testing.T) {
 	client := remote.NewMockRemoteClient(ctrl)
 
 	_, err := buildLocalFilePlan(
+		context.Background(),
 		"config/automations.yaml", localPath, "/srv/ha", client, map[string]any{"foo": "bar"}, nil, false,
 	)
 	if err == nil {
@@ -3483,12 +3501,13 @@ func TestBuildLocalFilePlan_TemplateIgnoredKeepsMaskHints(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	client := remote.NewMockRemoteClient(ctrl)
 	// テンプレート展開済みの秘密値がリモートに残るケース（templateIgnore へ移行）。
-	client.EXPECT().ReadFile("/srv/ha/config/automations.yaml").
+	client.EXPECT().ReadFile(gomock.Any(), "/srv/ha/config/automations.yaml").
 		Return([]byte("token: \"s3cret-value\"\n"), nil)
 
 	hints := []MaskHint{{Prefix: "token: \"", Suffix: "\""}}
 
 	plan, err := buildLocalFilePlan(
+		context.Background(),
 		"config/automations.yaml", localPath, "/srv/ha", client, nil, hints, true,
 	)
 	if err != nil {
@@ -3512,6 +3531,7 @@ func TestBuildLocalFilePlan_ReadError(t *testing.T) {
 	client := remote.NewMockRemoteClient(ctrl)
 
 	_, err := buildLocalFilePlan(
+		context.Background(),
 		"compose.yml", filepath.Join(t.TempDir(), "missing.yml"), "/srv/grafana", client, nil, nil, false,
 	)
 	if err == nil {

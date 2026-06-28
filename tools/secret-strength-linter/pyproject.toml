@@ -2,8 +2,14 @@
 name = "secret-strength-linter"
 version = "0.1.0"
 description = "Check strength of secrets in SOPS-encrypted files"
+readme = "README.md"
 requires-python = ">=3.14.6"
 dependencies = [
     "python-hcl2>=8.1.2",
     "zxcvbn>=4.5.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
 ]

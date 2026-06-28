@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -15,7 +16,7 @@ import (
 // noopResolver satisfies config.SSHConfigResolver without invoking ssh.
 type noopResolver struct{}
 
-func (noopResolver) Resolve(entry *config.HostEntry, _, _ string) error {
+func (noopResolver) Resolve(_ context.Context, entry *config.HostEntry, _, _ string) error {
 	if entry.Port == 0 {
 		entry.Port = 22
 	}
@@ -83,7 +84,7 @@ func planDeps(client *fakeClient) syncer.PlanDependencies {
 func TestRunPlanCmdConfigNotFound(t *testing.T) {
 	t.Parallel()
 
-	err := runPlanCmd("/nonexistent/config.yml", nil, nil, false, "", syncer.PlanDependencies{})
+	err := runPlanCmd(context.Background(), "/nonexistent/config.yml", nil, nil, false, "", syncer.PlanDependencies{})
 	if err == nil {
 		t.Fatal("expected error for nonexistent config")
 	}
@@ -102,7 +103,7 @@ func TestRunPlanCmdSucceedsWhenLocked(t *testing.T) {
 	// Pre-lock the grafana project; plan must still succeed.
 	preLocker := lock.NewRemote(fakeFactory{client: client})
 
-	_, err := preLocker.Acquire(lock.Target{
+	_, err := preLocker.Acquire(context.Background(), lock.Target{
 		Host:      config.HostEntry{Name: "test-host"},
 		Project:   "grafana",
 		RemoteDir: "/opt/compose/grafana",
@@ -112,7 +113,7 @@ func TestRunPlanCmdSucceedsWhenLocked(t *testing.T) {
 		t.Fatalf("unexpected error pre-acquiring lock: %v", err)
 	}
 
-	err = runPlanCmd(configPath, nil, nil, false, "", deps)
+	err = runPlanCmd(context.Background(), configPath, nil, nil, false, "", deps)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -121,7 +122,7 @@ func TestRunPlanCmdSucceedsWhenLocked(t *testing.T) {
 func TestRunApplyCmdConfigNotFound(t *testing.T) {
 	t.Parallel()
 
-	err := runApplyCmd("/nonexistent/config.yml", nil, nil, true, false, "",
+	err := runApplyCmd(context.Background(), "/nonexistent/config.yml", nil, nil, true, false, "",
 		syncer.ApplyDependencies{
 			ClientFactory: fakeFactory{client: &fakeClient{files: map[string]string{}}},
 			SSHResolver:   noopResolver{},
@@ -140,7 +141,7 @@ func TestRunApplyCmdLockFail(t *testing.T) {
 
 	preLocker := lock.NewRemote(fakeFactory{client: client})
 
-	_, err := preLocker.Acquire(lock.Target{
+	_, err := preLocker.Acquire(context.Background(), lock.Target{
 		Host:      config.HostEntry{Name: "test-host"},
 		Project:   "grafana",
 		RemoteDir: "/opt/compose/grafana",
@@ -150,7 +151,7 @@ func TestRunApplyCmdLockFail(t *testing.T) {
 		t.Fatalf("unexpected error pre-acquiring lock: %v", err)
 	}
 
-	err = runApplyCmd(configPath, nil, nil, true, false, "",
+	err = runApplyCmd(context.Background(), configPath, nil, nil, true, false, "",
 		syncer.ApplyDependencies{
 			ClientFactory: fakeFactory{client: client},
 			SSHResolver:   noopResolver{},
@@ -166,7 +167,7 @@ func TestRunPlanCmdSuccess(t *testing.T) {
 	configPath := writeTestRepo(t)
 	client := &fakeClient{files: make(map[string]string)}
 
-	err := runPlanCmd(configPath, nil, nil, false, "", planDeps(client))
+	err := runPlanCmd(context.Background(), configPath, nil, nil, false, "", planDeps(client))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -203,7 +204,7 @@ func TestRunPlanCmdExitCodeNoChanges(t *testing.T) { //nolint:paralleltest // mu
 
 	code := withStubbedPlanExit(t)
 
-	err := runPlanCmd(configPath, nil, nil, true, "", planDeps(client))
+	err := runPlanCmd(context.Background(), configPath, nil, nil, true, "", planDeps(client))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -253,7 +254,7 @@ func TestRunPlanCmdDigestWriteError(t *testing.T) {
 	// A directory path can't be written as a file, so the digest write fails.
 	digestPath := t.TempDir()
 
-	err := runPlanCmd(configPath, nil, nil, false, digestPath, planDeps(client))
+	err := runPlanCmd(context.Background(), configPath, nil, nil, false, digestPath, planDeps(client))
 	if err == nil {
 		t.Fatal("expected error when digest file path is not writable")
 	}
@@ -267,7 +268,7 @@ func TestRunPlanCmdExistenceUnknown(t *testing.T) {
 	configPath := writeTestRepoWithDirs(t)
 	client := &fakeClient{files: make(map[string]string), statErr: remote.ErrExistenceUnknown}
 
-	err := runPlanCmd(configPath, nil, nil, false, "", planDeps(client))
+	err := runPlanCmd(context.Background(), configPath, nil, nil, false, "", planDeps(client))
 	if !errors.Is(err, syncer.ErrExistenceCheckFailed) {
 		t.Fatalf("expected ErrExistenceCheckFailed, got %v", err)
 	}
@@ -279,7 +280,7 @@ func TestRunApplyCmdSuccessNoChanges(t *testing.T) {
 	configPath := writeTestRepo(t)
 	client := &fakeClient{files: make(map[string]string)}
 
-	err := runApplyCmd(configPath, nil, nil, true, false, "",
+	err := runApplyCmd(context.Background(), configPath, nil, nil, true, false, "",
 		syncer.ApplyDependencies{
 			ClientFactory: fakeFactory{client: client},
 			SSHResolver:   noopResolver{},
@@ -299,7 +300,7 @@ func TestResolveSingleLockTargetSuccess(t *testing.T) {
 		t.Fatalf("unexpected error loading config: %v", err)
 	}
 
-	target, err := resolveSingleLockTarget(cfg, "test-host", "grafana",
+	target, err := resolveSingleLockTarget(context.Background(), cfg, "test-host", "grafana",
 		syncer.PlanDependencies{SSHResolver: noopResolver{}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -320,7 +321,7 @@ func TestResolveSingleLockTargetNotFound(t *testing.T) {
 		t.Fatalf("unexpected error loading config: %v", err)
 	}
 
-	_, err = resolveSingleLockTarget(cfg, "test-host", "nonexistent",
+	_, err = resolveSingleLockTarget(context.Background(), cfg, "test-host", "nonexistent",
 		syncer.PlanDependencies{SSHResolver: noopResolver{}})
 	if err == nil {
 		t.Fatal("expected error for nonexistent project")
@@ -330,7 +331,12 @@ func TestResolveSingleLockTargetNotFound(t *testing.T) {
 func TestRunForceUnlockConfigNotFound(t *testing.T) {
 	t.Parallel()
 
-	err := runForceUnlock("/nonexistent/config.yml", []string{"test-host", "grafana"}, forceUnlockOptions{})
+	err := runForceUnlock(
+		context.Background(),
+		"/nonexistent/config.yml",
+		[]string{"test-host", "grafana"},
+		forceUnlockOptions{},
+	)
 	if err == nil {
 		t.Fatal("expected error for nonexistent config")
 	}
@@ -342,18 +348,18 @@ func TestRunForceUnlockWithLockerForceWithInfo(t *testing.T) {
 	locker := newTestLocker()
 	target := lockTargets("grafana")[0]
 
-	_, err := locker.Acquire(target, "apply", true)
+	_, err := locker.Acquire(context.Background(), target, "apply", true)
 	if err != nil {
 		t.Fatalf("unexpected error acquiring lock: %v", err)
 	}
 
 	// --force skips the prompt; info is read and ForceUnlockWithID is used.
-	err = runForceUnlockWithLocker(locker, target, true)
+	err = runForceUnlockWithLocker(context.Background(), locker, target, true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	locked, _ := locker.IsLocked(target)
+	locked, _ := locker.IsLocked(context.Background(), target)
 	if locked {
 		t.Error("expected lock to be released")
 	}

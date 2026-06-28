@@ -1,6 +1,7 @@
 package syncer
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"path"
@@ -14,11 +15,12 @@ import (
 // project discovery and SSH resolution, but skips the expensive remote diff so
 // it can run before a lock is held.
 func ResolveLockTargets(
+	ctx context.Context,
 	cfg *config.CmtConfig,
 	hostFilter, projectFilter []string,
 	deps PlanDependencies,
 ) ([]lock.Target, error) {
-	return resolveLockTargets(cfg, hostFilter, projectFilter, deps, false)
+	return resolveLockTargets(ctx, cfg, hostFilter, projectFilter, deps, false)
 }
 
 // ResolveLockTargetsLenient behaves like ResolveLockTargets but skips hosts
@@ -26,14 +28,16 @@ func ResolveLockTargets(
 // used by force-unlock --all, where "release grafana everywhere" must not abort
 // just because some host never runs grafana.
 func ResolveLockTargetsLenient(
+	ctx context.Context,
 	cfg *config.CmtConfig,
 	hostFilter, projectFilter []string,
 	deps PlanDependencies,
 ) ([]lock.Target, error) {
-	return resolveLockTargets(cfg, hostFilter, projectFilter, deps, true)
+	return resolveLockTargets(ctx, cfg, hostFilter, projectFilter, deps, true)
 }
 
 func resolveLockTargets(
+	ctx context.Context,
 	cfg *config.CmtConfig,
 	hostFilter, projectFilter []string,
 	deps PlanDependencies,
@@ -59,7 +63,7 @@ func resolveLockTargets(
 	var targets []lock.Target
 
 	for _, host := range hosts {
-		hostTargets, err := resolveHostLockTargets(cfg, host, projects, sshResolver)
+		hostTargets, err := resolveHostLockTargets(ctx, cfg, host, projects, sshResolver)
 		if err != nil {
 			if skipUnmatchedHosts && errors.Is(err, errNoHostProjectsMatched) {
 				continue
@@ -75,6 +79,7 @@ func resolveLockTargets(
 }
 
 func resolveHostLockTargets(
+	ctx context.Context,
 	cfg *config.CmtConfig,
 	host config.HostEntry,
 	projects []string,
@@ -99,7 +104,7 @@ func resolveHostLockTargets(
 
 	resolvedHost := host
 
-	err = resolveHostSSHConfig(cfg.BasePath, &resolvedHost, hostCfg, sshResolver)
+	err = resolveHostSSHConfig(ctx, cfg.BasePath, &resolvedHost, hostCfg, sshResolver)
 	if err != nil {
 		return nil, fmt.Errorf("resolving SSH config for %s: %w", host.Name, err)
 	}

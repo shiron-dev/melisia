@@ -1,0 +1,8 @@
+{
+  // Base on all default rules, then opt out of the ones that don't fit
+  // this repository's documentation style.
+  "default": true,
+  // Line length: prose, tables and URLs in docs routinely exceed 80 columns;
+  // hard-wrapping them adds churn without improving readability.
+  "MD013": false
+}
