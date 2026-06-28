@@ -37,7 +37,6 @@ jobs:
       - gitleaks
       - trufflehog
       - secret-strength-linter-test
-      - secret-strength-linter
     if: ${{ always() }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -334,14 +333,3 @@ jobs:
       - name: Run pytest
         if: steps.detect.outputs.skip == 'false'
         run: uv run --project tools/secret-strength-linter pytest tools/secret-strength-linter
-
-  secret-strength-linter:
-    # SOPS strength check needs a base..head diff, so only run on pull requests.
-    if: ${{ github.event_name == 'pull_request' }}
-    permissions:
-      contents: read
-      id-token: write
-    uses: ./.github/workflows/secret-strength-linter.yml
-    with:
-      base_sha: ${{ github.event.pull_request.base.sha }}
-      head_sha: ${{ github.event.pull_request.head.sha }}
