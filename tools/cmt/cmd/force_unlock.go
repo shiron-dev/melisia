@@ -202,7 +202,7 @@ func forceUnlockMany(ctx context.Context, locker *lock.RemoteLocker, candidates 
 		_, _ = fmt.Fprintf(os.Stdout, "Lock present but unreadable for %s/%s.\n", target.Host.Name, target.Project)
 	}
 
-	if !force && !confirmForceUnlock(fmt.Sprintf("%d lock(s)", scan.count())) {
+	if !force && !confirmForceUnlock(ctx, fmt.Sprintf("%d lock(s)", scan.count())) {
 		_, _ = fmt.Fprintln(os.Stdout, "Force-unlock cancelled.")
 
 		return nil
@@ -301,7 +301,7 @@ func runForceUnlockWithLocker(ctx context.Context, locker *lock.RemoteLocker, ta
 		printLockInfo(target, info)
 	}
 
-	if !force && !confirmForceUnlock(target.Host.Name+"/"+target.Project) {
+	if !force && !confirmForceUnlock(ctx, target.Host.Name+"/"+target.Project) {
 		_, _ = fmt.Fprintln(os.Stdout, "Force-unlock cancelled.")
 
 		return nil
@@ -332,12 +332,25 @@ func printLockInfo(target lock.Target, info *lock.Info) {
 	_, _ = fmt.Fprintln(os.Stdout)
 }
 
-func confirmForceUnlock(label string) bool {
+func confirmForceUnlock(ctx context.Context, label string) bool {
 	_, _ = fmt.Fprintf(os.Stdout, "Do you really want to force-unlock %q? (y/N): ", label)
 
-	reader := bufio.NewReader(os.Stdin)
-	answer, _ := reader.ReadString('\n')
-	answer = strings.TrimSpace(strings.ToLower(answer))
+	// Read in a goroutine so Ctrl+C (which signal.NotifyContext turns into ctx
+	// cancellation) aborts the prompt instead of being swallowed by a blocking
+	// ReadString. The abandoned goroutine dies with the exiting process.
+	ch := make(chan string, 1)
 
-	return answer == "y" || answer == "yes"
+	go func() {
+		line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+		ch <- line
+	}()
+
+	select {
+	case <-ctx.Done():
+		return false
+	case answer := <-ch:
+		answer = strings.TrimSpace(strings.ToLower(answer))
+
+		return answer == "y" || answer == "yes"
+	}
 }

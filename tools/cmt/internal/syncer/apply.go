@@ -117,7 +117,7 @@ func runApplyPreflight(
 		return false, hookErr
 	}
 
-	if confirmApplyOrCancel(autoApprove, input, writer, style) {
+	if confirmApplyOrCancel(ctx, autoApprove, input, writer, style) {
 		return false, nil
 	}
 
@@ -259,12 +259,18 @@ func executeApplyHook(
 	return false, errUnknownHookResult
 }
 
-func confirmApplyOrCancel(autoApprove bool, input io.Reader, writer io.Writer, style outputStyle) bool {
+func confirmApplyOrCancel(
+	ctx context.Context,
+	autoApprove bool,
+	input io.Reader,
+	writer io.Writer,
+	style outputStyle,
+) bool {
 	if autoApprove {
 		return false
 	}
 
-	if confirmApply(input, writer, style) {
+	if confirmApply(ctx, input, writer, style) {
 		return false
 	}
 
@@ -381,14 +387,43 @@ func resolveApplyDependencies(deps ApplyDependencies) (remote.ClientFactory, io.
 	return clientFactory, input, hookRunner
 }
 
-func confirmApply(input io.Reader, writer io.Writer, style outputStyle) bool {
+func confirmApply(ctx context.Context, input io.Reader, writer io.Writer, style outputStyle) bool {
 	_, _ = fmt.Fprint(writer, "\n"+style.key("Apply these changes? (y/N): "))
 
-	reader := bufio.NewReader(input)
-	answer, _ := reader.ReadString('\n')
+	answer, err := readLineWithContext(ctx, input)
+	if err != nil {
+		// Context cancelled (Ctrl+C) or read failure: do not apply.
+		return false
+	}
+
 	answer = strings.TrimSpace(strings.ToLower(answer))
 
 	return answer == "y" || answer == "yes"
+}
+
+// readLineWithContext reads one line from r, returning early if ctx is cancelled.
+// A blocking stdin read can't itself be interrupted, so the reader runs in a
+// goroutine; on cancellation that goroutine is abandoned, which is safe because
+// the process is shutting down (the leak is bounded by exit).
+func readLineWithContext(ctx context.Context, r io.Reader) (string, error) {
+	type lineResult struct {
+		line string
+		err  error
+	}
+
+	ch := make(chan lineResult, 1)
+
+	go func() {
+		line, err := bufio.NewReader(r).ReadString('\n')
+		ch <- lineResult{line: line, err: err}
+	}()
+
+	select {
+	case <-ctx.Done():
+		return "", ctx.Err()
+	case res := <-ch:
+		return res.line, res.err
+	}
 }
 
 func applyAllHosts(

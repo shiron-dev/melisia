@@ -754,7 +754,7 @@ func TestConfirmForceUnlockYes(t *testing.T) { //nolint:paralleltest
 
 		t.Cleanup(func() { os.Stdin = oldStdin; _ = r.Close() })
 
-		if !confirmForceUnlock("host1/grafana") {
+		if !confirmForceUnlock(context.Background(), "host1/grafana") {
 			t.Errorf("expected confirmForceUnlock to return true for %q", answer)
 		}
 	}
@@ -774,7 +774,7 @@ func TestConfirmForceUnlockNo(t *testing.T) { //nolint:paralleltest
 
 	t.Cleanup(func() { os.Stdin = oldStdin; _ = r.Close() })
 
-	if confirmForceUnlock("host1/grafana") {
+	if confirmForceUnlock(context.Background(), "host1/grafana") {
 		t.Error("expected confirmForceUnlock to return false for 'n'")
 	}
 }
