@@ -38,19 +38,23 @@ locals {
       secret_yaml_dir = "${path.module}/../../compose/hosts/arm-srv/snipeit"
       policies        = local.cloudflare_access_policy_refs.shiron
     }
-    "arm-srv-rsshub" = {
-      domain          = "rsshub.melisia.net"
-      zone_name       = "melisia.net"
-      service         = "http://rsshub:1200"
-      secret_yaml_dir = "${path.module}/../../compose/hosts/arm-srv/rsshub"
-      policies        = local.cloudflare_access_policy_refs.shiron
-    }
-    "arm-srv-freshrss" = {
+    # RSSHub と FreshRSS は arm-srv 上で 1 つの compose プロジェクト (rss) に統合し、
+    # 1 本のトンネルで freshrss.melisia.net / rsshub.melisia.net の両ホスト名を配信する。
+    # secret_yaml_dir は統合プロジェクトの host ディレクトリを指す。
+    "arm-srv-rss" = {
       domain          = "freshrss.melisia.net"
       zone_name       = "melisia.net"
       service         = "http://freshrss:80"
-      secret_yaml_dir = "${path.module}/../../compose/hosts/arm-srv/freshrss"
+      secret_yaml_dir = "${path.module}/../../compose/hosts/arm-srv/rss"
       policies        = local.cloudflare_access_policy_refs.shiron
+      extra_ingress = [
+        {
+          hostname  = "rsshub.melisia.net"
+          zone_name = "melisia.net"
+          service   = "http://rsshub:1200"
+          policies  = local.cloudflare_access_policy_refs.shiron
+        }
+      ]
     }
     # photoframe.melisia.net は arm-srv 上の軽量スライドショー (Go) を公開する。
     # 画像ソースは TrueNAS Nextcloud の WebDAV で、photoframe コンテナが
