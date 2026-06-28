@@ -1265,6 +1265,52 @@ func TestResolveProjectConfig_HostTemplateVarSources(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// ResolveProjectConfig: TemplateIgnore
+// ---------------------------------------------------------------------------
+
+func TestResolveProjectConfig_TemplateIgnore(t *testing.T) {
+	t.Parallel()
+
+	defaults := &SyncDefaults{RemotePath: "/opt", TemplateIgnore: []string{"config"}}
+
+	t.Run("inherits from defaults", func(t *testing.T) {
+		t.Parallel()
+
+		resolved := ResolveProjectConfig(defaults, nil, "home-assistant")
+		if strings.Join(resolved.TemplateIgnore, ",") != "config" {
+			t.Errorf("TemplateIgnore = %v, want [config]", resolved.TemplateIgnore)
+		}
+	})
+
+	t.Run("host overrides defaults when project unset", func(t *testing.T) {
+		t.Parallel()
+
+		hostCfg := &HostConfig{TemplateIgnore: []string{"host-level"}}
+
+		resolved := ResolveProjectConfig(defaults, hostCfg, "home-assistant")
+		if strings.Join(resolved.TemplateIgnore, ",") != "host-level" {
+			t.Errorf("TemplateIgnore = %v, want [host-level]", resolved.TemplateIgnore)
+		}
+	})
+
+	t.Run("project overrides host and defaults", func(t *testing.T) {
+		t.Parallel()
+
+		hostCfg := &HostConfig{
+			TemplateIgnore: []string{"host-level"},
+			Projects: map[string]*ProjectConfig{
+				"home-assistant": {TemplateIgnore: []string{"config", "extra"}},
+			},
+		}
+
+		resolved := ResolveProjectConfig(defaults, hostCfg, "home-assistant")
+		if strings.Join(resolved.TemplateIgnore, ",") != "config,extra" {
+			t.Errorf("TemplateIgnore = %v, want [config extra]", resolved.TemplateIgnore)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
 // helper for YAML unmarshaling in tests
 // ---------------------------------------------------------------------------
 

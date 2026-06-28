@@ -61,7 +61,7 @@ func TestBuildFilePlansSkipsLocalLockFile(t *testing.T) {
 	// no remote read/write is attempted for it.
 	localFiles := map[string]string{lock.LockFileName: "/local/.cmt.lock"}
 
-	plans, err := buildFilePlans(localFiles, "/opt/compose/grafana", nil, client, nil, map[string]bool{})
+	plans, err := buildFilePlans(localFiles, "/opt/compose/grafana", nil, client, nil, map[string]bool{}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

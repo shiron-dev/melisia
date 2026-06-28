@@ -381,6 +381,7 @@ type SyncDefaults struct {
 	ComposeAction       string   `json:"composeAction,omitempty"       yaml:"composeAction,omitempty"`
 	TemplateVarSources  []string `json:"templateVarSources,omitempty"  yaml:"templateVarSources,omitempty"`
 	PreserveRemoteFiles []string `json:"preserveRemoteFiles,omitempty" yaml:"preserveRemoteFiles,omitempty"`
+	TemplateIgnore      []string `json:"templateIgnore,omitempty"      yaml:"templateIgnore,omitempty"`
 }
 
 type HostEntry struct {
@@ -404,6 +405,7 @@ type HostConfig struct {
 	TemplateVarSources []string `json:"templateVarSources,omitempty" yaml:"templateVarSources,omitempty"`
 	//nolint:lll
 	PreserveRemoteFiles []string                  `json:"preserveRemoteFiles,omitempty" yaml:"preserveRemoteFiles,omitempty"`
+	TemplateIgnore      []string                  `json:"templateIgnore,omitempty"      yaml:"templateIgnore,omitempty"`
 	Projects            map[string]*ProjectConfig `json:"projects,omitempty"            yaml:"projects,omitempty"`
 }
 
@@ -415,6 +417,7 @@ type ProjectConfig struct {
 	Dirs                []DirConfig `json:"dirs,omitempty"                yaml:"dirs,omitempty"`
 	TemplateVarSources  []string    `json:"templateVarSources,omitempty"  yaml:"templateVarSources,omitempty"`
 	PreserveRemoteFiles []string    `json:"preserveRemoteFiles,omitempty" yaml:"preserveRemoteFiles,omitempty"`
+	TemplateIgnore      []string    `json:"templateIgnore,omitempty"      yaml:"templateIgnore,omitempty"`
 }
 
 type ResolvedProjectConfig struct {
@@ -425,6 +428,7 @@ type ResolvedProjectConfig struct {
 	Dirs                []DirConfig
 	TemplateVarSources  []string
 	PreserveRemoteFiles []string
+	TemplateIgnore      []string
 }
 
 type HookConfigPaths struct {
@@ -485,6 +489,7 @@ func resolveFromDefaults(defaults *SyncDefaults) ResolvedProjectConfig {
 			Dirs:                nil,
 			TemplateVarSources:  nil,
 			PreserveRemoteFiles: nil,
+			TemplateIgnore:      nil,
 		}
 	}
 
@@ -496,6 +501,7 @@ func resolveFromDefaults(defaults *SyncDefaults) ResolvedProjectConfig {
 		Dirs:                nil,
 		TemplateVarSources:  defaults.TemplateVarSources,
 		PreserveRemoteFiles: defaults.PreserveRemoteFiles,
+		TemplateIgnore:      defaults.TemplateIgnore,
 	}
 }
 
@@ -518,6 +524,10 @@ func applyHostOverrides(resolved *ResolvedProjectConfig, hostCfg *HostConfig) {
 
 	if len(hostCfg.PreserveRemoteFiles) > 0 {
 		resolved.PreserveRemoteFiles = hostCfg.PreserveRemoteFiles
+	}
+
+	if len(hostCfg.TemplateIgnore) > 0 {
+		resolved.TemplateIgnore = hostCfg.TemplateIgnore
 	}
 }
 
@@ -551,6 +561,10 @@ func applyProjectOverrides(resolved *ResolvedProjectConfig, hostCfg *HostConfig,
 
 	if len(projectConfig.PreserveRemoteFiles) > 0 {
 		resolved.PreserveRemoteFiles = projectConfig.PreserveRemoteFiles
+	}
+
+	if len(projectConfig.TemplateIgnore) > 0 {
+		resolved.TemplateIgnore = projectConfig.TemplateIgnore
 	}
 }
 
