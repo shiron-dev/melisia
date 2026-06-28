@@ -107,7 +107,13 @@ jobs:
           cache-dependency-path: tools/cmt/go.sum
       - name: Check go fmt
         run: |
-          go fmt
+          set -euo pipefail
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-ed:"
+            echo "$unformatted"
+            exit 1
+          fi
       - uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d # v4.2.0
         with:
           install: false
