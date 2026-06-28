@@ -11,12 +11,56 @@ after they were stopped on the remote host:
 brought back onto this host with their Cloudflare Tunnel / Access provisioned via
 Terraform (`local.cloudflare_tunnels`).
 
+## `rss` project (FreshRSS + RSSHub, merged)
+
+`freshrss` and `rsshub` were merged into a single cmt project, `rss`
+(`compose/projects/rss/compose.yml`), running all of FreshRSS, its MariaDB,
+RSSHub and its Redis in one compose stack. Because every service now shares the
+project's `default` docker network, the previous external `rss-internal` network
+(and the `docker network create rss-internal` `postSyncCommand`) is gone:
+FreshRSS still reaches RSSHub directly at `http://rsshub:1200`.
+
+Both public hostnames are served by a **single** Cloudflare Tunnel,
+`arm-srv-rss`, whose ingress routes `freshrss.melisia.net` → `http://freshrss:80`
+and `rsshub.melisia.net` → `http://rsshub:1200` (Terraform
+`local.cloudflare_tunnels["arm-srv-rss"]`, with `rsshub.melisia.net` configured as
+`extra_ingress`). The old `arm-srv-rsshub` / `arm-srv-freshrss` tunnels were
+removed.
+
+### Migration from the split `freshrss` / `rsshub` projects
+
+This was a rename, so two manual steps are required on top of `terraform apply`
+and `make cmt-apply`:
+
+1. **New tunnel token.** `arm-srv-rss` is a brand-new tunnel, so its token must be
+   bootstrapped into `compose/hosts/arm-srv/rss/cloudflare-tunnel-arm-srv-rss.secrets.yml.sops`
+   (temporarily enable the `local_sensitive_file.cloudflare_tunnel_secret` writer
+   in `cloudflare_tunnel_secrets.tf`, `-target` apply it, then `make sops-encrypt`).
+   Until that file exists, `make cmt-plan`/`cmt-apply` for `rss` fails on the
+   missing `cf_tunnel_token` template variable.
+
+2. **Bind-mount data move.** The remote path changes from
+   `/opt/compose/{freshrss,rsshub}` to `/opt/compose/rss`, and cmt does **not**
+   migrate bind-mount data. Stop the old stacks, move their data, then apply:
+
+   ```sh
+   # on arm-srv (ansible_user)
+   cd /opt/compose && docker compose -f freshrss/compose.yml down && docker compose -f rsshub/compose.yml down
+   sudo mkdir -p rss
+   sudo mv freshrss/data freshrss/extensions freshrss/db_data rss/
+   sudo mv rsshub/redis_data rss/            # cache only; safe to drop and let it rebuild
+   ```
+
+   RSSHub's `redis_data` is just a cache (`CACHE_TYPE=redis`) and may be dropped
+   instead of moved; FreshRSS's `db_data`/`data`/`extensions` hold real state and
+   must be preserved.
+
 ### RSSHub feeds in FreshRSS (internal path)
 
 `rsshub.melisia.net` is behind the interactive `shiron` Cloudflare Access policy,
 so RSS clients cannot fetch through it. FreshRSS instead reaches RSSHub directly
-over the shared `rss-internal` docker network. Subscribe in FreshRSS using the
-internal URL, not the public hostname:
+over the shared `default` docker network of the `rss` project. Subscribe in
+FreshRSS using the internal URL, not the public hostname:
 
 ```
 http://rsshub:1200/<route>
