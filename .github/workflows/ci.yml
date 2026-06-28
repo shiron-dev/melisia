@@ -271,7 +271,9 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-    if: ${{ github.event_name == 'pull_request' }}
+    # Fork PRs receive a read-only GITHUB_TOKEN, so commenting would silently
+    # fail; restrict to same-repository PRs (which includes Renovate's branches).
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
     continue-on-error: true
     steps:
       - uses: shiron-dev/actions/renovate-deps-comment@8780bd20d1ef046844aa1a1c2e9d96fefaa1384b # v1.7.0
