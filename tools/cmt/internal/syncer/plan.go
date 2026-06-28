@@ -1662,7 +1662,10 @@ func renderLocalFileData(
 	}
 
 	if ignoreTemplate {
-		return rawData, nil, nil
+		// テンプレート展開はしないが、過去に manifest へ記録された秘密値のマスクは
+		// 引き継ぐ。テンプレート→templateIgnore へ切り替えた際に、リモートに残る
+		// 展開済みの秘密値が plan/apply の差分へ未マスクで出るのを防ぐ。
+		return rawData, patternsFromMaskHints(manifestMaskHints), nil
 	}
 
 	localData, err := RenderTemplate(rawData, templateVars)

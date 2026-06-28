@@ -3473,6 +3473,37 @@ func TestBuildLocalFilePlan_JinjaWithoutIgnoreErrors(t *testing.T) {
 	}
 }
 
+func TestBuildLocalFilePlan_TemplateIgnoredKeepsMaskHints(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	localPath := base + "/automations.yaml"
+	mustWriteFile(t, localPath, []byte("token: \"{{ .api_token }}\"\n"))
+
+	ctrl := gomock.NewController(t)
+	client := remote.NewMockRemoteClient(ctrl)
+	// テンプレート展開済みの秘密値がリモートに残るケース（templateIgnore へ移行）。
+	client.EXPECT().ReadFile("/srv/ha/config/automations.yaml").
+		Return([]byte("token: \"s3cret-value\"\n"), nil)
+
+	hints := []MaskHint{{Prefix: "token: \"", Suffix: "\""}}
+
+	plan, err := buildLocalFilePlan(
+		"config/automations.yaml", localPath, "/srv/ha", client, nil, hints, true,
+	)
+	if err != nil {
+		t.Fatalf("buildLocalFilePlan: %v", err)
+	}
+
+	if len(plan.MaskHints) == 0 {
+		t.Error("expected manifest mask hints to be carried forward for an ignored file")
+	}
+
+	if strings.Contains(plan.Diff, "s3cret-value") {
+		t.Errorf("remote secret leaked into the diff: %s", plan.Diff)
+	}
+}
+
 func TestBuildLocalFilePlan_ReadError(t *testing.T) {
 	t.Parallel()
 
