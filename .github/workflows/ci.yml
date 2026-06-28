@@ -192,7 +192,7 @@ jobs:
         run: npm ci
         working-directory: .github/tools
       - name: Run markdownlint
-        run: .github/tools/node_modules/.bin/markdownlint . || true
+        run: .github/tools/node_modules/.bin/markdownlint .
 
   shell-lint:
     runs-on: ubuntu-latest
