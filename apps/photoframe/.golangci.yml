@@ -1,3 +1,41 @@
 version: "2"
 linters:
-  default: standard
+  default: all
+  enable:
+    - wsl_v5
+  disable:
+    - depguard
+    - wrapcheck
+    - ireturn
+    - wsl
+    - varnamelen
+    - goconst
+  exclusions:
+    rules:
+      - path: (.+)_test\.go
+        linters:
+          - dupl
+          - exhaustruct
+          - funlen
+          - testpackage
+          - cyclop
+          # Config is read from process env via t.Setenv, which panics under
+          # t.Parallel; these tests cannot run in parallel.
+          - paralleltest
+
+  settings:
+    exhaustruct:
+      # net/http structs carry many optional fields; requiring every one makes
+      # ordinary client/server construction unreadable.
+      exclude:
+        - 'net/http\.Client'
+        - 'net/http\.Server'
+    revive:
+      rules:
+        - name: package-comments
+          disabled: true
+    varnamelen:
+      ignore-decls:
+        - i int
+      ignore-names:
+        - tt

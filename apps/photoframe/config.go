@@ -1,11 +1,29 @@
 package main
 
 import (
-	"fmt"
+	"errors"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+)
+
+// Defaults for the duration knobs, expressed as named constants so the magic
+// numbers stay out of LoadConfig.
+const (
+	defaultSlideInterval    = 10 * time.Second
+	defaultFadeDuration     = 1200 * time.Millisecond
+	defaultClientRefresh    = time.Minute
+	defaultRefreshInterval  = 5 * time.Minute
+	defaultRequestTimeout   = 30 * time.Second
+	defaultImageCacheMaxAge = time.Hour
+)
+
+// Validation errors returned by LoadConfig.
+var (
+	errMissingBaseURL = errors.New("WEBDAV_BASE_URL is required")
+	errMissingCreds   = errors.New("WEBDAV_USERNAME and WEBDAV_PASSWORD are required")
+	errCFAccessPair   = errors.New("CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET must be set together")
 )
 
 // Config holds the runtime configuration sourced from environment variables.
@@ -44,23 +62,24 @@ func LoadConfig() (Config, error) {
 		WebDAVPassword:       os.Getenv("WEBDAV_PASSWORD"),
 		CFAccessClientID:     os.Getenv("CF_ACCESS_CLIENT_ID"),
 		CFAccessClientSecret: os.Getenv("CF_ACCESS_CLIENT_SECRET"),
-		SlideInterval:        getdur("SLIDE_INTERVAL", 10*time.Second),
-		FadeDuration:         getdur("FADE_DURATION", 1200*time.Millisecond),
-		ClientRefresh:        getdur("CLIENT_REFRESH_INTERVAL", time.Minute),
-		RefreshInterval:      getdur("REFRESH_INTERVAL", 5*time.Minute),
-		RequestTimeout:       getdur("REQUEST_TIMEOUT", 30*time.Second),
-		ImageCacheMaxAge:     getdur("IMAGE_CACHE_MAX_AGE", time.Hour),
+		SlideInterval:        getdur("SLIDE_INTERVAL", defaultSlideInterval),
+		FadeDuration:         getdur("FADE_DURATION", defaultFadeDuration),
+		ClientRefresh:        getdur("CLIENT_REFRESH_INTERVAL", defaultClientRefresh),
+		RefreshInterval:      getdur("REFRESH_INTERVAL", defaultRefreshInterval),
+		RequestTimeout:       getdur("REQUEST_TIMEOUT", defaultRequestTimeout),
+		ImageCacheMaxAge:     getdur("IMAGE_CACHE_MAX_AGE", defaultImageCacheMaxAge),
 	}
 
 	if cfg.WebDAVBaseURL == "" {
-		return cfg, fmt.Errorf("WEBDAV_BASE_URL is required")
+		return cfg, errMissingBaseURL
 	}
+
 	if cfg.WebDAVUsername == "" || cfg.WebDAVPassword == "" {
-		return cfg, fmt.Errorf("WEBDAV_USERNAME and WEBDAV_PASSWORD are required")
+		return cfg, errMissingCreds
 	}
 	// CF Access headers must be supplied as a pair or not at all.
 	if (cfg.CFAccessClientID == "") != (cfg.CFAccessClientSecret == "") {
-		return cfg, fmt.Errorf("CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET must be set together")
+		return cfg, errCFAccessPair
 	}
 
 	return cfg, nil
@@ -70,6 +89,7 @@ func getenv(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
 	}
+
 	return def
 }
 
@@ -80,12 +100,17 @@ func getdur(key string, def time.Duration) time.Duration {
 	if v == "" {
 		return def
 	}
-	if n, err := strconv.Atoi(v); err == nil {
+
+	n, err := strconv.Atoi(v)
+	if err == nil {
 		return time.Duration(n) * time.Second
 	}
-	if d, err := time.ParseDuration(v); err == nil {
+
+	d, err := time.ParseDuration(v)
+	if err == nil {
 		return d
 	}
+
 	return def
 }
 
@@ -96,6 +121,8 @@ func normalizePath(p string) string {
 	if p == "" || p == "/" {
 		return ""
 	}
+
 	p = "/" + strings.Trim(p, "/")
+
 	return p
 }

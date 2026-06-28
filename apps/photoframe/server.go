@@ -29,12 +29,19 @@ type store struct {
 }
 
 func newStore() *store {
-	return &store{byID: map[string]string{}}
+	return &store{
+		mu:      sync.RWMutex{},
+		byID:    map[string]string{},
+		order:   nil,
+		updated: time.Time{},
+		lastErr: "",
+	}
 }
 
 func (s *store) replace(hrefs []string) {
 	sort.Strings(hrefs)
 	byID := make(map[string]string, len(hrefs))
+
 	order := make([]string, 0, len(hrefs))
 	for _, h := range hrefs {
 		sum := sha256.Sum256([]byte(h))
@@ -42,6 +49,7 @@ func (s *store) replace(hrefs []string) {
 		byID[id] = h
 		order = append(order, id)
 	}
+
 	s.mu.Lock()
 	s.byID = byID
 	s.order = order
@@ -59,15 +67,19 @@ func (s *store) setErr(msg string) {
 func (s *store) snapshot() ([]string, time.Time, string) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
 	ids := make([]string, len(s.order))
 	copy(ids, s.order)
+
 	return ids, s.updated, s.lastErr
 }
 
 func (s *store) href(id string) (string, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
 	h, ok := s.byID[id]
+
 	return h, ok
 }
 
@@ -83,12 +95,24 @@ func NewServer(cfg Config, dav *WebDAVClient, log *slog.Logger) *Server {
 	return &Server{cfg: cfg, dav: dav, store: newStore(), log: log}
 }
 
+func (s *Server) Handler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", s.handleHealthz)
+	mux.HandleFunc("GET /api/images", s.handleImages)
+	mux.HandleFunc("GET /img/{id}", s.handleImage)
+	mux.HandleFunc("GET /", s.handleIndex)
+
+	return mux
+}
+
 // refreshLoop refreshes the image list immediately and then on RefreshInterval
 // until the context is cancelled.
 func (s *Server) refreshLoop(ctx context.Context) {
 	s.refresh(ctx)
+
 	t := time.NewTicker(s.cfg.RefreshInterval)
 	defer t.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -107,19 +131,12 @@ func (s *Server) refresh(ctx context.Context) {
 	if err != nil {
 		s.log.Error("list webdav folder", "error", err)
 		s.store.setErr(err.Error())
+
 		return
 	}
+
 	s.store.replace(hrefs)
 	s.log.Info("refreshed image list", "count", len(hrefs))
-}
-
-func (s *Server) Handler() http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", s.handleHealthz)
-	mux.HandleFunc("GET /api/images", s.handleImages)
-	mux.HandleFunc("GET /img/{id}", s.handleImage)
-	mux.HandleFunc("GET /", s.handleIndex)
-	return mux
 }
 
 func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
@@ -130,13 +147,17 @@ func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
+
 		return
 	}
+
 	b, err := webFS.ReadFile("web/index.html")
 	if err != nil {
 		http.Error(w, "index unavailable", http.StatusInternalServerError)
+
 		return
 	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(b)
 }
@@ -152,30 +173,40 @@ type imagesResponse struct {
 
 func (s *Server) handleImages(w http.ResponseWriter, _ *http.Request) {
 	ids, updated, lastErr := s.store.snapshot()
+
 	urls := make([]string, len(ids))
 	for i, id := range ids {
 		urls[i] = "img/" + id
 	}
+
 	resp := imagesResponse{
 		Images:               urls,
 		IntervalSeconds:      s.cfg.SlideInterval.Seconds(),
 		FadeSeconds:          s.cfg.FadeDuration.Seconds(),
 		ClientRefreshSeconds: s.cfg.ClientRefresh.Seconds(),
+		UpdatedAt:            "",
 		Error:                lastErr,
 	}
 	if !updated.IsZero() {
 		resp.UpdatedAt = updated.UTC().Format(time.RFC3339)
 	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
-	_ = json.NewEncoder(w).Encode(resp)
+
+	err := json.NewEncoder(w).Encode(resp)
+	if err != nil {
+		s.log.Error("encode images response", "error", err)
+	}
 }
 
 func (s *Server) handleImage(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+
 	href, ok := s.store.href(id)
 	if !ok {
 		http.NotFound(w, r)
+
 		return
 	}
 
@@ -186,21 +217,26 @@ func (s *Server) handleImage(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.log.Error("fetch image", "error", err)
 		http.Error(w, "upstream error", http.StatusBadGateway)
+
 		return
 	}
+
 	defer func() { _ = upstream.Body.Close() }()
 
 	if upstream.StatusCode != http.StatusOK {
 		http.Error(w, "upstream status "+upstream.Status, http.StatusBadGateway)
+
 		return
 	}
 
 	if ct := upstream.Header.Get("Content-Type"); ct != "" {
 		w.Header().Set("Content-Type", ct)
 	}
+
 	if cl := upstream.Header.Get("Content-Length"); cl != "" {
 		w.Header().Set("Content-Length", cl)
 	}
+
 	w.Header().Set("Cache-Control", fmt.Sprintf("private, max-age=%d", int(s.cfg.ImageCacheMaxAge.Seconds())))
 	_, _ = io.Copy(w, upstream.Body)
 }
