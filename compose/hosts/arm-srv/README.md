@@ -46,8 +46,16 @@ and `make cmt-apply`:
    ```sh
    # on arm-srv (ansible_user)
    cd /opt/compose && docker compose -f freshrss/compose.yml down && docker compose -f rsshub/compose.yml down
-   sudo mkdir -p rss
-   sudo mv freshrss/data freshrss/extensions freshrss/db_data rss/
+   # rss/ must stay ansible_user-owned so cmt can SCP compose.yml into it,
+   # so create it WITHOUT sudo (/opt/compose is ansible_user-owned).
+   mkdir -p rss
+   # data/extensions are ansible_user-owned → plain mv works.
+   mv freshrss/data freshrss/extensions rss/
+   # db_data (uid 999) and redis_data (uid 1000) are owned by a foreign uid;
+   # moving a dir rewrites its `..` entry, which needs write on the dir itself,
+   # so these two need sudo. Their inode ownership is preserved (host.yml
+   # re-chowns them anyway).
+   sudo mv freshrss/db_data rss/
    sudo mv rsshub/redis_data rss/            # cache only; safe to drop and let it rebuild
    ```
 
