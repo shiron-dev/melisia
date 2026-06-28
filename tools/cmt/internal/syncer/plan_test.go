@@ -2990,7 +2990,7 @@ func TestBuildLocalFilePlan_NewFile(t *testing.T) {
 	client.EXPECT().ReadFile("/srv/grafana/compose.yml").Return(nil, errTestRemoteFileMissing)
 
 	plan, err := buildLocalFilePlan(
-		"compose.yml", localPath, "/srv/grafana", client, nil, nil,
+		"compose.yml", localPath, "/srv/grafana", client, nil, nil, false,
 	)
 	if err != nil {
 		t.Fatalf("buildLocalFilePlan: %v", err)
@@ -3023,7 +3023,7 @@ func TestBuildLocalFilePlan_Unchanged(t *testing.T) {
 	client.EXPECT().ReadFile("/srv/grafana/compose.yml").Return(content, nil)
 
 	plan, err := buildLocalFilePlan(
-		"compose.yml", localPath, "/srv/grafana", client, nil, nil,
+		"compose.yml", localPath, "/srv/grafana", client, nil, nil, false,
 	)
 	if err != nil {
 		t.Fatalf("buildLocalFilePlan: %v", err)
@@ -3049,7 +3049,7 @@ func TestBuildLocalFilePlan_Modified(t *testing.T) {
 	client.EXPECT().ReadFile("/srv/grafana/compose.yml").Return(remoteContent, nil)
 
 	plan, err := buildLocalFilePlan(
-		"compose.yml", localPath, "/srv/grafana", client, nil, nil,
+		"compose.yml", localPath, "/srv/grafana", client, nil, nil, false,
 	)
 	if err != nil {
 		t.Fatalf("buildLocalFilePlan: %v", err)
@@ -3083,7 +3083,7 @@ func TestBuildLocalFilePlan_WithMaskHints(t *testing.T) {
 	hints := []MaskHint{{Prefix: "DB_PASSWORD=", Suffix: ""}}
 
 	plan, err := buildLocalFilePlan(
-		"config.env", localPath, "/srv/app", client, nil, hints,
+		"config.env", localPath, "/srv/app", client, nil, hints, false,
 	)
 	if err != nil {
 		t.Fatalf("buildLocalFilePlan: %v", err)
@@ -3369,5 +3369,106 @@ func TestBuildComposePlan_UpNoServicesDefinedAndNoFileChanges(t *testing.T) {
 	// defined が 0 なので hasFileChanges=true でも ComposeNoChange
 	if plan.ActionType != ComposeNoChange {
 		t.Errorf("ActionType = %v, want ComposeNoChange when no services defined", plan.ActionType)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// matchesTemplateIgnore
+// ---------------------------------------------------------------------------
+
+func TestMatchesTemplateIgnore(t *testing.T) {
+	t.Parallel()
+
+	patterns := []string{"config", "secrets/*.yaml", "./standalone.yml", ".."}
+
+	tests := []struct {
+		name    string
+		relPath string
+		want    bool
+	}{
+		{"directory subtree match", "config/automations/morning.yaml", true},
+		{"directory exact match", "config", true},
+		{"directory prefix is not a substring trap", "configmap.yml", false},
+		{"single-level glob match", "secrets/api.yaml", true},
+		{"glob does not cross slash", "secrets/nested/api.yaml", false},
+		{"normalized exact match", "standalone.yml", true},
+		{"unrelated file", "compose.yml", false},
+		{"empty relpath", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := matchesTemplateIgnore(tt.relPath, patterns)
+			if got != tt.want {
+				t.Errorf("matchesTemplateIgnore(%q) = %v, want %v", tt.relPath, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMatchesTemplateIgnore_NoPatterns(t *testing.T) {
+	t.Parallel()
+
+	if matchesTemplateIgnore("config/automations.yaml", nil) {
+		t.Error("expected no match when patterns is empty")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// buildLocalFilePlan: templateIgnore
+// ---------------------------------------------------------------------------
+
+func TestBuildLocalFilePlan_TemplateIgnored(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	localPath := base + "/automations.yaml"
+	// HA の Jinja は Go テンプレートとして不正。素のまま同期されねばならない。
+	content := []byte("- alias: kitchen\n  condition: \"{{ is_state('light.kitchen', 'on') }}\"\n")
+	mustWriteFile(t, localPath, content)
+
+	ctrl := gomock.NewController(t)
+	client := remote.NewMockRemoteClient(ctrl)
+	client.EXPECT().ReadFile("/srv/ha/config/automations.yaml").Return(nil, errTestRemoteFileMissing)
+
+	// 変数があっても ignoreTemplate=true なら描画されないことを確認する。
+	plan, err := buildLocalFilePlan(
+		"config/automations.yaml", localPath, "/srv/ha", client, map[string]any{"foo": "bar"}, nil, true,
+	)
+	if err != nil {
+		t.Fatalf("buildLocalFilePlan: %v", err)
+	}
+
+	if plan.Action != ActionAdd {
+		t.Errorf("Action = %v, want ActionAdd", plan.Action)
+	}
+
+	if !bytes.Equal(plan.LocalData, content) {
+		t.Errorf("LocalData = %q, want verbatim %q", plan.LocalData, content)
+	}
+
+	if len(plan.MaskHints) != 0 {
+		t.Errorf("MaskHints = %v, want none for an ignored file", plan.MaskHints)
+	}
+}
+
+func TestBuildLocalFilePlan_JinjaWithoutIgnoreErrors(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	localPath := base + "/automations.yaml"
+	mustWriteFile(t, localPath, []byte("value: \"{{ is_state('light.kitchen', 'on') }}\"\n"))
+
+	ctrl := gomock.NewController(t)
+	// ignoreTemplate=false ではレンダリングが先に失敗し、ReadFile には到達しない。
+	client := remote.NewMockRemoteClient(ctrl)
+
+	_, err := buildLocalFilePlan(
+		"config/automations.yaml", localPath, "/srv/ha", client, map[string]any{"foo": "bar"}, nil, false,
+	)
+	if err == nil {
+		t.Fatal("expected a render error for HA Jinja when templateIgnore is not applied")
 	}
 }

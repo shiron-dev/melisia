@@ -1201,7 +1201,8 @@ func buildProjectPlanForHost(
 
 	manifest := readManifest(client, remoteDir)
 
-	filePlans, err := buildFilePlans(localFiles, remoteDir, manifest, client, templateVars, preserveSet)
+	filePlans, err := buildFilePlans(localFiles, remoteDir, manifest, client,
+		templateVars, preserveSet, resolved.TemplateIgnore)
 	if err != nil {
 		return ProjectPlan{}, fmt.Errorf("building file plan for %s/%s: %w", host.Name, project, err)
 	}
@@ -1570,6 +1571,34 @@ func filterPreservedLocalFiles(localFiles map[string]string, preserveSet map[str
 	}
 }
 
+// matchesTemplateIgnore reports whether relPath should be synced verbatim,
+// skipping Go template rendering. A pattern matches when it equals relPath,
+// when relPath sits inside the pattern directory (pattern + "/"), or when it
+// matches relPath as a path.Match glob (where "*" does not cross "/").
+func matchesTemplateIgnore(relPath string, patterns []string) bool {
+	normalizedRel := normalizePreserveRemoteFilePath(relPath)
+	if normalizedRel == "" {
+		return false
+	}
+
+	for _, rawPattern := range patterns {
+		pattern := normalizePreserveRemoteFilePath(rawPattern)
+		if pattern == "" {
+			continue
+		}
+
+		if normalizedRel == pattern || strings.HasPrefix(normalizedRel, pattern+"/") {
+			return true
+		}
+
+		if matched, _ := path.Match(pattern, normalizedRel); matched {
+			return true
+		}
+	}
+
+	return false
+}
+
 func buildFilePlans(
 	localFiles map[string]string,
 	remoteDir string,
@@ -1577,6 +1606,7 @@ func buildFilePlans(
 	client remote.RemoteClient,
 	templateVars map[string]any,
 	preserveSet map[string]bool,
+	templateIgnore []string,
 ) ([]FilePlan, error) {
 	plans := make([]FilePlan, 0, len(localFiles))
 	localSet := make(map[string]bool, len(localFiles))
@@ -1596,6 +1626,7 @@ func buildFilePlans(
 			client,
 			templateVars,
 			maskHintsFromManifest(manifest, relPath),
+			matchesTemplateIgnore(relPath, templateIgnore),
 		)
 		if err != nil {
 			return nil, err
@@ -1613,6 +1644,38 @@ func buildFilePlans(
 	return plans, nil
 }
 
+// renderLocalFileData reads a local file and produces the bytes to sync. Files
+// matching templateIgnore are returned verbatim (Go template rendering is
+// skipped), so Home Assistant Jinja ({{ ... }}) needs no escaping. Other files
+// are rendered with templateVars and yield diff-mask patterns for secrets.
+func renderLocalFileData(
+	localPath string,
+	templateVars map[string]any,
+	manifestMaskHints []MaskHint,
+	ignoreTemplate bool,
+) ([]byte, []maskPattern, error) {
+	cleanLocalPath := filepath.Clean(localPath)
+
+	rawData, err := os.ReadFile(cleanLocalPath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("reading %s: %w", cleanLocalPath, err)
+	}
+
+	if ignoreTemplate {
+		return rawData, nil, nil
+	}
+
+	localData, err := RenderTemplate(rawData, templateVars)
+	if err != nil {
+		return nil, nil, fmt.Errorf("rendering template %s: %w", cleanLocalPath, err)
+	}
+
+	patterns := buildDiffMaskPatterns(rawData, localData, templateVars)
+	allPatterns := mergeMaskPatterns(patterns, patternsFromMaskHints(manifestMaskHints))
+
+	return localData, allPatterns, nil
+}
+
 func buildLocalFilePlan(
 	relPath string,
 	localPath string,
@@ -1620,21 +1683,12 @@ func buildLocalFilePlan(
 	client remote.RemoteClient,
 	templateVars map[string]any,
 	manifestMaskHints []MaskHint,
+	ignoreTemplate bool,
 ) (FilePlan, error) {
-	cleanLocalPath := filepath.Clean(localPath)
-
-	rawData, err := os.ReadFile(cleanLocalPath)
+	localData, allPatterns, err := renderLocalFileData(localPath, templateVars, manifestMaskHints, ignoreTemplate)
 	if err != nil {
-		return FilePlan{}, fmt.Errorf("reading %s: %w", cleanLocalPath, err)
+		return FilePlan{}, err
 	}
-
-	localData, err := RenderTemplate(rawData, templateVars)
-	if err != nil {
-		return FilePlan{}, fmt.Errorf("rendering template %s: %w", cleanLocalPath, err)
-	}
-
-	patterns := buildDiffMaskPatterns(rawData, localData, templateVars)
-	allPatterns := mergeMaskPatterns(patterns, patternsFromMaskHints(manifestMaskHints))
 
 	remotePath := path.Join(remoteDir, relPath)
 	remoteData, readErr := client.ReadFile(remotePath)

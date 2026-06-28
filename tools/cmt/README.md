@@ -190,6 +190,34 @@ projects:
 また、過去の `.cmt-manifest.json` に含まれていても削除対象にならず、次回 apply 後の
 manifest からは外れます。
 
+#### `templateIgnore` — Go テンプレート処理の除外
+
+`templateIgnore` には、Go テンプレート処理を通さず**そのまま同期する**ファイルを
+指定します。`preserveRemoteFiles`（同期自体をしない）とは異なり、ファイルは通常どおり
+同期されますが、`{{ .var }}` の展開だけがスキップされます。
+
+Home Assistant の `automations.yaml` や `templates.yaml` のように本文が Jinja
+（`{{ ... }}`）で埋まっているファイルは、Go テンプレートのデリミタ `{{ }}` と衝突します。
+従来は `{{"{{"}}` のようにエスケープが必要でしたが、`templateIgnore` に含めれば
+**エスケープ不要**で素の Jinja のまま管理できます。
+
+```yaml
+projects:
+  home-assistant:
+    templateIgnore:
+      - config            # config/ 配下すべてを対象（ディレクトリ指定）
+```
+
+パターンの指定方法:
+
+- ディレクトリ名（例: `config`）は、その配下すべて（`config/**`）にマッチします
+- 完全一致（例: `config/templates.yaml`）も指定できます
+- `path.Match` の glob（例: `config/*.yaml`）も使えます。`*` は `/` を跨ぎません
+
+対象ファイルは変数置換が行われないため、`templateVarSources` の変数は参照できません。
+`compose.yml` など同一プロジェクト内の他ファイルは引き続きテンプレート処理されます。
+設定の解決順序は他のフィールドと同じく `defaults` → `host.yml` → `projects.<name>` です。
+
 #### `composeAction` — Compose 理想状態の管理
 
 `composeAction` でプロジェクトの理想状態（`up` / `down`）を宣言的に管理します。

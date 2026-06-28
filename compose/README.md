@@ -113,6 +113,24 @@ password = {{ .smtp_password }}
 - If neither `.env` nor `env.secrets.yml` exists, files are synced without
   template processing.
 
+### Opting out of templating (`templateIgnore`)
+
+Files whose body uses `{{ ... }}` for something other than cmt variables — most
+notably Home Assistant Jinja in `automations.yaml` / `templates.yaml` — collide
+with Go's `{{ }}` delimiters. Instead of escaping every brace, list those paths
+under `templateIgnore` in `host.yml` to sync them **verbatim** (no Go template
+processing):
+
+```yaml
+projects:
+  home-assistant:
+    templateIgnore:
+      - config            # config/ and everything under it is synced as-is
+```
+
+Other files in the same project (e.g. `compose.yml`) are still templated. See
+[`/tools/cmt/README.md`](/tools/cmt/README.md) for pattern semantics.
+
 ## Sync to hosts
 
 Syncing is handled by the **Compose Manage Tool** (`/tools/cmt`).  
