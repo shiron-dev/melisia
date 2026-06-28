@@ -2,7 +2,9 @@
 
 UV-managed tool that decrypts SOPS-encrypted files and checks the strength of
 any secret values they contain using [zxcvbn](https://github.com/dropbox/zxcvbn).
-Used by CI to block weak secrets from being committed.
+Intended to block weak secrets from being committed; the reusable workflow at
+`.github/workflows/secret-strength-linter.yml` is not yet wired into CI (its
+unit tests are). Run it manually as shown below until the CI wiring lands.
 
 ## How it works
 
