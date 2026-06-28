@@ -11,13 +11,16 @@ func TestRunHealthcheckOK(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/healthz" {
 			http.NotFound(w, r)
+
 			return
 		}
+
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
 
 	t.Setenv("LISTEN_ADDR", ":"+mustPort(t, srv.URL))
+
 	if got := runHealthcheck(); got != 0 {
 		t.Errorf("runHealthcheck() = %d, want 0", got)
 	}
@@ -30,6 +33,7 @@ func TestRunHealthcheckUnhealthy(t *testing.T) {
 	defer srv.Close()
 
 	t.Setenv("LISTEN_ADDR", ":"+mustPort(t, srv.URL))
+
 	if got := runHealthcheck(); got != 1 {
 		t.Errorf("runHealthcheck() = %d, want 1", got)
 	}
@@ -43,6 +47,7 @@ func TestRunHealthcheckNoServer(t *testing.T) {
 	srv.Close()
 
 	t.Setenv("LISTEN_ADDR", ":"+port)
+
 	if got := runHealthcheck(); got != 1 {
 		t.Errorf("runHealthcheck() with no server = %d, want 1", got)
 	}
@@ -50,9 +55,11 @@ func TestRunHealthcheckNoServer(t *testing.T) {
 
 func mustPort(t *testing.T, rawURL string) string {
 	t.Helper()
+
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		t.Fatalf("parse %q: %v", rawURL, err)
 	}
+
 	return u.Port()
 }

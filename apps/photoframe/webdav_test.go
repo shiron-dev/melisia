@@ -60,14 +60,17 @@ const samplePropfind = `<?xml version="1.0"?>
 
 func TestList(t *testing.T) {
 	var gotAuth, gotCFID, gotDepth, gotPath string
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "PROPFIND" {
 			t.Errorf("method = %s, want PROPFIND", r.Method)
 		}
+
 		gotPath = r.URL.Path
 		gotAuth = r.Header.Get("Authorization")
-		gotCFID = r.Header.Get("CF-Access-Client-Id")
+		gotCFID = r.Header.Get("Cf-Access-Client-Id")
 		gotDepth = r.Header.Get("Depth")
+
 		w.WriteHeader(http.StatusMultiStatus)
 		_, _ = w.Write([]byte(samplePropfind))
 	}))
@@ -82,6 +85,7 @@ func TestList(t *testing.T) {
 		CFAccessClientSecret: "cf-secret",
 		RequestTimeout:       5 * time.Second,
 	}
+
 	c, err := NewWebDAVClient(cfg, srv.Client())
 	if err != nil {
 		t.Fatalf("NewWebDAVClient: %v", err)
@@ -91,15 +95,19 @@ func TestList(t *testing.T) {
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
+
 	if len(images) != 1 || images[0] != "/remote.php/dav/files/user/Frame/a.jpg" {
 		t.Fatalf("images = %v, want exactly the one jpg", images)
 	}
+
 	if gotAuth == "" {
 		t.Error("expected Authorization header")
 	}
+
 	if gotCFID != "cf-id" {
 		t.Errorf("CF-Access-Client-Id = %q, want cf-id", gotCFID)
 	}
+
 	if gotDepth != "1" {
 		t.Errorf("Depth = %q, want 1", gotDepth)
 	}
