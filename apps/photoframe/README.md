@@ -9,12 +9,12 @@ WebDAV の認証情報と Cloudflare Access トークンはサーバ側に隠蔽
 
 ## エンドポイント
 
-| パス          | 説明                                             |
-| ------------- | ------------------------------------------------ |
-| `GET /`       | スライドショー HTML (埋め込み)                    |
-| `GET /api/images` | 画像 URL の一覧と表示間隔 (JSON)             |
-| `GET /img/{id}`   | WebDAV から取得した画像をプロキシ配信         |
-| `GET /healthz`    | ヘルスチェック (常に 200)                     |
+| パス | 説明 |
+| --- | --- |
+| `GET /` | スライドショー HTML (埋め込み) |
+| `GET /api/images` | 画像 URL の一覧と表示間隔 (JSON) |
+| `GET /img/{id}` | WebDAV から取得した画像をプロキシ配信 |
+| `GET /healthz` | ヘルスチェック (常に 200) |
 
 `photoframe healthcheck` サブコマンドで `/healthz` を叩いて 0/1 を返す
 (distroless イメージにシェルが無いため、コンテナの HEALTHCHECK に使う)。

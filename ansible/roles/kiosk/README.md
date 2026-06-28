@@ -14,7 +14,7 @@ Turns a Raspberry Pi (`home-kiosk`) into a Home-Assistant-controlled kiosk.
 ## Home Assistant entities (auto-discovered)
 
 | Entity | Purpose |
-|---|---|
+| --- | --- |
 | `switch.home_kiosk_screen` | Display power (`wlopm` DPMS on the output) |
 | `switch.home_kiosk_screensaver_rotation` | Enable/disable URL cycling **and** browser auto-relaunch (see below) |
 | `switch.home_kiosk_fullscreen` | Toggle Chromium fullscreen via a uinput F11 keypress (ON=fullscreen, OFF=windowed/operable) |
