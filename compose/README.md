@@ -2,7 +2,7 @@
 
 ## Directory structure
 
-```
+```text
 compose/
 ├── projects/        # Shared compose definitions
 ├── hosts/           # Per-host settings
@@ -13,7 +13,7 @@ compose/
 
 Each subdirectory is a Docker Compose **project**:
 
-```
+```text
 projects/
 └── <project>/
     ├── compose.yml        # Compose service definitions
@@ -25,7 +25,7 @@ projects/
 
 Each subdirectory matches a host name defined in the cmt config:
 
-```
+```text
 hosts/
 └── <hostname>/
     ├── host.yml                   # Host-level defaults & project overrides
