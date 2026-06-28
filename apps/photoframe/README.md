@@ -48,11 +48,28 @@ go run .
 # http://localhost:8080
 ```
 
+## CI / ローカルチェック
+
+`apps/photoframe/**` を変更すると `.github/workflows/photoframe.yml` が
+`go vet` / `go test` (カバレッジを Codecov へ送信) / `golangci-lint` / `go build`
+を実行し、`photoframe-status-check` でゲートする。ローカルでは Makefile から
+同等のチェックを実行できる:
+
+```sh
+make photoframe-ci     # vet + test + build
+make photoframe-test   # go test ./...
+make photoframe-lint   # golangci-lint run ./...
+```
+
+`make ci` も `apps/photoframe/` に差分があれば `photoframe-ci` を実行する。
+
 ## イメージ
 
 `apps/photoframe/**` を main にマージするか `photoframe-v*` タグを打つと
 `.github/workflows/photoframe-image.yml` が `ghcr.io/shiron-dev/photoframe` を
-linux/amd64 + linux/arm64 でビルド・push する。`compose/projects/photoframe`
+linux/amd64 + linux/arm64 でビルド・push する。PR では lint 等を含む検証を
+photoframe.yml が担うため重複を避け、公開パス (main / タグ push) でのみ
+`go vet` + `go test` を実行してから push する。`compose/projects/photoframe`
 はこのイメージを参照する。
 
 ## デプロイ (arm-srv)

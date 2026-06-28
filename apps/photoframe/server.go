@@ -188,7 +188,7 @@ func (s *Server) handleImage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "upstream error", http.StatusBadGateway)
 		return
 	}
-	defer upstream.Body.Close()
+	defer func() { _ = upstream.Body.Close() }()
 
 	if upstream.StatusCode != http.StatusOK {
 		http.Error(w, "upstream status "+upstream.Status, http.StatusBadGateway)
