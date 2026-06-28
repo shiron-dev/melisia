@@ -150,6 +150,37 @@ cmt-plan: cmt-init
 cmt-apply: cmt-init
 	$(CMT_BIN) --config $(CMT_CONFIG) apply $(CMT_OPT)
 
+PHOTOFRAME_DIR := apps/photoframe
+
+# photoframe ビルド
+.PHONY: photoframe-build
+photoframe-build: init
+	cd $(PHOTOFRAME_DIR) && $(GO) build -o photoframe .
+
+# photoframe テスト
+.PHONY: photoframe-test
+photoframe-test: init
+	cd $(PHOTOFRAME_DIR) && $(GO) test ./...
+
+# photoframe go vet
+.PHONY: photoframe-vet
+photoframe-vet: init
+	cd $(PHOTOFRAME_DIR) && $(GO) vet ./...
+
+# photoframe gofmt チェック
+.PHONY: photoframe-fmt
+photoframe-fmt:
+	cd $(PHOTOFRAME_DIR) && $(GO) fmt ./...
+
+# photoframe golangci-lint
+.PHONY: photoframe-lint
+photoframe-lint:
+	cd $(PHOTOFRAME_DIR) && golangci-lint run ./...
+
+# photoframe CI（vet + test + build）
+.PHONY: photoframe-ci
+photoframe-ci: photoframe-vet photoframe-test photoframe-build
+
 .PHONY: terraform-init
 terraform-init: init $(if $(filter truenas,$(TERRAFORM_TARGET)),terraform-provider-devrc)
 	cd $(TERRAFORM_DIR) && $(TERRAFORM_CLI_CONFIG_ENV) terraform init
@@ -318,6 +349,10 @@ ci:
 	@if git diff --name-only origin/main...HEAD | grep -q "^terraform/"; then \
 		echo "Running terraform-ci..."; \
 		$(MAKE) terraform-ci; \
+	fi
+	@if git diff --name-only origin/main...HEAD | grep -q "^apps/photoframe/"; then \
+		echo "Running photoframe-ci..."; \
+		$(MAKE) photoframe-ci; \
 	fi
 
 	echo "Running sops-ci...";
