@@ -10,8 +10,9 @@
 # 注意: PSRAM 非搭載のため、BSEC2(BME688) + BLE + WiFi で RAM が逼迫する可能性あり。
 #       不安定 (再起動ループ等) なら起動ログの free heap を確認し、BME688 を外す検討を。
 #
-# シークレット: wifi_ssid / wifi_password のみ secrets.yaml (リモート管理) で参照。
-#   API 暗号化キー / OTA パスワードはこのファイルに直書き (HA 既存登録を維持)。
+# シークレット: wifi_ssid / wifi_password / atom_s3_lite_api_key /
+#   atom_s3_lite_ota_password を secrets.yaml (リモート管理) で参照する。実体は
+#   リポジトリには置かない (サンプルは secrets.yaml.example)。
 # =============================================================================
 
 esphome:
@@ -28,11 +29,11 @@ logger:
 
 api:
   encryption:
-    key: "1XiXPeYEC9WAOwGMNVbCpMTHAPqGBpNMi2X9YS715b0="
+    key: !secret atom_s3_lite_api_key
 
 ota:
   - platform: esphome
-    password: "fda9d6984f1962323fd2c49e3ba9d4f7"
+    password: !secret atom_s3_lite_ota_password
 
 wifi:
   ssid: !secret wifi_ssid

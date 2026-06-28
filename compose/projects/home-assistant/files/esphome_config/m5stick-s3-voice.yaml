@@ -19,9 +19,10 @@
 #   LCD(ST7789P3, 今回は未使用): MOSI G39/SCK G40/DC G45/CS G41/RST G21/BL G38
 #   ボタン: KEY1 G11 / KEY2 G12
 #
-# シークレット: wifi_ssid / wifi_password を secrets.yaml で参照。
-#   API 暗号化キー / OTA パスワードは新規生成して直書き済み。HA 初回採用時にこの
-#   API キーを入力する。
+# シークレット: wifi_ssid / wifi_password / stick_s3_voice_api_key /
+#   stick_s3_voice_ota_password を secrets.yaml (リモート管理) で参照する。実体は
+#   リポジトリには置かない (サンプルは secrets.yaml.example)。HA 初回採用時はこの
+#   API キー (secrets.yaml の値) を入力する。
 # =============================================================================
 
 esphome:
@@ -81,11 +82,11 @@ logger:
 
 api:
   encryption:
-    key: "BFdukLEdHRQmY2/F/79rm53P17WFmjm7dyZdp5cLX0w="
+    key: !secret stick_s3_voice_api_key
 
 ota:
   - platform: esphome
-    password: "b8374c9af0ca7181df54c82b6e86101c"
+    password: !secret stick_s3_voice_ota_password
 
 wifi:
   ssid: !secret wifi_ssid

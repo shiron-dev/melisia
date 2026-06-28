@@ -252,7 +252,7 @@
         - condition: template
           value_template: "{{\n  lights | count > 0\n  and occupancy_sensors | count
             > 0\n  and occupancy_sensors | select('is_state', 'on') | list | count
-            == 0\n  and (\n    occupancy_sensors\n    | map('states')\n    | map(attribute='last_changed')\n
+            == 0\n  and (\n    expand(occupancy_sensors)\n    | map(attribute='last_changed')\n
             \   | map('as_timestamp')\n    | max\n  ) < as_timestamp(now() - timedelta(minutes=15))\n}}\n"
         then:
         - target:
@@ -262,8 +262,7 @@
     - condition: template
       value_template: "{{\n  main_lights | count > 0\n  and all_occupancy_sensors
         | count > 0\n  and all_occupancy_sensors | select('is_state', 'on') | list
-        | count == 0\n  and (\n    all_occupancy_sensors\n    | map('states')\n    |
-        map(attribute='last_changed')\n    | map('as_timestamp')\n    | max\n  ) <
+        | count == 0\n  and (\n    expand(all_occupancy_sensors)\n    | map(attribute='last_changed')\n    | map('as_timestamp')\n    | max\n  ) <
         as_timestamp(now() - timedelta(minutes=15))\n}}\n"
     then:
     - target:

@@ -12,3 +12,13 @@
 # ハードコードしたが、後続 commit で nas_services リソースの .aud 参照へ
 # 置き換え済み。現行ファイルに値は残っていない。
 fc673301184645d8caedfb0e37e95161fddb2f14:terraform/terraform/cloudflare_tunnel_home_nas.tf:generic-api-key:11
+
+# ESPHome デバイスの API 暗号化キー / OTA パスワード。この commit (dfe0c0f) で
+# 一旦インラインで取り込んでしまったが、後続 commit で !secret 参照へ置き換え、
+# 実体はリモートの esphome_config/secrets.yaml で管理するようにした。現行ファイルに
+# 値は残っていない。履歴に露出済みのため、これらのキーは別途ローテーション
+# (鍵再生成 + デバイス再フラッシュ + HA 再ペアリング) すること。
+dfe0c0fdd3108477078c5b2a0aa926ed7d3a9b76:compose/projects/home-assistant/files/esphome_config/m5stack-atom-s3-lite.yaml:generic-api-key:31
+dfe0c0fdd3108477078c5b2a0aa926ed7d3a9b76:compose/projects/home-assistant/files/esphome_config/m5stack-atom-s3-lite.yaml:generic-api-key:35
+dfe0c0fdd3108477078c5b2a0aa926ed7d3a9b76:compose/projects/home-assistant/files/esphome_config/m5stick-s3-voice.yaml:generic-api-key:84
+dfe0c0fdd3108477078c5b2a0aa926ed7d3a9b76:compose/projects/home-assistant/files/esphome_config/m5stick-s3-voice.yaml:generic-api-key:88
