@@ -119,6 +119,51 @@ services:
       retries: 3
       start_period: 20s
 
+  # TrueNAS SCALE (storage-srv, LAN) の Reporting Exporter が Graphite 形式で push
+  # するメトリクスを受け、Prometheus 形式に変換して :9108 で公開する。vmagent が
+  # home-automation ネットワーク越しにコンテナ名で 9108 をスクレイプする。
+  # graphite ingest (:9109) のみ home-ep の LAN-IP (192.168.1.61) に公開し、
+  # TrueNAS から push させる (TrueNAS: Reporting → Exporters → Graphite,
+  # 宛先 192.168.1.61:9109 / Prefix=truenas / Hostname=storage-srv)。
+  # マッピング定義は Supporterino/truenas-graphite-to-prometheus を vendoring。
+  truenas_graphite_exporter:
+    container_name: home_ep_truenas_graphite_exporter
+    logging: *default-logging
+    image: prom/graphite-exporter:v0.16.0@sha256:e54bca6645ea8a9e8c52312a8540de98ad08819d38476c021d77a0eae75bc797
+    command:
+      - "--graphite.mapping-config=/etc/graphite_exporter/graphite_mapping.conf"
+      - "--graphite.listen-address=:9109"
+      - "--web.listen-address=:9108"
+    ports:
+      # TrueNAS からの Graphite push 受け口。home-ep の LAN インターフェース
+      # (192.168.1.61) のみに bind し、Tailscale 等の他 IF には公開しない。
+      - "192.168.1.61:9109:9109"
+      # :9108 (Prometheus metrics) は publish せず、vmagent が docker network 内で
+      # コンテナ名:9108 を直接 scrape する。
+    networks:
+      - home-automation
+    volumes:
+      - "./graphite_mapping.conf:/etc/graphite_exporter/graphite_mapping.conf:ro"
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+        reservations:
+          cpus: '0.05'
+          memory: 32M
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:9108/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
   # home-ep のメトリクスは vmagent でローカルスクレイプし、arm-srv の
   # Mimir へ remote_write (push) する。書き込み経路は Cloudflare
   # Tunnel + Access (vm-write.shiron.dev) で、書き込み専用の vm_write service

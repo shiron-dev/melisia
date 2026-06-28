@@ -1,12 +1,21 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/shiron-dev/melisia/tools/cmt/internal/lock"
 )
+
+// lockReleaseTimeout bounds each lock-release attempt during cleanup. The
+// cleanup context ignores the caller's cancellation (so Ctrl+C still releases
+// locks), which also drops its deadline — and SSH ConnectTimeout only bounds the
+// connect phase, not a host that connects then stops responding. Without this
+// cap such a host would make release hang forever, unkillable by further signals.
+const lockReleaseTimeout = 30 * time.Second
 
 type acquiredLock struct {
 	target     lock.Target
@@ -21,6 +30,7 @@ type acquiredLock struct {
 // Only apply acquires locks (plan is read-only and never locks), so the project
 // directory is always created when missing.
 func acquireRemoteLocks(
+	ctx context.Context,
 	locker *lock.RemoteLocker,
 	targets []lock.Target,
 	w io.Writer,
@@ -31,7 +41,7 @@ func acquireRemoteLocks(
 		var firstErr error
 
 		for _, a := range acquired {
-			err := locker.Release(a.target, a.lockID)
+			err := releaseAcquiredLock(ctx, locker, a)
 			if err != nil {
 				_, _ = fmt.Fprintf(os.Stderr, "Warning: failed to release lock %s/%s: %v\n",
 					a.target.Host.Name, a.target.Project, err)
@@ -40,19 +50,13 @@ func acquireRemoteLocks(
 					firstErr = err
 				}
 			}
-
-			// Roll back a directory that acquisition created if the operation
-			// left it empty (e.g. apply cancelled before writing anything).
-			if a.createdDir {
-				_ = locker.RemoveEmptyDir(a.target)
-			}
 		}
 
 		return firstErr
 	}
 
 	for _, target := range targets {
-		info, err := locker.Acquire(target, "apply", true)
+		info, err := locker.Acquire(ctx, target, "apply", true)
 		if err != nil {
 			_ = releaseFn()
 
@@ -70,4 +74,23 @@ func acquireRemoteLocks(
 	}
 
 	return releaseFn, nil
+}
+
+// releaseAcquiredLock removes a single acquired lock during cleanup. It derives
+// a context that ignores the caller's cancellation (so Ctrl+C still releases the
+// lock) but caps the attempt at lockReleaseTimeout so an unresponsive host can't
+// block cleanup indefinitely.
+func releaseAcquiredLock(ctx context.Context, locker *lock.RemoteLocker, acquired acquiredLock) error {
+	releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), lockReleaseTimeout)
+	defer cancel()
+
+	err := locker.Release(releaseCtx, acquired.target, acquired.lockID)
+
+	// Roll back a directory that acquisition created if the operation left it
+	// empty (e.g. apply cancelled before writing anything).
+	if acquired.createdDir {
+		_ = locker.RemoveEmptyDir(releaseCtx, acquired.target)
+	}
+
+	return err
 }

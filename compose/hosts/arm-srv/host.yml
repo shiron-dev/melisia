@@ -13,9 +13,15 @@ projects:
     postSyncCommand: chmod 0644 falco.yaml falco_rules.local.yaml
 
   grafana:
-    remotePath: /var
-    composeAction: ignore
-    postSyncCommand: chmod 0644 docker-compose-exporter.py loki-storage-exporter.py vmagent.yml vmauth.yml mimir.yml loki.yml promtail.yml && docker compose up -d --remove-orphans && docker compose restart blackbox_exporter vmagent vmauth loki promtail loki_storage_exporter
+    # remotePath はデフォルト (/opt/compose) を継承する。データ (bind mount) は
+    # 旧 /var/grafana から /opt/compose/grafana へ移設済み。
+    # composeAction はデフォルトの up を継承し、cmt がコンテナの up/down ドリフトを
+    # 管理する。ファイル変更時は cmt が up -d --force-recreate --remove-orphans を実行し
+    # (removeOrphans: true)、バインドマウントした設定ファイル変更も再作成で反映される。
+    # postSyncCommand は再作成前に必須の chmod (cmt は 0600 でアップロードするため
+    # 非 root コンテナが読めるよう 0644 に直す) のみを担う。
+    removeOrphans: true
+    postSyncCommand: chmod 0644 docker-compose-exporter.py loki-storage-exporter.py vmagent.yml vmauth.yml mimir.yml loki.yml promtail.yml
     dirs:
       - grafana_storage:
         owner: 472

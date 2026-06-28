@@ -3,6 +3,7 @@
 - name: Update apt
   become: true
   ansible.builtin.apt:
+    update_cache: true
 
 - name: Create directory for apt key
   become: true

@@ -20,7 +20,6 @@ hosts:
   - name: server1
     host: 192.168.1.1
     user: deploy
-    sshAgent: true
   - name: server2
     host: 192.168.1.2
     port: 2222

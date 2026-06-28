@@ -2,5 +2,5 @@
   become: true
   ansible.builtin.service:
     name: fail2ban
-    state: Restarted
+    state: restarted
     enabled: true

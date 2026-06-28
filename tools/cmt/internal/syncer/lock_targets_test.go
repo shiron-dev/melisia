@@ -1,6 +1,7 @@
 package syncer
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -12,7 +13,7 @@ import (
 // stubResolver satisfies config.SSHConfigResolver without invoking ssh.
 type stubResolver struct{}
 
-func (stubResolver) Resolve(entry *config.HostEntry, _, _ string) error {
+func (stubResolver) Resolve(_ context.Context, entry *config.HostEntry, _, _ string) error {
 	if entry.Port == 0 {
 		entry.Port = 22
 	}
@@ -25,7 +26,7 @@ var errResolverInvoked = errors.New("ssh resolver should not have been invoked")
 // failResolver fails if called, proving a host was skipped before SSH resolution.
 type failResolver struct{}
 
-func (failResolver) Resolve(_ *config.HostEntry, _, _ string) error {
+func (failResolver) Resolve(_ context.Context, _ *config.HostEntry, _, _ string) error {
 	return errResolverInvoked
 }
 
@@ -55,7 +56,7 @@ func TestResolveLockTargets_AllProjects(t *testing.T) {
 
 	cfg := writeLockTargetRepo(t, "grafana", "n8n")
 
-	targets, err := ResolveLockTargets(cfg, nil, nil, PlanDependencies{SSHResolver: stubResolver{}})
+	targets, err := ResolveLockTargets(context.Background(), cfg, nil, nil, PlanDependencies{SSHResolver: stubResolver{}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -82,7 +83,9 @@ func TestResolveLockTargets_ProjectFilter(t *testing.T) {
 
 	cfg := writeLockTargetRepo(t, "grafana", "n8n")
 
-	targets, err := ResolveLockTargets(cfg, nil, []string{"n8n"}, PlanDependencies{SSHResolver: stubResolver{}})
+	targets, err := ResolveLockTargets(
+		context.Background(), cfg, nil, []string{"n8n"}, PlanDependencies{SSHResolver: stubResolver{}},
+	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -118,7 +121,7 @@ func TestResolveLockTargets_RemotePathOverride(t *testing.T) {
 		t.Fatalf("unexpected error writing host.yml: %v", err)
 	}
 
-	targets, err := ResolveLockTargets(cfg, nil, nil, PlanDependencies{SSHResolver: stubResolver{}})
+	targets, err := ResolveLockTargets(context.Background(), cfg, nil, nil, PlanDependencies{SSHResolver: stubResolver{}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -137,7 +140,9 @@ func TestResolveLockTargets_NoProjects(t *testing.T) {
 
 	cfg := writeLockTargetRepo(t, "grafana")
 
-	_, err := ResolveLockTargets(cfg, nil, []string{"nonexistent"}, PlanDependencies{SSHResolver: stubResolver{}})
+	_, err := ResolveLockTargets(
+		context.Background(), cfg, nil, []string{"nonexistent"}, PlanDependencies{SSHResolver: stubResolver{}},
+	)
 	if !errors.Is(err, errNoProjectsFound) {
 		t.Errorf("expected errNoProjectsFound, got %v", err)
 	}
@@ -161,7 +166,7 @@ func TestResolveLockTargets_HostConfigError(t *testing.T) {
 		t.Fatalf("unexpected error writing host.yml: %v", err)
 	}
 
-	_, err = ResolveLockTargets(cfg, nil, nil, PlanDependencies{SSHResolver: stubResolver{}})
+	_, err = ResolveLockTargets(context.Background(), cfg, nil, nil, PlanDependencies{SSHResolver: stubResolver{}})
 	if err == nil {
 		t.Fatal("expected error for invalid host.yml")
 	}
@@ -185,7 +190,7 @@ func TestResolveLockTargets_NoHostProjectsMatched(t *testing.T) {
 		t.Fatalf("unexpected error writing host.yml: %v", err)
 	}
 
-	_, err = ResolveLockTargets(cfg, nil, nil, PlanDependencies{SSHResolver: stubResolver{}})
+	_, err = ResolveLockTargets(context.Background(), cfg, nil, nil, PlanDependencies{SSHResolver: stubResolver{}})
 	if !errors.Is(err, errNoHostProjectsMatched) {
 		t.Errorf("expected errNoHostProjectsMatched, got %v", err)
 	}
@@ -210,12 +215,14 @@ func TestResolveLockTargetsLenient_SkipsUnmatchedHost(t *testing.T) {
 		t.Fatalf("unexpected error writing host.yml: %v", err)
 	}
 
-	_, err = ResolveLockTargets(cfg, nil, nil, PlanDependencies{SSHResolver: stubResolver{}})
+	_, err = ResolveLockTargets(context.Background(), cfg, nil, nil, PlanDependencies{SSHResolver: stubResolver{}})
 	if !errors.Is(err, errNoHostProjectsMatched) {
 		t.Fatalf("strict: expected errNoHostProjectsMatched, got %v", err)
 	}
 
-	targets, err := ResolveLockTargetsLenient(cfg, nil, nil, PlanDependencies{SSHResolver: stubResolver{}})
+	targets, err := ResolveLockTargetsLenient(
+		context.Background(), cfg, nil, nil, PlanDependencies{SSHResolver: stubResolver{}},
+	)
 	if err != nil {
 		t.Fatalf("lenient: unexpected error: %v", err)
 	}
@@ -246,7 +253,7 @@ func TestResolveLockTargetsLenient_SkipsBeforeSSHResolve(t *testing.T) {
 	}
 
 	targets, err := ResolveLockTargetsLenient(
-		cfg, nil, []string{"grafana"}, PlanDependencies{SSHResolver: failResolver{}},
+		context.Background(), cfg, nil, []string{"grafana"}, PlanDependencies{SSHResolver: failResolver{}},
 	)
 	if err != nil {
 		t.Fatalf("lenient: unexpected error (SSH resolved too early?): %v", err)
@@ -262,7 +269,9 @@ func TestResolveLockTargets_NoHostsMatched(t *testing.T) {
 
 	cfg := writeLockTargetRepo(t, "grafana")
 
-	_, err := ResolveLockTargets(cfg, []string{"nonexistent-host"}, nil, PlanDependencies{SSHResolver: stubResolver{}})
+	_, err := ResolveLockTargets(
+		context.Background(), cfg, []string{"nonexistent-host"}, nil, PlanDependencies{SSHResolver: stubResolver{}},
+	)
 	if !errors.Is(err, errNoHostsMatched) {
 		t.Errorf("expected errNoHostsMatched, got %v", err)
 	}
@@ -274,7 +283,7 @@ func TestResolveLockTargets_RemotePathNotSet(t *testing.T) {
 	cfg := writeLockTargetRepo(t, "grafana")
 	cfg.Defaults = nil
 
-	_, err := ResolveLockTargets(cfg, nil, nil, PlanDependencies{SSHResolver: stubResolver{}})
+	_, err := ResolveLockTargets(context.Background(), cfg, nil, nil, PlanDependencies{SSHResolver: stubResolver{}})
 	if !errors.Is(err, errRemotePathNotSet) {
 		t.Errorf("expected errRemotePathNotSet, got %v", err)
 	}

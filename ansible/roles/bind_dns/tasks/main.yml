@@ -1,11 +1,13 @@
 - name: Apt-get update
   become: true
   ansible.builtin.apt:
+    update_cache: true
 
 - name: Install bind9
   become: true
   ansible.builtin.apt:
     name: bind9, bind9-utils
+    state: present
 
 - name: Make named.conf
   become: true

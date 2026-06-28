@@ -1,9 +1,12 @@
 package cmd
 
 import (
+	"context"
 	"log/slog"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/spf13/cobra"
 )
@@ -48,11 +51,19 @@ It follows a plan/apply workflow similar to Terraform:
 }
 
 // Execute runs the root command.
+//
+// It installs a signal-aware context so that Ctrl+C (SIGINT) or SIGTERM cancels
+// any in-flight external command (ssh/scp/docker). Without this every command
+// ran under context.Background() and a hung or unreachable host would block the
+// whole run with no way to interrupt it short of killing the process.
 func Execute() error {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	rootCommand := newRootCmd()
 	rootCommand.SetArgs(normalizeTerraformTargetArgs(os.Args[1:]))
 
-	return rootCommand.Execute()
+	return rootCommand.ExecuteContext(ctx)
 }
 
 func normalizeTerraformTargetArgs(args []string) []string {

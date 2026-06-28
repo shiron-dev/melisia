@@ -10,6 +10,7 @@ HOME_KIOSK_SSH_KEY := .local/ssh/home_kiosk_key
 CHECK_SECRETS_SCRIPT := scripts/check-secrets.sh
 KICS_IMAGE ?= checkmarx/kics:v2.1.20
 
+# ヘルプを表示
 .PHONY: help
 help:
 	@echo "Usage: make [target]"
@@ -19,14 +20,17 @@ help:
 			n = split($$2, targets, " "); for (i = 1; i <= n; i++) {if (targets[i] != "") {printf "  \033[36m%-20s\033[0m %s\n", targets[i], comment;}}} comment = "";} \
 		{ if (!/^\.PHONY:/) { comment = "" } }' $(MAKEFILE_LIST)
 
+# 初期化
 .PHONY: init
 init:
 	@echo "Initializing..."
 
+# Ansible 依存関係（galaxy）をインストール
 .PHONY: ansible-init
 ansible-init: init
 	$(UV_ANSIBLE) bash -c "cd $(ANSIBLE_DIR) && ansible-galaxy install -r requirements.yml"
 
+# ansible-lint で Lint + 自動修正
 .PHONY: ansible-lint
 ansible-lint: ansible-init
 	$(UV_ANSIBLE) bash -c "cd $(ANSIBLE_DIR) && ansible-lint -c .ansible-lint --fix"
@@ -40,6 +44,7 @@ define check_gcloud_auth
 	fi
 endef
 
+# gcloud 認証と SSH 鍵の準備・疎通確認
 .PHONY: auth
 auth: init
 	$(call check_gcloud_auth)
@@ -50,6 +55,7 @@ auth: init
 	cd $(ANSIBLE_DIR) && ssh -o BatchMode=yes -o ConnectTimeout=5 -F ssh_config home-ep exit
 	cd $(ANSIBLE_DIR) && ssh -o BatchMode=yes -o ConnectTimeout=5 -F ssh_config home-kiosk exit
 
+# home-ep の SSH 秘密鍵を Secret Manager から取得
 .PHONY: home-ep-ssh-key
 home-ep-ssh-key: init
 	@set -eu; \
@@ -61,6 +67,7 @@ home-ep-ssh-key: init
 	install -m 600 "$$tmp" "$(HOME_EP_SSH_KEY)"
 	@echo "Wrote $(HOME_EP_SSH_KEY)"
 
+# home-kiosk の SSH 秘密鍵を Secret Manager から取得
 .PHONY: home-kiosk-ssh-key
 home-kiosk-ssh-key: init
 	@set -eu; \
@@ -72,13 +79,16 @@ home-kiosk-ssh-key: init
 	install -m 600 "$$tmp" "$(HOME_KIOSK_SSH_KEY)"
 	@echo "Wrote $(HOME_KIOSK_SSH_KEY)"
 
+# Ansible の CI（lint）
 .PHONY: ansible-ci
 ansible-ci: ansible-lint
 
+# Ansible playbook をドライラン（--check）
 .PHONY: ansible-check
 ansible-check: ansible-init
 	$(UV_ANSIBLE) bash -c "cd $(ANSIBLE_DIR) && ansible-playbook -i hosts.yml site.yml -C $(ANSIBLE_DEFAULT_OPT)"
 
+# Ansible playbook を実行
 .PHONY: ansible-run
 ansible-run: ansible-init
 	$(UV_ANSIBLE) bash -c "cd $(ANSIBLE_DIR) && ansible-playbook -i hosts.yml site.yml $(ANSIBLE_DEFAULT_OPT)"
@@ -107,10 +117,12 @@ TRUENAS_PROVIDER_MIRROR_BIN := $(TRUENAS_PROVIDER_MIRROR_PACKAGE_DIR)/terraform-
 TERRAFORM_CLI_CONFIG_ENV := $(if $(filter truenas,$(TERRAFORM_TARGET)),TF_CLI_CONFIG_FILE=$(TRUENAS_PROVIDER_DEVRC),)
 GO ?= go
 
+# TrueNAS Terraform Provider をビルド
 .PHONY: terraform-provider-build
 terraform-provider-build:
 	cd $(TRUENAS_PROVIDER_DIR) && GOROOT= GOTOOLCHAIN=auto $(GO) build -o $(TRUENAS_PROVIDER_BIN)
 
+# Provider のローカルミラーと dev tfrc を生成
 .PHONY: terraform-provider-devrc
 terraform-provider-devrc: terraform-provider-build
 	@mkdir -p $(dir $(TRUENAS_PROVIDER_DEVRC))
@@ -128,6 +140,7 @@ terraform-provider-devrc: terraform-provider-build
 		'  }' \
 		'}' > $(TRUENAS_PROVIDER_DEVRC)
 
+# TrueNAS state の provider 参照を差し替え
 .PHONY: terraform-truenas-replace-provider-state
 terraform-truenas-replace-provider-state: terraform-provider-devrc
 	cd terraform/truenas && TF_CLI_CONFIG_FILE=$(TRUENAS_PROVIDER_DEVRC) terraform state replace-provider registry.terraform.io/baladithyab/truenas registry.terraform.io/shiron-dev/truenas
@@ -150,27 +163,33 @@ cmt-plan: cmt-init
 cmt-apply: cmt-init
 	$(CMT_BIN) --config $(CMT_CONFIG) apply $(CMT_OPT)
 
+# terraform init
 .PHONY: terraform-init
 terraform-init: init $(if $(filter truenas,$(TERRAFORM_TARGET)),terraform-provider-devrc)
 	cd $(TERRAFORM_DIR) && $(TERRAFORM_CLI_CONFIG_ENV) terraform init
 
+# terraform plan
 .PHONY: terraform-plan
 terraform-plan: terraform-init
 	cd $(TERRAFORM_DIR) && $(TERRAFORM_CLI_CONFIG_ENV) terraform plan $(TERRAFORM_SECRETS_ARG)
 
+# terraform apply（適用後に sops-encrypt）
 .PHONY: terraform-apply
 terraform-apply: terraform-init
 	cd $(TERRAFORM_DIR) && $(TERRAFORM_CLI_CONFIG_ENV) terraform apply $(TERRAFORM_SECRETS_ARG) -lock=false
 	$(MAKE) sops-encrypt
 
+# tflint で Lint
 .PHONY: terraform-lint
 terraform-lint: terraform-init
 	cd $(TERRAFORM_DIR) && tflint
 
+# terraform fmt（再帰整形）
 .PHONY: terraform-fmt
 terraform-fmt:
 	cd $(TERRAFORM_DIR) && terraform fmt -recursive
 
+# terraform validate
 .PHONY: terraform-validate
 terraform-validate: terraform-init
 	cd $(TERRAFORM_DIR) && $(TERRAFORM_CLI_CONFIG_ENV) terraform validate
@@ -205,6 +224,7 @@ gitleaks:
 trufflehog:
 	trufflehog filesystem . --json
 
+# Terraform の CI（lint/fmt/validate/各種スキャン）
 .PHONY: terraform-ci
 terraform-ci: terraform-lint terraform-fmt terraform-validate terraform-trivy terraform-checkov terraform-tfsec
 
@@ -227,6 +247,7 @@ infracost-diff: terraform-plan
 infracost-breakdown: terraform-plan
 	cd $(TERRAFORM_DIR) && infracost breakdown --path=.
 
+# SOPS で暗号化
 .PHONY: sops-encrypt
 sops-encrypt:
 	@echo "Encrypting with SOPS..."; \
@@ -248,6 +269,7 @@ sops-encrypt:
 		sops --output-type json --encrypt "$$file" > "$$target"; \
 	done
 
+# SOPS で復号
 .PHONY: sops-decrypt
 sops-decrypt:
 	@echo "Decrypting with SOPS..."; \
@@ -270,6 +292,7 @@ sops-decrypt:
 		sops --decrypt --output-type "$$output_type" "$$file" > "$$base"; \
 	done
 
+# SOPS ファイルを復号→編集→再暗号化
 .PHONY: sops-edit
 sops-edit:
 	@$(MAKE) sops-decrypt $(if $(FILE),FILE="$(FILE)",); \
@@ -286,6 +309,7 @@ sops-edit:
 		$(MAKE) sops-encrypt; \
 	fi
 
+# 未暗号化シークレットが git 管理されていないか確認
 .PHONY: sops-ci
 sops-ci:
 	@echo "Checking for unencrypted secrets tracked by git..."; \
@@ -302,6 +326,7 @@ sops-ci:
 		exit 1; \
 	fi
 
+# KICS で IaC をスキャン
 .PHONY: kics
 kics:
 	@dir=$$(mktemp -d) && \
@@ -309,6 +334,7 @@ kics:
 	docker run -t -v $$dir:/path $(KICS_IMAGE) scan -p /path; \
 	status=$$?; rm -rf $$dir; exit $$status
 
+# 変更内容に応じて CI をまとめて実行
 .PHONY: ci
 ci:
 	@if git diff --name-only origin/main...HEAD | grep -q "^ansible/"; then \

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -35,8 +36,8 @@ func newPlanCmd(configPath *string) *cobra.Command {
 	planCommand := new(cobra.Command)
 	planCommand.Use = "plan"
 	planCommand.Short = "Show what would be synced without making changes"
-	planCommand.RunE = func(_ *cobra.Command, _ []string) error {
-		return runPlanCmd(*configPath, hostFilter, projectFilter, exitCode, digestFile, dependencies)
+	planCommand.RunE = func(cmd *cobra.Command, _ []string) error {
+		return runPlanCmd(cmd.Context(), *configPath, hostFilter, projectFilter, exitCode, digestFile, dependencies)
 	}
 
 	bindPlanFlags(planCommand, &hostFilter, &projectFilter, &exitCode, &digestFile)
@@ -48,6 +49,7 @@ func newPlanCmd(configPath *string) *cobra.Command {
 // acquire remote locks — a plan must never block (or be blocked by) other
 // plan/apply operations.
 func runPlanCmd(
+	ctx context.Context,
 	configPath string,
 	hostFilter, projectFilter []string,
 	exitCode bool,
@@ -59,7 +61,7 @@ func runPlanCmd(
 		return err
 	}
 
-	plan, err := syncer.BuildPlanWithDeps(cfg, hostFilter, projectFilter, dependencies)
+	plan, err := syncer.BuildPlanWithDeps(ctx, cfg, hostFilter, projectFilter, dependencies)
 	if err != nil {
 		return err
 	}

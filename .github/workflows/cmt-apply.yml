@@ -7,15 +7,16 @@ on:
   workflow_dispatch:
 
 permissions:
-  actions: write
   contents: read
-  id-token: write
 
 jobs:
   cancel-stale-runs:
     name: cancel stale runs
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: ./.github/actions/cancel-stale-runs
@@ -29,6 +30,9 @@ jobs:
     environment: production-plan
     if: github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch'
     needs: cancel-stale-runs
+    permissions:
+      contents: read
+      id-token: write
     outputs:
       has_diff: ${{ steps.cmt-plan.outputs.exit_code == '2' }}
       plan_sha256: ${{ steps.cmt-plan.outputs.plan_sha256 }}
@@ -110,6 +114,10 @@ jobs:
     environment: production
     if: needs.plan.outputs.has_diff == 'true'
     needs: plan
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
     concurrency:
       group: ${{ github.workflow }}-apply
       cancel-in-progress: false
