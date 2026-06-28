@@ -4,7 +4,6 @@ on:
   pull_request:
     types:
       - opened
-      - edited
       - review_requested
       - synchronize
       - reopened
@@ -583,8 +582,8 @@ jobs:
             const fs = require("fs");
             const pull_number = Number(process.env.PR_NUMBER);
             const { owner, repo } = context.repo;
-            const MAX_REVIEWS = 8;
-            const MAX_REVIEW_COMMENTS = 20;
+            const MAX_REVIEWS = 4;
+            const MAX_REVIEW_COMMENTS = 10;
             const MAX_REVIEW_THREADS_TO_SCAN = 100;
             const MAX_THREAD_COMMENT_PAGES = 2;
             const normalizeBody = (value) => {
@@ -1091,7 +1090,7 @@ jobs:
             -c 'mcp_servers.serena.command="serena"' \
             -c 'mcp_servers.serena.args=["start-mcp-server","--project-from-cwd","--context=codex"]' \
             -c 'mcp_servers.serena.startup_timeout_sec=15' \
-            -c service_tier=fast \
+            -c model_reasoning_effort="low" \
             --model gpt-5.5 \
             --output-schema "$CODEX_SCHEMA_PATH" \
             --output-last-message "$CODEX_OUTPUT_PATH" \
