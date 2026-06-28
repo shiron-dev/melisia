@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -115,5 +116,29 @@ func TestList(t *testing.T) {
 	// method downgrades on Nextcloud/SabreDAV.
 	if !strings.HasSuffix(gotPath, "/") {
 		t.Errorf("PROPFIND path = %q, want trailing slash", gotPath)
+	}
+}
+
+func TestListUnexpectedStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	cfg := Config{
+		WebDAVBaseURL:  srv.URL + "/dav",
+		WebDAVUsername: "user",
+		WebDAVPassword: "pass",
+		RequestTimeout: 5 * time.Second,
+	}
+
+	c, err := NewWebDAVClient(cfg, srv.Client())
+	if err != nil {
+		t.Fatalf("NewWebDAVClient: %v", err)
+	}
+
+	_, err = c.List(context.Background())
+	if !errors.Is(err, errUnexpectedStatus) {
+		t.Fatalf("List error = %v, want errUnexpectedStatus", err)
 	}
 }

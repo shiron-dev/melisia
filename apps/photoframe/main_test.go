@@ -1,11 +1,60 @@
 package main
 
 import (
+	"context"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 )
+
+func TestRunInvalidConfig(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("WEBDAV_BASE_URL", "") // required field missing
+
+	err := run(t.Context(), slog.New(slog.DiscardHandler))
+	if err == nil {
+		t.Fatal("run should fail when configuration is invalid")
+	}
+}
+
+func TestRunWebDAVClientError(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("WEBDAV_BASE_URL", "not-an-absolute-url") // passes LoadConfig, fails client init
+
+	err := run(t.Context(), slog.New(slog.DiscardHandler))
+	if err == nil {
+		t.Fatal("run should fail when the WebDAV base URL is not absolute")
+	}
+}
+
+func TestRunGracefulShutdown(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("LISTEN_ADDR", "127.0.0.1:0") // ephemeral port
+	t.Setenv("WEBDAV_BASE_URL", "http://127.0.0.1:9/dav")
+	t.Setenv("REQUEST_TIMEOUT", "1s")
+	t.Setenv("REFRESH_INTERVAL", "1h")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+
+	go func() { errCh <- run(ctx, slog.New(slog.DiscardHandler)) }()
+
+	// Give the server a moment to start listening, then trigger shutdown.
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("run returned %v, want nil after graceful shutdown", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("run did not return after context cancellation")
+	}
+}
 
 func TestRunHealthcheckOK(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

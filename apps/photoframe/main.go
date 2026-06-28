@@ -32,17 +32,23 @@ func main() {
 
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
-	// run owns all deferred cleanup; main only translates its error into an exit
-	// code so os.Exit never skips a defer.
-	err := run(log)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+
+	// stop is called explicitly (not deferred) so the os.Exit below never skips
+	// it.
+	err := run(ctx, log)
+
+	stop()
+
 	if err != nil {
 		log.Error("photoframe exited", "error", err)
 		os.Exit(1)
 	}
 }
 
-// run wires up the server and blocks until the process is signalled to stop.
-func run(log *slog.Logger) error {
+// run wires up the server and blocks until ctx is cancelled (e.g. on SIGINT or
+// SIGTERM).
+func run(ctx context.Context, log *slog.Logger) error {
 	cfg, err := LoadConfig()
 	if err != nil {
 		return err
@@ -55,9 +61,6 @@ func run(log *slog.Logger) error {
 		return err
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
 	srv := NewServer(cfg, dav, log)
 	go srv.refreshLoop(ctx)
 
@@ -67,26 +70,29 @@ func run(log *slog.Logger) error {
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
 
-	go func() {
-		<-ctx.Done()
+	serveErr := make(chan error, 1)
 
-		// A fresh context is intentional: the signal context is already done, so
-		// it cannot bound the graceful-shutdown deadline.
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
-		defer cancel()
-
-		//nolint:contextcheck // signal ctx is already done; shutdown needs its own deadline
-		_ = httpSrv.Shutdown(shutdownCtx)
-	}()
+	go func() { serveErr <- httpSrv.ListenAndServe() }()
 
 	log.Info("photoframe listening", "addr", cfg.ListenAddr, "webdav", cfg.WebDAVBaseURL+cfg.WebDAVPath)
 
-	err = httpSrv.ListenAndServe()
-	if err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return err
+	select {
+	case err = <-serveErr:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
+
+		return nil
+	case <-ctx.Done():
 	}
 
-	return nil
+	// A fresh context is intentional: the signal context is already done, so it
+	// cannot bound the graceful-shutdown deadline.
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+
+	//nolint:contextcheck // signal ctx is already done; shutdown needs its own deadline
+	return httpSrv.Shutdown(shutdownCtx)
 }
 
 // runHealthcheck performs a single GET against the local /healthz endpoint.
