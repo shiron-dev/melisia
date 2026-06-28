@@ -80,7 +80,7 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "sum(docker_compose_container_state{job=\"docker_compose\",state=\"running\"})",
+          "expr": "sum(docker_compose_container_state{job=\"docker_compose\",probe_server=~\"$server\",state=\"running\"})",
           "instant": true,
           "legendFormat": "running",
           "range": false,
@@ -149,7 +149,7 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "count(count by (project) (docker_compose_container_state{job=\"docker_compose\"}))",
+          "expr": "count(count by (probe_server, project) (docker_compose_container_state{job=\"docker_compose\",probe_server=~\"$server\"}))",
           "instant": true,
           "legendFormat": "projects",
           "range": false,
@@ -234,7 +234,7 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "up{job=\"docker_compose\"}",
+          "expr": "min(up{job=\"docker_compose\",probe_server=~\"$server\"})",
           "instant": true,
           "legendFormat": "exporter",
           "range": false,
@@ -303,7 +303,7 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "sum(docker_compose_container_state{job=\"docker_compose\",state!=\"running\"}) or vector(0)",
+          "expr": "sum(docker_compose_container_state{job=\"docker_compose\",probe_server=~\"$server\",state!=\"running\"}) or vector(0)",
           "instant": true,
           "legendFormat": "not running",
           "range": false,
@@ -372,7 +372,7 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "sum(docker_compose_container_health{job=\"docker_compose\",health=\"unhealthy\"}) or vector(0)",
+          "expr": "sum(docker_compose_container_health{job=\"docker_compose\",probe_server=~\"$server\",health=\"unhealthy\"}) or vector(0)",
           "instant": true,
           "legendFormat": "unhealthy",
           "range": false,
@@ -469,8 +469,8 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "sum by (project) (docker_compose_container_state{job=\"docker_compose\",state=\"running\"})",
-          "legendFormat": "{{ project }}",
+          "expr": "sum by (probe_server, project) (docker_compose_container_state{job=\"docker_compose\",probe_server=~\"$server\",state=\"running\"})",
+          "legendFormat": "{{ probe_server }} / {{ project }}",
           "range": true,
           "refId": "A"
         }
@@ -565,8 +565,8 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "sum by (project, service) (docker_compose_container_restart_count{job=\"docker_compose\"})",
-          "legendFormat": "{{ project }} / {{ service }}",
+          "expr": "sum by (probe_server, project, service) (docker_compose_container_restart_count{job=\"docker_compose\",probe_server=~\"$server\"})",
+          "legendFormat": "{{ probe_server }} / {{ project }} / {{ service }}",
           "range": true,
           "refId": "A"
         }
@@ -642,7 +642,7 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "docker_compose_container_state{job=\"docker_compose\"}",
+          "expr": "docker_compose_container_state{job=\"docker_compose\",probe_server=~\"$server\"}",
           "format": "table",
           "instant": true,
           "legendFormat": "__auto",
@@ -660,7 +660,9 @@
               "Value": true,
               "__name__": true,
               "instance": true,
-              "job": true
+              "job": true,
+              "host": true,
+              "exported_probe_server": true
             },
             "indexByName": {
               "probe_server": 0,
@@ -741,7 +743,7 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "docker_compose_container_health{job=\"docker_compose\",health!=\"none\"}",
+          "expr": "docker_compose_container_health{job=\"docker_compose\",probe_server=~\"$server\",health!=\"none\"}",
           "format": "table",
           "instant": true,
           "legendFormat": "__auto",
@@ -760,7 +762,9 @@
               "__name__": true,
               "image": true,
               "instance": true,
-              "job": true
+              "job": true,
+              "host": true,
+              "exported_probe_server": true
             },
             "indexByName": {
               "probe_server": 0,
@@ -839,7 +843,7 @@
             "uid": "P95B22FBE6FE890D0"
           },
           "editorMode": "code",
-          "expr": "docker_compose_container_restart_count{job=\"docker_compose\"}",
+          "expr": "docker_compose_container_restart_count{job=\"docker_compose\",probe_server=~\"$server\"}",
           "format": "table",
           "instant": true,
           "legendFormat": "__auto",
@@ -857,7 +861,9 @@
               "__name__": true,
               "image": true,
               "instance": true,
-              "job": true
+              "job": true,
+              "host": true,
+              "exported_probe_server": true
             },
             "indexByName": {
               "probe_server": 0,
@@ -885,10 +891,42 @@
   "tags": [
     "docker",
     "compose",
-    "arm-srv"
+    "arm-srv",
+    "home-ep"
   ],
   "templating": {
-    "list": []
+    "list": [
+      {
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "P95B22FBE6FE890D0"
+        },
+        "definition": "label_values(docker_compose_container_state{job=\"docker_compose\"}, probe_server)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Server",
+        "multi": true,
+        "name": "server",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(docker_compose_container_state{job=\"docker_compose\"}, probe_server)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 1,
+        "regex": "",
+        "type": "query"
+      }
+    ]
   },
   "time": {
     "from": "now-6h",

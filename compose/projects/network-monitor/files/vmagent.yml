@@ -19,14 +19,14 @@ scrape_configs:
           probe_server: home-ep
   # home-ep 上の Docker Compose コンテナの状態を docker-compose-exporter から
   # 取得する。container/state/health/restart count を Prometheus 形式で公開する。
-  # probe_server ラベルは global.external_labels (home-ep) が自動付与するため
-  # ここでは付けない (arm-srv 側の docker_compose ジョブと同じ流儀)。
   - job_name: 'docker_compose'
     scrape_interval: 15s
     scrape_timeout: 10s
     static_configs:
       - targets:
           - home_ep_docker_compose_exporter:9487
+        labels:
+          host: home-ep
   # 自前の icmp-ping-exporter が 10 分ごとに 5 発 ping を打って状態を保持する。
   # vmagent はその状態を 30s ごとに取りに行くだけ (実際の値は 10 分ごとに更新)。
   - job_name: 'home_ep_icmp'
