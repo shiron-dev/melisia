@@ -144,15 +144,11 @@ jobs:
             tflint
           fi
 
+  # A single full-tree scan instead of one matrix job per root: Trivy needs no
+  # Terraform setup, so per-root fan-out only multiplies runner startup + DB pulls.
   terraform-trivy:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: discover-terraform-roots
-    strategy:
-      fail-fast: false
-      matrix:
-        target: ${{ fromJson(needs.discover-terraform-roots.outputs.matrix) }}
-    name: terraform-trivy (${{ matrix.target.path }})
     steps:
       - name: Checkout code
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -160,7 +156,7 @@ jobs:
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: 'config'
-          scan-ref: ${{ matrix.target.path }}
+          scan-ref: terraform/
 
   terraform-checkov:
     runs-on: ubuntu-latest
