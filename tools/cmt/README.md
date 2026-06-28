@@ -67,8 +67,7 @@ hosts:
   - name: server1               # hosts/<hostname>/ ディレクトリ名と一致させる
     host: 192.168.1.10
     user: deploy
-    sshAgent: true
-    # sshKeyPath: ~/.ssh/id_ed25519.pub
+    # sshKeyPath: ~/.ssh/id_ed25519   # 省略時は SSH エージェント（SSH_AUTH_SOCK）を利用
 ```
 
 ### host.yml (`hosts/<hostname>/host.yml`)
