@@ -107,11 +107,15 @@ jobs:
       - name: Check go fmt
         run: |
           go fmt
+      - uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d # v4.2.0
+        with:
+          install: false
+      - name: Install golangci-lint
+        run: mise install golangci-lint
       - name: Run golangci-lint
         run: |
           set -euo pipefail
-          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
-          "$(go env GOPATH)/bin/golangci-lint" run --config .golangci.yml ./...
+          golangci-lint run --config .golangci.yml ./...
 
   go-generate-diff-check:
     name: go generate diff check
