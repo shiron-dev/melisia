@@ -36,6 +36,8 @@ jobs:
       - renovate-deps-comment
       - gitleaks
       - trufflehog
+      - secret-strength-linter-test
+      - secret-strength-linter
     if: ${{ always() }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -294,3 +296,52 @@ jobs:
           path: ./
           base: ${{ github.event.pull_request.base.sha || github.event.before }}
           head: ${{ github.event.pull_request.head.sha || github.sha }}
+
+  secret-strength-linter-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+      - name: Detect linter changes
+        id: detect
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          # Without a usable base (e.g. workflow_dispatch) run unconditionally.
+          if [ -z "${BASE_SHA}" ] || [ "${BASE_SHA}" = "0000000000000000000000000000000000000000" ]; then
+            echo "No base ref; running tests"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          CHANGED=$(git diff --diff-filter=ACMR --name-only "${BASE_SHA}..${HEAD_SHA}" -- tools/secret-strength-linter)
+          if [ -z "${CHANGED}" ]; then
+            echo "No changes under tools/secret-strength-linter, skipping"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Changed files:"
+            echo "${CHANGED}"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        if: steps.detect.outputs.skip == 'false'
+      - name: Install dependencies
+        if: steps.detect.outputs.skip == 'false'
+        run: uv sync --project tools/secret-strength-linter
+      - name: Run pytest
+        if: steps.detect.outputs.skip == 'false'
+        run: uv run --project tools/secret-strength-linter pytest tools/secret-strength-linter
+
+  secret-strength-linter:
+    # SOPS strength check needs a base..head diff, so only run on pull requests.
+    if: ${{ github.event_name == 'pull_request' }}
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/secret-strength-linter.yml
+    with:
+      base_sha: ${{ github.event.pull_request.base.sha }}
+      head_sha: ${{ github.event.pull_request.head.sha }}
