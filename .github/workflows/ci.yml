@@ -316,7 +316,9 @@ jobs:
             echo "skip=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          CHANGED=$(git diff --diff-filter=ACMR --name-only "${BASE_SHA}..${HEAD_SHA}" -- tools/secret-strength-linter)
+          # No --diff-filter: deletions must trigger the tests too, since
+          # removing check.py or a test can break the suite.
+          CHANGED=$(git diff --name-only "${BASE_SHA}..${HEAD_SHA}" -- tools/secret-strength-linter)
           if [ -z "${CHANGED}" ]; then
             echo "No changes under tools/secret-strength-linter, skipping"
             echo "skip=true" >> "$GITHUB_OUTPUT"
