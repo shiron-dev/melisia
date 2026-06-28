@@ -95,10 +95,19 @@ jobs:
         with:
           terraform_version: ${{ steps.terraform-version.outputs.version }}
           terraform_wrapper: false
+      - name: Get TFLint version from mise.toml
+        id: tflint-version
+        run: |
+          if grep -q 'tflint = "latest"' mise.toml; then
+            echo "version=latest" >> "$GITHUB_OUTPUT"
+          else
+            version=$(grep 'tflint = ' mise.toml | sed 's/.*tflint = "\(.*\)".*/\1/')
+            echo "version=v$version" >> "$GITHUB_OUTPUT"
+          fi
       - name: Setup TFLint
         uses: terraform-linters/setup-tflint@b480b8fcdaa6f2c577f8e4fa799e89e756bb7c93 # v6.2.2
         with:
-          tflint_version: latest
+          tflint_version: ${{ steps.tflint-version.outputs.version }}
       - name: Setup Go for local TrueNAS provider
         if: matrix.target.path == 'terraform/truenas'
         uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
