@@ -18,6 +18,16 @@
   ],
   "packageRules": [
     {
+      "description": "Ignore the in-house TrueNAS provider (not published to the Terraform Registry)",
+      "matchDatasources": [
+        "terraform-provider"
+      ],
+      "matchPackageNames": [
+        "shiron-dev/truenas"
+      ],
+      "enabled": false
+    },
+    {
       "description": "Group official GitHub Actions updates",
       "matchManagers": [
         "github-actions"
