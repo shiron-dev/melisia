@@ -10,6 +10,7 @@
 package remote
 
 import (
+	context "context"
 	fs "io/fs"
 	reflect "reflect"
 
@@ -56,120 +57,120 @@ func (mr *MockRemoteClientMockRecorder) Close() *gomock.Call {
 }
 
 // ListFilesRecursive mocks base method.
-func (m *MockRemoteClient) ListFilesRecursive(dir string) ([]string, error) {
+func (m *MockRemoteClient) ListFilesRecursive(ctx context.Context, dir string) ([]string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListFilesRecursive", dir)
+	ret := m.ctrl.Call(m, "ListFilesRecursive", ctx, dir)
 	ret0, _ := ret[0].([]string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListFilesRecursive indicates an expected call of ListFilesRecursive.
-func (mr *MockRemoteClientMockRecorder) ListFilesRecursive(dir any) *gomock.Call {
+func (mr *MockRemoteClientMockRecorder) ListFilesRecursive(ctx, dir any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListFilesRecursive", reflect.TypeOf((*MockRemoteClient)(nil).ListFilesRecursive), dir)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListFilesRecursive", reflect.TypeOf((*MockRemoteClient)(nil).ListFilesRecursive), ctx, dir)
 }
 
 // MkdirAll mocks base method.
-func (m *MockRemoteClient) MkdirAll(dir string) error {
+func (m *MockRemoteClient) MkdirAll(ctx context.Context, dir string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "MkdirAll", dir)
+	ret := m.ctrl.Call(m, "MkdirAll", ctx, dir)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // MkdirAll indicates an expected call of MkdirAll.
-func (mr *MockRemoteClientMockRecorder) MkdirAll(dir any) *gomock.Call {
+func (mr *MockRemoteClientMockRecorder) MkdirAll(ctx, dir any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MkdirAll", reflect.TypeOf((*MockRemoteClient)(nil).MkdirAll), dir)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MkdirAll", reflect.TypeOf((*MockRemoteClient)(nil).MkdirAll), ctx, dir)
 }
 
 // ReadFile mocks base method.
-func (m *MockRemoteClient) ReadFile(remotePath string) ([]byte, error) {
+func (m *MockRemoteClient) ReadFile(ctx context.Context, remotePath string) ([]byte, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReadFile", remotePath)
+	ret := m.ctrl.Call(m, "ReadFile", ctx, remotePath)
 	ret0, _ := ret[0].([]byte)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ReadFile indicates an expected call of ReadFile.
-func (mr *MockRemoteClientMockRecorder) ReadFile(remotePath any) *gomock.Call {
+func (mr *MockRemoteClientMockRecorder) ReadFile(ctx, remotePath any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadFile", reflect.TypeOf((*MockRemoteClient)(nil).ReadFile), remotePath)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadFile", reflect.TypeOf((*MockRemoteClient)(nil).ReadFile), ctx, remotePath)
 }
 
 // Remove mocks base method.
-func (m *MockRemoteClient) Remove(remotePath string) error {
+func (m *MockRemoteClient) Remove(ctx context.Context, remotePath string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Remove", remotePath)
+	ret := m.ctrl.Call(m, "Remove", ctx, remotePath)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Remove indicates an expected call of Remove.
-func (mr *MockRemoteClientMockRecorder) Remove(remotePath any) *gomock.Call {
+func (mr *MockRemoteClientMockRecorder) Remove(ctx, remotePath any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Remove", reflect.TypeOf((*MockRemoteClient)(nil).Remove), remotePath)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Remove", reflect.TypeOf((*MockRemoteClient)(nil).Remove), ctx, remotePath)
 }
 
 // RunCommand mocks base method.
-func (m *MockRemoteClient) RunCommand(workdir, command string) (string, error) {
+func (m *MockRemoteClient) RunCommand(ctx context.Context, workdir, command string) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RunCommand", workdir, command)
+	ret := m.ctrl.Call(m, "RunCommand", ctx, workdir, command)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // RunCommand indicates an expected call of RunCommand.
-func (mr *MockRemoteClientMockRecorder) RunCommand(workdir, command any) *gomock.Call {
+func (mr *MockRemoteClientMockRecorder) RunCommand(ctx, workdir, command any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunCommand", reflect.TypeOf((*MockRemoteClient)(nil).RunCommand), workdir, command)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunCommand", reflect.TypeOf((*MockRemoteClient)(nil).RunCommand), ctx, workdir, command)
 }
 
 // Stat mocks base method.
-func (m *MockRemoteClient) Stat(remotePath string) (fs.FileInfo, error) {
+func (m *MockRemoteClient) Stat(ctx context.Context, remotePath string) (fs.FileInfo, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Stat", remotePath)
+	ret := m.ctrl.Call(m, "Stat", ctx, remotePath)
 	ret0, _ := ret[0].(fs.FileInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Stat indicates an expected call of Stat.
-func (mr *MockRemoteClientMockRecorder) Stat(remotePath any) *gomock.Call {
+func (mr *MockRemoteClientMockRecorder) Stat(ctx, remotePath any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Stat", reflect.TypeOf((*MockRemoteClient)(nil).Stat), remotePath)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Stat", reflect.TypeOf((*MockRemoteClient)(nil).Stat), ctx, remotePath)
 }
 
 // StatDirMetadata mocks base method.
-func (m *MockRemoteClient) StatDirMetadata(remotePath string) (*DirMetadata, error) {
+func (m *MockRemoteClient) StatDirMetadata(ctx context.Context, remotePath string) (*DirMetadata, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "StatDirMetadata", remotePath)
+	ret := m.ctrl.Call(m, "StatDirMetadata", ctx, remotePath)
 	ret0, _ := ret[0].(*DirMetadata)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // StatDirMetadata indicates an expected call of StatDirMetadata.
-func (mr *MockRemoteClientMockRecorder) StatDirMetadata(remotePath any) *gomock.Call {
+func (mr *MockRemoteClientMockRecorder) StatDirMetadata(ctx, remotePath any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StatDirMetadata", reflect.TypeOf((*MockRemoteClient)(nil).StatDirMetadata), remotePath)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StatDirMetadata", reflect.TypeOf((*MockRemoteClient)(nil).StatDirMetadata), ctx, remotePath)
 }
 
 // WriteFile mocks base method.
-func (m *MockRemoteClient) WriteFile(remotePath string, data []byte) error {
+func (m *MockRemoteClient) WriteFile(ctx context.Context, remotePath string, data []byte) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "WriteFile", remotePath, data)
+	ret := m.ctrl.Call(m, "WriteFile", ctx, remotePath, data)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // WriteFile indicates an expected call of WriteFile.
-func (mr *MockRemoteClientMockRecorder) WriteFile(remotePath, data any) *gomock.Call {
+func (mr *MockRemoteClientMockRecorder) WriteFile(ctx, remotePath, data any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WriteFile", reflect.TypeOf((*MockRemoteClient)(nil).WriteFile), remotePath, data)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WriteFile", reflect.TypeOf((*MockRemoteClient)(nil).WriteFile), ctx, remotePath, data)
 }
 
 // MockClientFactory is a mock of ClientFactory interface.
@@ -236,9 +237,9 @@ func (m *MockCommandRunner) EXPECT() *MockCommandRunnerMockRecorder {
 }
 
 // SCPCombinedOutput mocks base method.
-func (m *MockCommandRunner) SCPCombinedOutput(args ...string) ([]byte, error) {
+func (m *MockCommandRunner) SCPCombinedOutput(ctx context.Context, args ...string) ([]byte, error) {
 	m.ctrl.T.Helper()
-	varargs := []any{}
+	varargs := []any{ctx}
 	for _, a := range args {
 		varargs = append(varargs, a)
 	}
@@ -249,15 +250,16 @@ func (m *MockCommandRunner) SCPCombinedOutput(args ...string) ([]byte, error) {
 }
 
 // SCPCombinedOutput indicates an expected call of SCPCombinedOutput.
-func (mr *MockCommandRunnerMockRecorder) SCPCombinedOutput(args ...any) *gomock.Call {
+func (mr *MockCommandRunnerMockRecorder) SCPCombinedOutput(ctx any, args ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SCPCombinedOutput", reflect.TypeOf((*MockCommandRunner)(nil).SCPCombinedOutput), args...)
+	varargs := append([]any{ctx}, args...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SCPCombinedOutput", reflect.TypeOf((*MockCommandRunner)(nil).SCPCombinedOutput), varargs...)
 }
 
 // SSHCombinedOutput mocks base method.
-func (m *MockCommandRunner) SSHCombinedOutput(args ...string) ([]byte, error) {
+func (m *MockCommandRunner) SSHCombinedOutput(ctx context.Context, args ...string) ([]byte, error) {
 	m.ctrl.T.Helper()
-	varargs := []any{}
+	varargs := []any{ctx}
 	for _, a := range args {
 		varargs = append(varargs, a)
 	}
@@ -268,7 +270,8 @@ func (m *MockCommandRunner) SSHCombinedOutput(args ...string) ([]byte, error) {
 }
 
 // SSHCombinedOutput indicates an expected call of SSHCombinedOutput.
-func (mr *MockCommandRunnerMockRecorder) SSHCombinedOutput(args ...any) *gomock.Call {
+func (mr *MockCommandRunnerMockRecorder) SSHCombinedOutput(ctx any, args ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SSHCombinedOutput", reflect.TypeOf((*MockCommandRunner)(nil).SSHCombinedOutput), args...)
+	varargs := append([]any{ctx}, args...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SSHCombinedOutput", reflect.TypeOf((*MockCommandRunner)(nil).SSHCombinedOutput), varargs...)
 }

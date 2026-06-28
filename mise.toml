@@ -1,5 +1,7 @@
 [tools]
 go = "1.26.4"
+golangci-lint = "2.12.2"
 terraform = "1.15.6"
+tflint = "0.63.1"
 sops = "3.13.1"
 shfmt = "3.13.1"

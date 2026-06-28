@@ -1,6 +1,7 @@
 package lock
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -93,7 +94,7 @@ func NewRemote(factory remote.ClientFactory) *RemoteLocker {
 // (plan), no directory is created: if the project directory does not exist yet
 // there is no remote state to protect, so Acquire returns (nil, nil) to signal
 // the lock was skipped.
-func (l *RemoteLocker) Acquire(target Target, operation string, ensureDir bool) (*Info, error) {
+func (l *RemoteLocker) Acquire(ctx context.Context, target Target, operation string, ensureDir bool) (*Info, error) {
 	client, err := l.factory.NewClient(target.Host)
 	if err != nil {
 		return nil, fmt.Errorf("connecting to %q: %w", target.Host.Name, err)
@@ -115,7 +116,7 @@ func (l *RemoteLocker) Acquire(target Target, operation string, ensureDir bool) 
 		return nil, fmt.Errorf("encoding lock info: %w", err)
 	}
 
-	out, err := client.RunCommand("", buildAcquireScript(target, data, ensureDir))
+	out, err := client.RunCommand(ctx, "", buildAcquireScript(target, data, ensureDir))
 	if err != nil {
 		return nil, fmt.Errorf("acquiring lock for %s: %w", target.label(), err)
 	}
@@ -193,7 +194,7 @@ func lockedError(target Target, holderJSON string) error {
 }
 
 // Release removes the lock for target when the ID matches the one in the file.
-func (l *RemoteLocker) Release(target Target, lockID string) error {
+func (l *RemoteLocker) Release(ctx context.Context, target Target, lockID string) error {
 	client, err := l.factory.NewClient(target.Host)
 	if err != nil {
 		return fmt.Errorf("connecting to %q: %w", target.Host.Name, err)
@@ -201,7 +202,7 @@ func (l *RemoteLocker) Release(target Target, lockID string) error {
 
 	defer func() { _ = client.Close() }()
 
-	existing, err := readWithClient(client, target)
+	existing, err := readWithClient(ctx, client, target)
 	if err != nil {
 		if errors.Is(err, ErrLockNotFound) {
 			return nil
@@ -214,7 +215,7 @@ func (l *RemoteLocker) Release(target Target, lockID string) error {
 		return fmt.Errorf("%w for %s: own %s but file has %s", ErrLockIDMismatch, target.label(), lockID, existing.ID)
 	}
 
-	err = client.Remove(target.lockPath())
+	err = client.Remove(ctx, target.lockPath())
 	if err != nil {
 		return fmt.Errorf("removing lock for %s: %w", target.label(), err)
 	}
@@ -223,7 +224,7 @@ func (l *RemoteLocker) Release(target Target, lockID string) error {
 }
 
 // Read returns the current lock info for target. Returns ErrLockNotFound if none exists.
-func (l *RemoteLocker) Read(target Target) (*Info, error) {
+func (l *RemoteLocker) Read(ctx context.Context, target Target) (*Info, error) {
 	client, err := l.factory.NewClient(target.Host)
 	if err != nil {
 		return nil, fmt.Errorf("connecting to %q: %w", target.Host.Name, err)
@@ -231,14 +232,14 @@ func (l *RemoteLocker) Read(target Target) (*Info, error) {
 
 	defer func() { _ = client.Close() }()
 
-	return readWithClient(client, target)
+	return readWithClient(ctx, client, target)
 }
 
-func readWithClient(client remote.RemoteClient, target Target) (*Info, error) {
+func readWithClient(ctx context.Context, client remote.RemoteClient, target Target) (*Info, error) {
 	// Distinguish a genuinely absent lock from a read failure (SSH/permission):
 	// only the former is ErrLockNotFound, so Release/force-unlock don't treat a
 	// transient error as "no lock" and silently leave it behind.
-	exists, err := existsWithClient(client, target)
+	exists, err := existsWithClient(ctx, client, target)
 	if err != nil {
 		return nil, fmt.Errorf("checking lock for %s: %w", target.label(), err)
 	}
@@ -247,7 +248,7 @@ func readWithClient(client remote.RemoteClient, target Target) (*Info, error) {
 		return nil, fmt.Errorf("%w: %s", ErrLockNotFound, target.label())
 	}
 
-	data, err := client.ReadFile(target.lockPath())
+	data, err := client.ReadFile(ctx, target.lockPath())
 	if err != nil {
 		return nil, fmt.Errorf("reading lock for %s: %w", target.label(), err)
 	}
@@ -263,7 +264,7 @@ func readWithClient(client remote.RemoteClient, target Target) (*Info, error) {
 }
 
 // ForceUnlock removes the lock for target regardless of who holds it.
-func (l *RemoteLocker) ForceUnlock(target Target) error {
+func (l *RemoteLocker) ForceUnlock(ctx context.Context, target Target) error {
 	client, err := l.factory.NewClient(target.Host)
 	if err != nil {
 		return fmt.Errorf("connecting to %q: %w", target.Host.Name, err)
@@ -271,7 +272,7 @@ func (l *RemoteLocker) ForceUnlock(target Target) error {
 
 	defer func() { _ = client.Close() }()
 
-	exists, err := existsWithClient(client, target)
+	exists, err := existsWithClient(ctx, client, target)
 	if err != nil {
 		return fmt.Errorf("checking lock for %s: %w", target.label(), err)
 	}
@@ -280,7 +281,7 @@ func (l *RemoteLocker) ForceUnlock(target Target) error {
 		return fmt.Errorf("%w: %s", ErrLockNotFound, target.label())
 	}
 
-	err = client.Remove(target.lockPath())
+	err = client.Remove(ctx, target.lockPath())
 	if err != nil {
 		return fmt.Errorf("removing lock for %s: %w", target.label(), err)
 	}
@@ -291,7 +292,7 @@ func (l *RemoteLocker) ForceUnlock(target Target) error {
 // ForceUnlockWithID removes the lock for target only when the current lock ID
 // still matches expectedID. Returns ErrLockIDMismatch if the lock was replaced
 // between the time it was displayed and the time the user confirmed.
-func (l *RemoteLocker) ForceUnlockWithID(target Target, expectedID string) error {
+func (l *RemoteLocker) ForceUnlockWithID(ctx context.Context, target Target, expectedID string) error {
 	client, err := l.factory.NewClient(target.Host)
 	if err != nil {
 		return fmt.Errorf("connecting to %q: %w", target.Host.Name, err)
@@ -299,7 +300,7 @@ func (l *RemoteLocker) ForceUnlockWithID(target Target, expectedID string) error
 
 	defer func() { _ = client.Close() }()
 
-	current, err := readWithClient(client, target)
+	current, err := readWithClient(ctx, client, target)
 	if err != nil {
 		return err
 	}
@@ -308,7 +309,7 @@ func (l *RemoteLocker) ForceUnlockWithID(target Target, expectedID string) error
 		return fmt.Errorf("%w for %s: expected %s but found %s", ErrLockIDMismatch, target.label(), expectedID, current.ID)
 	}
 
-	err = client.Remove(target.lockPath())
+	err = client.Remove(ctx, target.lockPath())
 	if err != nil {
 		return fmt.Errorf("removing lock for %s: %w", target.label(), err)
 	}
@@ -320,7 +321,7 @@ func (l *RemoteLocker) ForceUnlockWithID(target Target, expectedID string) error
 // to roll back a directory that lock acquisition created when an apply ends
 // without writing anything. A non-empty directory (a real deployment) is left
 // untouched.
-func (l *RemoteLocker) RemoveEmptyDir(target Target) error {
+func (l *RemoteLocker) RemoveEmptyDir(ctx context.Context, target Target) error {
 	client, err := l.factory.NewClient(target.Host)
 	if err != nil {
 		return fmt.Errorf("connecting to %q: %w", target.Host.Name, err)
@@ -329,7 +330,7 @@ func (l *RemoteLocker) RemoveEmptyDir(target Target) error {
 	defer func() { _ = client.Close() }()
 
 	// rmdir only succeeds on an empty directory; ignore failure otherwise.
-	_, err = client.RunCommand("", "rmdir "+shellQuote(target.RemoteDir)+" 2>/dev/null || true")
+	_, err = client.RunCommand(ctx, "", "rmdir "+shellQuote(target.RemoteDir)+" 2>/dev/null || true")
 	if err != nil {
 		return fmt.Errorf("removing empty dir for %s: %w", target.label(), err)
 	}
@@ -338,7 +339,7 @@ func (l *RemoteLocker) RemoveEmptyDir(target Target) error {
 }
 
 // IsLocked reports whether a lock file exists for target.
-func (l *RemoteLocker) IsLocked(target Target) (bool, error) {
+func (l *RemoteLocker) IsLocked(ctx context.Context, target Target) (bool, error) {
 	client, err := l.factory.NewClient(target.Host)
 	if err != nil {
 		return false, fmt.Errorf("connecting to %q: %w", target.Host.Name, err)
@@ -346,10 +347,10 @@ func (l *RemoteLocker) IsLocked(target Target) (bool, error) {
 
 	defer func() { _ = client.Close() }()
 
-	return existsWithClient(client, target)
+	return existsWithClient(ctx, client, target)
 }
 
-func existsWithClient(client remote.RemoteClient, target Target) (bool, error) {
+func existsWithClient(ctx context.Context, client remote.RemoteClient, target Target) (bool, error) {
 	lockFile := shellQuote(target.lockPath())
 	dir := shellQuote(target.RemoteDir)
 
@@ -364,7 +365,7 @@ func existsWithClient(client remote.RemoteClient, target Target) (bool, error) {
 		lockFile, dir, dir, dir,
 	)
 
-	out, err := client.RunCommand("", cmd)
+	out, err := client.RunCommand(ctx, "", cmd)
 	if err != nil {
 		return false, err
 	}

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -229,6 +230,7 @@ func TestResolveSSHConfigWithRunner(t *testing.T) {
 
 	runner.EXPECT().
 		SSHOutput(
+			gomock.Any(),
 			"-G",
 			"-F",
 			filepath.Join(hostDir, sshConfigPath),
@@ -236,7 +238,7 @@ func TestResolveSSHConfigWithRunner(t *testing.T) {
 		).
 		Return([]byte(resolved), nil)
 
-	err := ResolveSSHConfigWithRunner(entry, sshConfigPath, hostDir, runner)
+	err := ResolveSSHConfigWithRunner(context.Background(), entry, sshConfigPath, hostDir, runner)
 	if err != nil {
 		t.Fatalf("ResolveSSHConfigWithRunner: %v", err)
 	}
@@ -275,10 +277,10 @@ func TestResolveSSHConfigWithRunner_SSHError(t *testing.T) {
 	entry := &HostEntry{Name: "server1", Host: "server1-alias"}
 
 	runner.EXPECT().
-		SSHOutput(gomock.Any()).
+		SSHOutput(gomock.Any(), gomock.Any()).
 		Return(nil, errConnectionRefused)
 
-	err := ResolveSSHConfigWithRunner(entry, "", "/tmp/hosts/server1", runner)
+	err := ResolveSSHConfigWithRunner(context.Background(), entry, "", "/tmp/hosts/server1", runner)
 	if err == nil {
 		t.Fatal("expected error when SSH fails")
 	}
@@ -294,10 +296,10 @@ func TestResolveSSHConfigWithRunner_NoSshConfig(t *testing.T) {
 
 	// sshConfigPath が空の場合、-F オプションなしで ssh -G が呼ばれます。
 	runner.EXPECT().
-		SSHOutput("-G", "-l", "deploy", "-p", "22", "server1-alias").
+		SSHOutput(gomock.Any(), "-G", "-l", "deploy", "-p", "22", "server1-alias").
 		Return([]byte("hostname 10.0.0.1\nport 22\nuser deploy\n"), nil)
 
-	err := ResolveSSHConfigWithRunner(entry, "", "/tmp/hosts/server1", runner)
+	err := ResolveSSHConfigWithRunner(context.Background(), entry, "", "/tmp/hosts/server1", runner)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

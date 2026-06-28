@@ -1,6 +1,7 @@
 package lock_test
 
 import (
+	"context"
 	"errors"
 	"io/fs"
 	"strings"
@@ -30,7 +31,7 @@ func newFakeClient() *fakeClient {
 
 var _ remote.RemoteClient = (*fakeClient)(nil)
 
-func (c *fakeClient) RunCommand(_ string, command string) (string, error) {
+func (c *fakeClient) RunCommand(_ context.Context, _ string, command string) (string, error) {
 	if c.dirs == nil {
 		c.dirs = make(map[string]bool)
 	}
@@ -83,7 +84,7 @@ func (c *fakeClient) RunCommand(_ string, command string) (string, error) {
 	}
 }
 
-func (c *fakeClient) ReadFile(remotePath string) ([]byte, error) {
+func (c *fakeClient) ReadFile(_ context.Context, remotePath string) ([]byte, error) {
 	data, ok := c.files[remotePath]
 	if !ok {
 		return nil, errNoSuchFile
@@ -92,20 +93,20 @@ func (c *fakeClient) ReadFile(remotePath string) ([]byte, error) {
 	return []byte(data), nil
 }
 
-func (c *fakeClient) Remove(remotePath string) error {
+func (c *fakeClient) Remove(_ context.Context, remotePath string) error {
 	delete(c.files, remotePath)
 
 	return nil
 }
 
-func (c *fakeClient) Close() error                     { return nil }
-func (c *fakeClient) WriteFile(string, []byte) error   { return nil }
-func (c *fakeClient) MkdirAll(string) error            { return nil }
-func (c *fakeClient) Stat(string) (fs.FileInfo, error) { return nil, errNotSupported }
-func (c *fakeClient) StatDirMetadata(string) (*remote.DirMetadata, error) {
+func (c *fakeClient) Close() error                                      { return nil }
+func (c *fakeClient) WriteFile(context.Context, string, []byte) error   { return nil }
+func (c *fakeClient) MkdirAll(context.Context, string) error            { return nil }
+func (c *fakeClient) Stat(context.Context, string) (fs.FileInfo, error) { return nil, errNotSupported }
+func (c *fakeClient) StatDirMetadata(context.Context, string) (*remote.DirMetadata, error) {
 	return nil, errNotSupported
 }
-func (c *fakeClient) ListFilesRecursive(string) ([]string, error) { return nil, nil }
+func (c *fakeClient) ListFilesRecursive(context.Context, string) ([]string, error) { return nil, nil }
 
 func (c *fakeClient) tryCreate(lockPath, payload, created string) string {
 	if existing, exists := c.files[lockPath]; exists {
@@ -174,7 +175,7 @@ func (errFactory) NewClient(config.HostEntry) (remote.RemoteClient, error) {
 // errRunClient connects but every RunCommand fails (e.g. SSH command error).
 type errRunClient struct{ fakeClient }
 
-func (errRunClient) RunCommand(string, string) (string, error) {
+func (errRunClient) RunCommand(context.Context, string, string) (string, error) {
 	return "", errConnect
 }
 
@@ -198,18 +199,18 @@ func TestConnectErrorsPropagate(t *testing.T) {
 	locker := lock.NewRemote(errFactory{})
 	target := testTarget()
 
-	_, acquireErr := locker.Acquire(target, "plan", true)
+	_, acquireErr := locker.Acquire(context.Background(), target, "plan", true)
 	checkConnErr(t, "Acquire", acquireErr)
 
-	checkConnErr(t, "Release", locker.Release(target, "id"))
+	checkConnErr(t, "Release", locker.Release(context.Background(), target, "id"))
 
-	_, readErr := locker.Read(target)
+	_, readErr := locker.Read(context.Background(), target)
 	checkConnErr(t, "Read", readErr)
 
-	checkConnErr(t, "ForceUnlock", locker.ForceUnlock(target))
-	checkConnErr(t, "ForceUnlockWithID", locker.ForceUnlockWithID(target, "id"))
+	checkConnErr(t, "ForceUnlock", locker.ForceUnlock(context.Background(), target))
+	checkConnErr(t, "ForceUnlockWithID", locker.ForceUnlockWithID(context.Background(), target, "id"))
 
-	_, isLockedErr := locker.IsLocked(target)
+	_, isLockedErr := locker.IsLocked(context.Background(), target)
 	checkConnErr(t, "IsLocked", isLockedErr)
 }
 
@@ -219,24 +220,24 @@ func TestRunCommandErrorsPropagate(t *testing.T) {
 	locker := lock.NewRemote(errRunFactory{})
 	target := testTarget()
 
-	_, acquireErr := locker.Acquire(target, "plan", true)
+	_, acquireErr := locker.Acquire(context.Background(), target, "plan", true)
 	checkConnErr(t, "Acquire", acquireErr)
 
-	_, isLockedErr := locker.IsLocked(target)
+	_, isLockedErr := locker.IsLocked(context.Background(), target)
 	checkConnErr(t, "IsLocked", isLockedErr)
 
-	checkConnErr(t, "ForceUnlock", locker.ForceUnlock(target))
+	checkConnErr(t, "ForceUnlock", locker.ForceUnlock(context.Background(), target))
 
 	// A read/SSH failure must NOT be reported as "lock not found", so Release
 	// surfaces the error instead of silently treating the lock as gone.
-	_, readErr := locker.Read(target)
+	_, readErr := locker.Read(context.Background(), target)
 	checkConnErr(t, "Read", readErr)
 
 	if errors.Is(readErr, lock.ErrLockNotFound) {
 		t.Error("Read: SSH error must not be reported as ErrLockNotFound")
 	}
 
-	releaseErr := locker.Release(target, "id")
+	releaseErr := locker.Release(context.Background(), target, "id")
 	checkConnErr(t, "Release", releaseErr)
 }
 
@@ -244,7 +245,7 @@ func TestRunCommandErrorsPropagate(t *testing.T) {
 // permission denied on an existing file).
 type existsUnreadableClient struct{ fakeClient }
 
-func (existsUnreadableClient) RunCommand(_, command string) (string, error) {
+func (existsUnreadableClient) RunCommand(_ context.Context, _, command string) (string, error) {
 	if strings.HasPrefix(command, "if [ -e ") {
 		return "Y\n", nil
 	}
@@ -252,7 +253,7 @@ func (existsUnreadableClient) RunCommand(_, command string) (string, error) {
 	return "", nil
 }
 
-func (existsUnreadableClient) ReadFile(string) ([]byte, error) {
+func (existsUnreadableClient) ReadFile(context.Context, string) ([]byte, error) {
 	return nil, errNotSupported
 }
 
@@ -267,7 +268,7 @@ func TestReadExistsButUnreadable(t *testing.T) {
 
 	locker := lock.NewRemote(existsUnreadableFactory{})
 
-	_, err := locker.Read(testTarget())
+	_, err := locker.Read(context.Background(), testTarget())
 	if err == nil {
 		t.Fatal("expected error reading an existing but unreadable lock")
 	}
@@ -280,7 +281,7 @@ func TestReadExistsButUnreadable(t *testing.T) {
 // garbageAcquireClient returns output the acquire parser does not recognise.
 type garbageAcquireClient struct{ fakeClient }
 
-func (garbageAcquireClient) RunCommand(_, _ string) (string, error) {
+func (garbageAcquireClient) RunCommand(_ context.Context, _, _ string) (string, error) {
 	return "unexpected output\n", nil
 }
 
@@ -295,7 +296,7 @@ func TestAcquireUnexpectedOutputIsNotLocked(t *testing.T) {
 
 	locker := lock.NewRemote(garbageAcquireFactory{})
 
-	_, err := locker.Acquire(testTarget(), "apply", true)
+	_, err := locker.Acquire(context.Background(), testTarget(), "apply", true)
 	if err == nil {
 		t.Fatal("expected error for unexpected acquire output")
 	}
@@ -326,7 +327,7 @@ func TestAcquireAndRelease(t *testing.T) {
 	locker, _ := newTestLocker()
 	target := testTarget()
 
-	info, err := locker.Acquire(target, "plan", true)
+	info, err := locker.Acquire(context.Background(), target, "plan", true)
 	if err != nil {
 		t.Fatalf("unexpected error acquiring lock: %v", err)
 	}
@@ -343,7 +344,7 @@ func TestAcquireAndRelease(t *testing.T) {
 		t.Error("expected non-empty who")
 	}
 
-	err = locker.Release(target, info.ID)
+	err = locker.Release(context.Background(), target, info.ID)
 	if err != nil {
 		t.Fatalf("unexpected error releasing lock: %v", err)
 	}
@@ -355,12 +356,12 @@ func TestAcquireAlreadyLocked(t *testing.T) {
 	locker, _ := newTestLocker()
 	target := testTarget()
 
-	_, err := locker.Acquire(target, "apply", true)
+	_, err := locker.Acquire(context.Background(), target, "apply", true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	_, err = locker.Acquire(target, "plan", true)
+	_, err = locker.Acquire(context.Background(), target, "plan", true)
 	if !errors.Is(err, lock.ErrLocked) {
 		t.Errorf("expected ErrLocked, got %v", err)
 	}
@@ -372,12 +373,12 @@ func TestReleaseNotOwned(t *testing.T) {
 	locker, _ := newTestLocker()
 	target := testTarget()
 
-	_, err := locker.Acquire(target, "plan", true)
+	_, err := locker.Acquire(context.Background(), target, "plan", true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	err = locker.Release(target, "wrong-id")
+	err = locker.Release(context.Background(), target, "wrong-id")
 	if !errors.Is(err, lock.ErrLockIDMismatch) {
 		t.Errorf("expected ErrLockIDMismatch, got %v", err)
 	}
@@ -389,17 +390,17 @@ func TestForceUnlock(t *testing.T) {
 	locker, _ := newTestLocker()
 	target := testTarget()
 
-	_, err := locker.Acquire(target, "apply", true)
+	_, err := locker.Acquire(context.Background(), target, "apply", true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	err = locker.ForceUnlock(target)
+	err = locker.ForceUnlock(context.Background(), target)
 	if err != nil {
 		t.Fatalf("unexpected error force-unlocking: %v", err)
 	}
 
-	locked, _ := locker.IsLocked(target)
+	locked, _ := locker.IsLocked(context.Background(), target)
 	if locked {
 		t.Error("expected lock to be released after force-unlock")
 	}
@@ -410,7 +411,7 @@ func TestForceUnlockNoLock(t *testing.T) {
 
 	locker, _ := newTestLocker()
 
-	err := locker.ForceUnlock(testTarget())
+	err := locker.ForceUnlock(context.Background(), testTarget())
 	if !errors.Is(err, lock.ErrLockNotFound) {
 		t.Errorf("expected ErrLockNotFound, got %v", err)
 	}
@@ -422,12 +423,12 @@ func TestRead(t *testing.T) {
 	locker, _ := newTestLocker()
 	target := testTarget()
 
-	info, err := locker.Acquire(target, "plan", true)
+	info, err := locker.Acquire(context.Background(), target, "plan", true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	read, err := locker.Read(target)
+	read, err := locker.Read(context.Background(), target)
 	if err != nil {
 		t.Fatalf("unexpected error reading lock: %v", err)
 	}
@@ -446,7 +447,7 @@ func TestReadNoLock(t *testing.T) {
 
 	locker, _ := newTestLocker()
 
-	_, err := locker.Read(testTarget())
+	_, err := locker.Read(context.Background(), testTarget())
 	if !errors.Is(err, lock.ErrLockNotFound) {
 		t.Errorf("expected ErrLockNotFound, got %v", err)
 	}
@@ -458,17 +459,17 @@ func TestIsLocked(t *testing.T) {
 	locker, _ := newTestLocker()
 	target := testTarget()
 
-	locked, _ := locker.IsLocked(target)
+	locked, _ := locker.IsLocked(context.Background(), target)
 	if locked {
 		t.Error("expected target to be unlocked initially")
 	}
 
-	_, err := locker.Acquire(target, "plan", true)
+	_, err := locker.Acquire(context.Background(), target, "plan", true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	locked, _ = locker.IsLocked(target)
+	locked, _ = locker.IsLocked(context.Background(), target)
 	if !locked {
 		t.Error("expected target to be locked after acquire")
 	}
@@ -482,7 +483,7 @@ func TestAcquireCorruptedLockFile(t *testing.T) {
 
 	client.files[target.LockPath] = "invalid-json"
 
-	_, err := locker.Acquire(target, "plan", true)
+	_, err := locker.Acquire(context.Background(), target, "plan", true)
 	if !errors.Is(err, lock.ErrLocked) {
 		t.Errorf("expected ErrLocked wrapping, got %v", err)
 	}
@@ -494,17 +495,17 @@ func TestForceUnlockWithIDSuccess(t *testing.T) {
 	locker, _ := newTestLocker()
 	target := testTarget()
 
-	info, err := locker.Acquire(target, "plan", true)
+	info, err := locker.Acquire(context.Background(), target, "plan", true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	err = locker.ForceUnlockWithID(target, info.ID)
+	err = locker.ForceUnlockWithID(context.Background(), target, info.ID)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	locked, _ := locker.IsLocked(target)
+	locked, _ := locker.IsLocked(context.Background(), target)
 	if locked {
 		t.Error("expected lock to be released after ForceUnlockWithID")
 	}
@@ -516,17 +517,17 @@ func TestForceUnlockWithIDMismatch(t *testing.T) {
 	locker, _ := newTestLocker()
 	target := testTarget()
 
-	_, err := locker.Acquire(target, "plan", true)
+	_, err := locker.Acquire(context.Background(), target, "plan", true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	err = locker.ForceUnlockWithID(target, "wrong-id")
+	err = locker.ForceUnlockWithID(context.Background(), target, "wrong-id")
 	if !errors.Is(err, lock.ErrLockIDMismatch) {
 		t.Errorf("expected ErrLockIDMismatch, got %v", err)
 	}
 
-	locked, _ := locker.IsLocked(target)
+	locked, _ := locker.IsLocked(context.Background(), target)
 	if !locked {
 		t.Error("expected lock to remain after ID mismatch")
 	}
@@ -538,14 +539,14 @@ func TestReleaseAlreadyGone(t *testing.T) {
 	locker, _ := newTestLocker()
 	target := testTarget()
 
-	info, err := locker.Acquire(target, "plan", true)
+	info, err := locker.Acquire(context.Background(), target, "plan", true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	_ = locker.ForceUnlock(target)
+	_ = locker.ForceUnlock(context.Background(), target)
 
-	err = locker.Release(target, info.ID)
+	err = locker.Release(context.Background(), target, info.ID)
 	if err != nil {
 		t.Errorf("expected no error when releasing already-gone lock, got %v", err)
 	}
@@ -558,7 +559,7 @@ func TestAcquireSkipsWhenDirAbsent(t *testing.T) {
 	target := testTarget()
 
 	// ensureDir=false (plan) and the project dir does not exist => skipped.
-	info, err := locker.Acquire(target, "plan", false)
+	info, err := locker.Acquire(context.Background(), target, "plan", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -567,7 +568,7 @@ func TestAcquireSkipsWhenDirAbsent(t *testing.T) {
 		t.Errorf("expected nil info (skipped), got %+v", info)
 	}
 
-	locked, _ := locker.IsLocked(target)
+	locked, _ := locker.IsLocked(context.Background(), target)
 	if locked {
 		t.Error("expected no lock file created when project dir is absent")
 	}
@@ -580,7 +581,7 @@ func TestAcquireReportsCreatedDir(t *testing.T) {
 	target := testTarget()
 
 	// First apply on an absent dir reports CreatedDir.
-	info, err := locker.Acquire(target, "apply", true)
+	info, err := locker.Acquire(context.Background(), target, "apply", true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -589,13 +590,13 @@ func TestAcquireReportsCreatedDir(t *testing.T) {
 		t.Error("expected CreatedDir=true when the project dir was absent")
 	}
 
-	err = locker.Release(target, info.ID)
+	err = locker.Release(context.Background(), target, info.ID)
 	if err != nil {
 		t.Fatalf("unexpected error releasing: %v", err)
 	}
 
 	// The dir still exists (not yet rolled back); a second apply reports false.
-	info, err = locker.Acquire(target, "apply", true)
+	info, err = locker.Acquire(context.Background(), target, "apply", true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -611,7 +612,7 @@ func TestRemoveEmptyDir(t *testing.T) {
 	locker, client := newTestLocker()
 	target := testTarget()
 
-	info, err := locker.Acquire(target, "apply", true)
+	info, err := locker.Acquire(context.Background(), target, "apply", true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -620,13 +621,13 @@ func TestRemoveEmptyDir(t *testing.T) {
 		t.Fatal("expected CreatedDir=true")
 	}
 
-	err = locker.Release(target, info.ID)
+	err = locker.Release(context.Background(), target, info.ID)
 	if err != nil {
 		t.Fatalf("unexpected error releasing: %v", err)
 	}
 
 	// Lock removed and dir empty => RemoveEmptyDir rolls the dir back.
-	err = locker.RemoveEmptyDir(target)
+	err = locker.RemoveEmptyDir(context.Background(), target)
 	if err != nil {
 		t.Fatalf("unexpected error removing empty dir: %v", err)
 	}
@@ -642,7 +643,7 @@ func TestRemoveEmptyDirKeepsNonEmpty(t *testing.T) {
 	locker, client := newTestLocker()
 	target := testTarget()
 
-	_, err := locker.Acquire(target, "apply", true)
+	_, err := locker.Acquire(context.Background(), target, "apply", true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -650,7 +651,7 @@ func TestRemoveEmptyDirKeepsNonEmpty(t *testing.T) {
 	// Simulate apply having written a file into the project dir.
 	client.files[target.RemoteDir+"/compose.yml"] = "services: {}"
 
-	err = locker.RemoveEmptyDir(target)
+	err = locker.RemoveEmptyDir(context.Background(), target)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -667,17 +668,17 @@ func TestAcquireWithoutEnsureDirWhenDirExists(t *testing.T) {
 	target := testTarget()
 
 	// Create the dir via an apply-style acquire, release, then plan-style acquire.
-	first, err := locker.Acquire(target, "apply", true)
+	first, err := locker.Acquire(context.Background(), target, "apply", true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	err = locker.Release(target, first.ID)
+	err = locker.Release(context.Background(), target, first.ID)
 	if err != nil {
 		t.Fatalf("unexpected error releasing: %v", err)
 	}
 
-	info, err := locker.Acquire(target, "plan", false)
+	info, err := locker.Acquire(context.Background(), target, "plan", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

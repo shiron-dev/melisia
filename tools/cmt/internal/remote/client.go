@@ -30,14 +30,14 @@ var (
 var ErrExistenceUnknown = errExistenceUnknown
 
 type CommandRunner interface {
-	SSHCombinedOutput(args ...string) ([]byte, error)
-	SCPCombinedOutput(args ...string) ([]byte, error)
+	SSHCombinedOutput(ctx context.Context, args ...string) ([]byte, error)
+	SCPCombinedOutput(ctx context.Context, args ...string) ([]byte, error)
 }
 
 type ExecCommandRunner struct{}
 
-func (ExecCommandRunner) SSHCombinedOutput(args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(context.Background(), "ssh")
+func (ExecCommandRunner) SSHCombinedOutput(ctx context.Context, args ...string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, "ssh")
 	cmd.Args = make([]string, 1+len(args))
 	cmd.Args[0] = "ssh"
 	copy(cmd.Args[1:], args)
@@ -45,8 +45,8 @@ func (ExecCommandRunner) SSHCombinedOutput(args ...string) ([]byte, error) {
 	return cmd.CombinedOutput()
 }
 
-func (ExecCommandRunner) SCPCombinedOutput(args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(context.Background(), "scp")
+func (ExecCommandRunner) SCPCombinedOutput(ctx context.Context, args ...string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, "scp")
 	cmd.Args = make([]string, 1+len(args))
 	cmd.Args[0] = "scp"
 	copy(cmd.Args[1:], args)
@@ -63,14 +63,14 @@ type DirMetadata struct {
 }
 
 type RemoteClient interface {
-	ReadFile(remotePath string) ([]byte, error)
-	WriteFile(remotePath string, data []byte) error
-	MkdirAll(dir string) error
-	Remove(remotePath string) error
-	Stat(remotePath string) (fs.FileInfo, error)
-	StatDirMetadata(remotePath string) (*DirMetadata, error)
-	ListFilesRecursive(dir string) ([]string, error)
-	RunCommand(workdir, command string) (string, error)
+	ReadFile(ctx context.Context, remotePath string) ([]byte, error)
+	WriteFile(ctx context.Context, remotePath string, data []byte) error
+	MkdirAll(ctx context.Context, dir string) error
+	Remove(ctx context.Context, remotePath string) error
+	Stat(ctx context.Context, remotePath string) (fs.FileInfo, error)
+	StatDirMetadata(ctx context.Context, remotePath string) (*DirMetadata, error)
+	ListFilesRecursive(ctx context.Context, dir string) ([]string, error)
+	RunCommand(ctx context.Context, workdir, command string) (string, error)
 	Close() error
 }
 
@@ -122,8 +122,8 @@ func NewClientWithRunner(entry config.HostEntry, runner CommandRunner) (*Client,
 
 func (c *Client) Close() error { return nil }
 
-func (c *Client) ReadFile(remotePath string) ([]byte, error) {
-	out, err := c.runSSH("cat " + shellQuote(remotePath))
+func (c *Client) ReadFile(ctx context.Context, remotePath string) ([]byte, error) {
+	out, err := c.runSSH(ctx, "cat "+shellQuote(remotePath))
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", remotePath, err)
 	}
@@ -131,10 +131,10 @@ func (c *Client) ReadFile(remotePath string) ([]byte, error) {
 	return out, nil
 }
 
-func (c *Client) WriteFile(remotePath string, data []byte) error {
+func (c *Client) WriteFile(ctx context.Context, remotePath string, data []byte) error {
 	dir := path.Dir(remotePath)
 
-	err := c.MkdirAll(dir)
+	err := c.MkdirAll(ctx, dir)
 	if err != nil {
 		return fmt.Errorf("mkdir %s: %w", dir, err)
 	}
@@ -162,7 +162,7 @@ func (c *Client) WriteFile(remotePath string, data []byte) error {
 		return fmt.Errorf("close temp file: %w", closeErr)
 	}
 
-	err = c.runSCP(tmpPath, remotePath)
+	err = c.runSCP(ctx, tmpPath, remotePath)
 	if err != nil {
 		return fmt.Errorf("scp to %s: %w", remotePath, err)
 	}
@@ -170,20 +170,20 @@ func (c *Client) WriteFile(remotePath string, data []byte) error {
 	return nil
 }
 
-func (c *Client) MkdirAll(dir string) error {
-	_, err := c.runSSH("mkdir -p " + shellQuote(dir))
+func (c *Client) MkdirAll(ctx context.Context, dir string) error {
+	_, err := c.runSSH(ctx, "mkdir -p "+shellQuote(dir))
 
 	return err
 }
 
-func (c *Client) Remove(remotePath string) error {
-	_, err := c.runSSH("rm -f " + shellQuote(remotePath))
+func (c *Client) Remove(ctx context.Context, remotePath string) error {
+	_, err := c.runSSH(ctx, "rm -f "+shellQuote(remotePath))
 
 	return err
 }
 
-func (c *Client) Stat(remotePath string) (fs.FileInfo, error) {
-	_, err := c.runSSH("test -e " + shellQuote(remotePath))
+func (c *Client) Stat(ctx context.Context, remotePath string) (fs.FileInfo, error) {
+	_, err := c.runSSH(ctx, "test -e "+shellQuote(remotePath))
 	if err == nil {
 		return minimalFileInfo{name: path.Base(remotePath)}, nil
 	}
@@ -196,10 +196,10 @@ func (c *Client) Stat(remotePath string) (fs.FileInfo, error) {
 	return nil, fmt.Errorf("stat %s: %w", remotePath, errExistenceUnknown)
 }
 
-func (c *Client) StatDirMetadata(remotePath string) (*DirMetadata, error) {
+func (c *Client) StatDirMetadata(ctx context.Context, remotePath string) (*DirMetadata, error) {
 	cmd := "stat -c '%a %u %g %U %G' " + shellQuote(remotePath)
 
-	out, err := c.runSSH(cmd)
+	out, err := c.runSSH(ctx, cmd)
 	if err != nil {
 		return nil, fmt.Errorf("stat metadata %s: %w", remotePath, err)
 	}
@@ -225,8 +225,8 @@ func ParseDirStatOutput(output string) (*DirMetadata, error) {
 	}, nil
 }
 
-func (c *Client) ListFilesRecursive(dir string) ([]string, error) {
-	out, err := c.runSSH(fmt.Sprintf(
+func (c *Client) ListFilesRecursive(ctx context.Context, dir string) ([]string, error) {
+	out, err := c.runSSH(ctx, fmt.Sprintf(
 		"find %s -type f 2>/dev/null || true", shellQuote(dir),
 	))
 	if err != nil {
@@ -249,18 +249,18 @@ func (c *Client) ListFilesRecursive(dir string) ([]string, error) {
 	return files, nil
 }
 
-func (c *Client) RunCommand(workdir, command string) (string, error) {
+func (c *Client) RunCommand(ctx context.Context, workdir, command string) (string, error) {
 	cmd := command
 	if workdir != "" {
 		cmd = fmt.Sprintf("cd %s && %s", shellQuote(workdir), command)
 	}
 
-	out, err := c.runSSH(cmd)
+	out, err := c.runSSH(ctx, cmd)
 
 	return string(out), err
 }
 
-func (c *Client) runSSH(remoteCmd string) ([]byte, error) {
+func (c *Client) runSSH(ctx context.Context, remoteCmd string) ([]byte, error) {
 	const sshArgsPadding = 3
 
 	args := make([]string, 0, len(c.sshArgs)+sshArgsPadding)
@@ -269,7 +269,7 @@ func (c *Client) runSSH(remoteCmd string) ([]byte, error) {
 
 	slog.Debug("running ssh", "command", "ssh "+strings.Join(args, " "))
 
-	out, err := c.runner.SSHCombinedOutput(args...)
+	out, err := c.runner.SSHCombinedOutput(ctx, args...)
 	if err != nil {
 		return out, fmt.Errorf("ssh %s: %w\n%s", c.host.Name, err, out)
 	}
@@ -277,7 +277,7 @@ func (c *Client) runSSH(remoteCmd string) ([]byte, error) {
 	return out, nil
 }
 
-func (c *Client) runSCP(localPath, remotePath string) error {
+func (c *Client) runSCP(ctx context.Context, localPath, remotePath string) error {
 	dest := fmt.Sprintf("%s@%s:%s", c.host.User, c.host.Host, remotePath)
 
 	const scpArgsPadding = 2
@@ -288,7 +288,7 @@ func (c *Client) runSCP(localPath, remotePath string) error {
 
 	slog.Debug("running scp")
 
-	out, err := c.runner.SCPCombinedOutput(args...)
+	out, err := c.runner.SCPCombinedOutput(ctx, args...)
 	if err != nil {
 		return fmt.Errorf("scp to %s: %w\n%s", dest, err, out)
 	}
@@ -321,10 +321,18 @@ func buildArgs(entry config.HostEntry) ([]string, []string) {
 	return sshArgs, scpArgs
 }
 
+// defaultConnectTimeoutSeconds bounds the SSH/SCP connection phase. Without it a
+// dead or unreachable host stalls each command for the OS default (often well
+// over a minute), which makes a single bad host hold up the whole plan. Command
+// execution after a successful connect is bounded by the caller's context, not
+// this option, so long operations (image pulls during apply) are unaffected.
+const defaultConnectTimeoutSeconds = 10
+
 func buildCommonOptions(entry config.HostEntry) []string {
 	commonOpts := []string{
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "BatchMode=yes",
+		"-o", "ConnectTimeout=" + strconv.Itoa(defaultConnectTimeoutSeconds),
 	}
 
 	if entry.ProxyCommand != "" {
