@@ -17,87 +17,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        if: github.event_name == 'workflow_dispatch'
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: ./.github/actions/cancel-stale-runs
         with:
-          script: |
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const branch = context.ref.replace("refs/heads/", "");
-            const currentRunId = context.runId;
-            const currentRunNumber = context.runNumber;
-            const workflowRef = process.env.GITHUB_WORKFLOW_REF || "";
-            const workflowId = workflowRef
-              .split("@")[0]
-              .replace(`${owner}/${repo}/`, "");
-
-            if (!workflowId) {
-              core.warning("Failed to resolve workflow_id from GITHUB_WORKFLOW_REF. Skip stale run cancellation.");
-              return;
-            }
-
-            const runs = await github.paginate(
-              github.rest.actions.listWorkflowRuns,
-              {
-                owner,
-                repo,
-                workflow_id: workflowId,
-                branch,
-                event: "push",
-                per_page: 100,
-              },
-            );
-
-            const activeStatuses = new Set([
-              "queued",
-              "in_progress",
-              "waiting",
-              "requested",
-              "pending",
-              "action_required",
-            ]);
-
-            const candidates = runs.filter((run) => {
-              if (run.id === currentRunId) return false;
-              if (run.run_number >= currentRunNumber) return false;
-              if (!activeStatuses.has(run.status)) return false;
-              return true;
-            });
-
-            let cancelled = 0;
-
-            for (const run of candidates) {
-              const jobs = await github.paginate(
-                github.rest.actions.listJobsForWorkflowRun,
-                {
-                  owner,
-                  repo,
-                  run_id: run.id,
-                  per_page: 100,
-                },
-              );
-
-              const applyJob = jobs.find((job) => job.name === "cmt apply");
-              const applyStarted =
-                Boolean(applyJob?.started_at) ||
-                applyJob?.status === "in_progress" ||
-                Boolean(applyJob?.conclusion);
-
-              if (applyStarted) {
-                core.info(`Skip run ${run.id}: apply already started.`);
-                continue;
-              }
-
-              await github.rest.actions.cancelWorkflowRun({
-                owner,
-                repo,
-                run_id: run.id,
-              });
-              cancelled += 1;
-              core.info(`Cancelled stale run ${run.id}.`);
-            }
-
-            core.info(`Cancelled ${cancelled} stale run(s).`);
+          apply-job-patterns: '["cmt apply"]'
 
   plan:
     name: cmt plan
@@ -191,59 +114,12 @@ jobs:
       group: ${{ github.workflow }}-apply
       cancel-in-progress: false
     steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Check run is latest before apply
         id: stale-check
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        uses: ./.github/actions/check-run-latest
         with:
-          script: |
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const currentRunId = context.runId;
-            const currentRunNumber = context.runNumber;
-            const workflowRef = process.env.GITHUB_WORKFLOW_REF || "";
-            const workflowId = workflowRef
-              .split("@")[0]
-              .replace(`${owner}/${repo}/`, "");
-
-            if (!workflowId) {
-              core.setFailed("Failed to resolve workflow_id from GITHUB_WORKFLOW_REF.");
-              return;
-            }
-
-            const request = {
-              owner,
-              repo,
-              workflow_id: workflowId,
-              event: context.eventName,
-              per_page: 100,
-            };
-            if (context.eventName === "workflow_dispatch") {
-              request.branch = context.ref.replace("refs/heads/", "");
-            }
-
-            const runs = await github.paginate(
-              github.rest.actions.listWorkflowRuns,
-              request,
-            );
-
-            const newerRun = runs.find(
-              (run) => run.id !== currentRunId && run.run_number > currentRunNumber,
-            );
-
-            if (newerRun) {
-              const message = `Skip apply for stale run ${currentRunId}: newer ${context.eventName} run ${newerRun.id} exists.`;
-              if (context.eventName === "merge_group") {
-                core.setFailed(message);
-                return;
-              }
-              core.warning(message);
-              core.setOutput("is_latest", "false");
-              return;
-            }
-
-            core.setOutput("is_latest", "true");
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        if: steps.stale-check.outputs.is_latest == 'true'
+          action-label: apply
       - uses: ./.github/actions/setup-compose-cmt
         if: steps.stale-check.outputs.is_latest == 'true'
         env:
@@ -254,55 +130,9 @@ jobs:
       - name: Check run is latest before cmt apply
         id: pre-apply-stale-check
         if: steps.stale-check.outputs.is_latest == 'true'
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        uses: ./.github/actions/check-run-latest
         with:
-          script: |
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const currentRunId = context.runId;
-            const currentRunNumber = context.runNumber;
-            const workflowRef = process.env.GITHUB_WORKFLOW_REF || "";
-            const workflowId = workflowRef
-              .split("@")[0]
-              .replace(`${owner}/${repo}/`, "");
-
-            if (!workflowId) {
-              core.setFailed("Failed to resolve workflow_id from GITHUB_WORKFLOW_REF.");
-              return;
-            }
-
-            const request = {
-              owner,
-              repo,
-              workflow_id: workflowId,
-              event: context.eventName,
-              per_page: 100,
-            };
-            if (context.eventName === "workflow_dispatch") {
-              request.branch = context.ref.replace("refs/heads/", "");
-            }
-
-            const runs = await github.paginate(
-              github.rest.actions.listWorkflowRuns,
-              request,
-            );
-
-            const newerRun = runs.find(
-              (run) => run.id !== currentRunId && run.run_number > currentRunNumber,
-            );
-
-            if (newerRun) {
-              const message = `Skip cmt apply for stale run ${currentRunId}: newer ${context.eventName} run ${newerRun.id} exists.`;
-              if (context.eventName === "merge_group") {
-                core.setFailed(message);
-                return;
-              }
-              core.warning(message);
-              core.setOutput("is_latest", "false");
-              return;
-            }
-
-            core.setOutput("is_latest", "true");
+          action-label: cmt apply
       - name: Verify approved cmt plan
         id: verify-plan
         if: steps.stale-check.outputs.is_latest == 'true' && steps.pre-apply-stale-check.outputs.is_latest == 'true'
