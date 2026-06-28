@@ -2,6 +2,7 @@ package syncer
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -16,7 +17,7 @@ func TestRunHook_NilCommand(t *testing.T) {
 
 	style := newOutputStyle(&out)
 
-	result := runHook(nil, nil, "test", defaultHookRunner, &out, style)
+	result := runHook(context.Background(), nil, nil, "test", defaultHookRunner, &out, style)
 	if result != hookContinue {
 		t.Fatalf("expected hookContinue, got %v", result)
 	}
@@ -30,7 +31,7 @@ func TestRunHook_EmptyCommand(t *testing.T) {
 	style := newOutputStyle(&out)
 	cmd := &config.HookCommand{Command: ""}
 
-	result := runHook(cmd, nil, "test", defaultHookRunner, &out, style)
+	result := runHook(context.Background(), cmd, nil, "test", defaultHookRunner, &out, style)
 	if result != hookContinue {
 		t.Fatalf("expected hookContinue, got %v", result)
 	}
@@ -45,7 +46,7 @@ func TestRunHook_ExitZero(t *testing.T) {
 	cmd := &config.HookCommand{Command: "true"}
 	payload := config.BeforePlanHookPayload{Hosts: []string{"server1"}, WorkingDir: "/tmp"}
 
-	result := runHook(cmd, payload, "beforePlan", defaultHookRunner, &out, style)
+	result := runHook(context.Background(), cmd, payload, "beforePlan", defaultHookRunner, &out, style)
 	if result != hookContinue {
 		t.Fatalf("expected hookContinue, got %v; output: %s", result, out.String())
 	}
@@ -59,7 +60,7 @@ func TestRunHook_ExitOne(t *testing.T) {
 	style := newOutputStyle(&out)
 	cmd := &config.HookCommand{Command: "exit 1"}
 
-	result := runHook(cmd, "payload", "beforePlan", defaultHookRunner, &out, style)
+	result := runHook(context.Background(), cmd, "payload", "beforePlan", defaultHookRunner, &out, style)
 	if result != hookRejected {
 		t.Fatalf("expected hookRejected, got %v; output: %s", result, out.String())
 	}
@@ -73,7 +74,7 @@ func TestRunHook_ExitTwo(t *testing.T) {
 	style := newOutputStyle(&out)
 	cmd := &config.HookCommand{Command: "exit 2"}
 
-	result := runHook(cmd, "payload", "test", defaultHookRunner, &out, style)
+	result := runHook(context.Background(), cmd, "payload", "test", defaultHookRunner, &out, style)
 	if result != hookError {
 		t.Fatalf("expected hookError, got %v; output: %s", result, out.String())
 	}
@@ -84,7 +85,7 @@ func TestRunHook_ReceivesStdinJSON(t *testing.T) {
 
 	var captured []byte
 
-	mockRunner := func(command string, workdir string, stdinData []byte) (int, string, error) {
+	mockRunner := func(_ context.Context, command string, workdir string, stdinData []byte) (int, string, error) {
 		_ = command
 		_ = workdir
 		captured = stdinData
@@ -106,7 +107,7 @@ func TestRunHook_ReceivesStdinJSON(t *testing.T) {
 		},
 	}
 
-	result := runHook(cmd, payload, "beforePlan", mockRunner, &out, style)
+	result := runHook(context.Background(), cmd, payload, "beforePlan", mockRunner, &out, style)
 	if result != hookContinue {
 		t.Fatalf("expected hookContinue, got %v", result)
 	}
@@ -139,7 +140,7 @@ func TestRunHook_OutputForwarded(t *testing.T) {
 	style := newOutputStyle(&out)
 	cmd := &config.HookCommand{Command: "echo hello-hook"}
 
-	result := runHook(cmd, "x", "test", defaultHookRunner, &out, style)
+	result := runHook(context.Background(), cmd, "x", "test", defaultHookRunner, &out, style)
 	if result != hookContinue {
 		t.Fatalf("expected hookContinue, got %v", result)
 	}
@@ -168,7 +169,7 @@ func TestRunHook_UsesPayloadBasePathAsWorkdir(t *testing.T) {
 		},
 	}
 
-	result := runHook(cmd, payload, "beforeApplyPrompt", defaultHookRunner, &out, style)
+	result := runHook(context.Background(), cmd, payload, "beforeApplyPrompt", defaultHookRunner, &out, style)
 	if result != hookContinue {
 		t.Fatalf("expected hookContinue, got %v; output: %s", result, out.String())
 	}

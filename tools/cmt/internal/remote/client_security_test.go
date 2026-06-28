@@ -131,7 +131,7 @@ func TestClient_WriteFile_Success(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	writeErr := client.WriteFile("/srv/app/compose.yml", []byte("hello"))
+	writeErr := client.WriteFile(context.Background(), "/srv/app/compose.yml", []byte("hello"))
 	if writeErr != nil {
 		t.Fatalf("WriteFile: %v", writeErr)
 	}
@@ -163,7 +163,7 @@ func TestClient_WriteFile_MkdirError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	writeErr := client.WriteFile("/srv/app/compose.yml", []byte("hello"))
+	writeErr := client.WriteFile(context.Background(), "/srv/app/compose.yml", []byte("hello"))
 	if writeErr == nil {
 		t.Fatal("WriteFile should fail when MkdirAll fails")
 	}
@@ -183,7 +183,7 @@ func TestClient_WriteFile_SCPError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	writeErr := client.WriteFile("/srv/app/compose.yml", []byte("hello"))
+	writeErr := client.WriteFile(context.Background(), "/srv/app/compose.yml", []byte("hello"))
 	if writeErr == nil {
 		t.Fatal("WriteFile should fail when SCP fails")
 	}
@@ -206,7 +206,7 @@ func TestClient_WriteFile_TempFileError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	writeErr := client.WriteFile("/srv/app/compose.yml", []byte("hello"))
+	writeErr := client.WriteFile(context.Background(), "/srv/app/compose.yml", []byte("hello"))
 	if writeErr == nil {
 		t.Fatal("WriteFile should fail when temp file cannot be created")
 	}
@@ -238,7 +238,7 @@ func TestClient_runSCP_ArgAssembly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	scpErr := client.runSCP("/tmp/local-file", "/srv/app/compose.yml")
+	scpErr := client.runSCP(context.Background(), "/tmp/local-file", "/srv/app/compose.yml")
 	if scpErr != nil {
 		t.Fatalf("runSCP: %v", scpErr)
 	}
@@ -279,7 +279,7 @@ func TestClient_runSCP_Error(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	scpErr := client.runSCP("/tmp/local-file", "/srv/app/compose.yml")
+	scpErr := client.runSCP(context.Background(), "/tmp/local-file", "/srv/app/compose.yml")
 	if scpErr == nil {
 		t.Fatal("runSCP should return error when SCP fails")
 	}
@@ -302,7 +302,7 @@ func TestClient_Stat_NotExist(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, statErr := client.Stat("/srv/data/missing.txt")
+	_, statErr := client.Stat(context.Background(), "/srv/data/missing.txt")
 	if statErr == nil {
 		t.Fatal("expected error for missing path")
 	}
@@ -325,7 +325,7 @@ func TestClient_Stat_OtherExitCodeIsUnknown(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, statErr := client.Stat("/srv/data/file.txt")
+	_, statErr := client.Stat(context.Background(), "/srv/data/file.txt")
 	if statErr == nil {
 		t.Fatal("expected error")
 	}
@@ -349,7 +349,7 @@ func TestClient_ListFilesRecursive_Error(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, listErr := client.ListFilesRecursive("/srv/grafana")
+	_, listErr := client.ListFilesRecursive(context.Background(), "/srv/grafana")
 	if listErr == nil {
 		t.Fatal("ListFilesRecursive should return error on SSH failure")
 	}
@@ -389,7 +389,7 @@ func TestDefaultClientFactory_NewClient_WithRunner(t *testing.T) {
 	}
 
 	// 指定した runner が実際に使われることを、コマンド実行で確認する。
-	mkdirErr := client.MkdirAll("/srv/data")
+	mkdirErr := client.MkdirAll(context.Background(), "/srv/data")
 	if mkdirErr != nil {
 		t.Fatalf("MkdirAll: %v", mkdirErr)
 	}
@@ -429,7 +429,7 @@ func TestExecCommandRunner_SSHCombinedOutput(t *testing.T) {
 	requireBinary(t, "ssh")
 
 	// `ssh -V` はバージョンを出力して即終了する (ネットワークアクセスなし)。
-	out, err := ExecCommandRunner{}.SSHCombinedOutput("-V")
+	out, err := ExecCommandRunner{}.SSHCombinedOutput(context.Background(), "-V")
 	if err != nil {
 		t.Fatalf("ssh -V failed: %v\n%s", err, out)
 	}
@@ -442,6 +442,6 @@ func TestExecCommandRunner_SCPCombinedOutput(t *testing.T) {
 
 	// 引数なしの scp は usage を出して即終了する (ネットワークアクセスなし)。
 	// ここでは引数の受け渡しが panic せず戻ることだけを確認する。
-	out, _ := ExecCommandRunner{}.SCPCombinedOutput()
+	out, _ := ExecCommandRunner{}.SCPCombinedOutput(context.Background())
 	_ = out
 }

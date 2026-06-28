@@ -11,11 +11,23 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/shiron-dev/melisia/tools/cmt/internal/config"
 )
 
-type HookRunner func(command string, workdir string, stdinData []byte) (exitCode int, combinedOutput string, err error)
+// hookKillGracePeriod bounds how long Wait blocks after the context is cancelled
+// and the hook's process group has been signalled, so a child still holding the
+// output pipe cannot make a cancelled hook hang.
+const hookKillGracePeriod = 5 * time.Second
+
+type HookRunner func(
+	ctx context.Context,
+	command string,
+	workdir string,
+	stdinData []byte,
+) (exitCode int, combinedOutput string, err error)
 
 type hookResult int
 
@@ -25,11 +37,24 @@ const (
 	hookError
 )
 
-func defaultHookRunner(command string, workdir string, stdinData []byte) (int, string, error) {
-	cmd := exec.CommandContext(context.Background(), "sh", "-c", "eval \"$CMT_HOOK_COMMAND\"")
+func defaultHookRunner(ctx context.Context, command string, workdir string, stdinData []byte) (int, string, error) {
+	cmd := exec.CommandContext(ctx, "sh", "-c", "eval \"$CMT_HOOK_COMMAND\"")
 	if workdir != "" {
 		cmd.Dir = filepath.Clean(workdir)
 	}
+
+	// Run the hook in its own process group so that on cancellation we can kill
+	// the whole tree. exec.CommandContext's default Cancel only signals the sh
+	// wrapper, leaving any processes the hook spawned running after Ctrl+C.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} //nolint:exhaustruct // only Setpgid is relevant here
+	cmd.Cancel = func() error {
+		if cmd.Process == nil {
+			return nil
+		}
+		// Negative PID targets the entire process group created via Setpgid.
+		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	}
+	cmd.WaitDelay = hookKillGracePeriod
 
 	cmd.Env = append(os.Environ(), "CMT_HOOK_COMMAND="+command)
 	cmd.Stdin = bytes.NewReader(stdinData)
@@ -53,6 +78,7 @@ func defaultHookRunner(command string, workdir string, stdinData []byte) (int, s
 }
 
 func runHook(
+	ctx context.Context,
 	hookCmd *config.HookCommand,
 	payload any,
 	hookName string,
@@ -73,7 +99,7 @@ func runHook(
 
 	_, _ = fmt.Fprintf(writer, "\n%s %s...\n", style.key("Running hook"), hookName)
 
-	exitCode, output, err := runner(hookCmd.Command, hookWorkdir(payload), stdinData)
+	exitCode, output, err := runner(ctx, hookCmd.Command, hookWorkdir(payload), stdinData)
 	if err != nil {
 		_, _ = fmt.Fprintf(writer, "%s %s: %v\n", style.danger("Hook error"), hookName, err)
 		printHookOutput(output, writer)
