@@ -11,9 +11,16 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/shiron-dev/melisia/tools/cmt/internal/config"
 )
+
+// hookKillGracePeriod bounds how long Wait blocks after the context is cancelled
+// and the hook's process group has been signalled, so a child still holding the
+// output pipe cannot make a cancelled hook hang.
+const hookKillGracePeriod = 5 * time.Second
 
 type HookRunner func(
 	ctx context.Context,
@@ -35,6 +42,19 @@ func defaultHookRunner(ctx context.Context, command string, workdir string, stdi
 	if workdir != "" {
 		cmd.Dir = filepath.Clean(workdir)
 	}
+
+	// Run the hook in its own process group so that on cancellation we can kill
+	// the whole tree. exec.CommandContext's default Cancel only signals the sh
+	// wrapper, leaving any processes the hook spawned running after Ctrl+C.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} //nolint:exhaustruct // only Setpgid is relevant here
+	cmd.Cancel = func() error {
+		if cmd.Process == nil {
+			return nil
+		}
+		// Negative PID targets the entire process group created via Setpgid.
+		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	}
+	cmd.WaitDelay = hookKillGracePeriod
 
 	cmd.Env = append(os.Environ(), "CMT_HOOK_COMMAND="+command)
 	cmd.Stdin = bytes.NewReader(stdinData)
