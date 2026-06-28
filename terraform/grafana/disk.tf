@@ -20,7 +20,7 @@ resource "grafana_rule_group" "disk_usage" {
     exec_err_state = "Alerting"
     annotations = {
       summary     = "[{{ $labels.host }}] {{ $labels.mountpoint }} のディスク使用率が 90% を超過"
-      description = "{{ $labels.host }} の {{ $labels.mountpoint }} ({{ $labels.device }}) のディスク使用率が {{ $values.B }}% です (閾値 90%)。不要なファイル・ログ・イメージを削除して空き容量を確保すること。"
+      description = "{{ $labels.host }} の {{ $labels.mountpoint }} ({{ $labels.device }}) のディスク使用率が {{ $values.B.Value }}% です (閾値 90%)。不要なファイル・ログ・イメージを削除して空き容量を確保すること。"
     }
     labels = {
       category = "infrastructure"
