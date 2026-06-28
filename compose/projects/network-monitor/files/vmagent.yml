@@ -17,6 +17,15 @@ scrape_configs:
         labels:
           host: home-ep
           probe_server: home-ep
+      # TrueNAS (storage-srv) 上で TrueNAS Apps として常駐させた node_exporter。
+      # アプリは apps プールに保存され TrueNAS アップデートを越えて生存するため、
+      # 25.04+ で netdata から間引かれた host メトリクス (memory/cpu 等) を恒久的に
+      # 取得できる。home-ep の vmagent が LAN 越しに 192.168.1.64:9100 を scrape する。
+      - targets:
+          - 192.168.1.64:9100
+        labels:
+          host: storage-srv
+          probe_server: home-ep
   # home-ep 上の Docker Compose コンテナの状態を docker-compose-exporter から
   # 取得する。container/state/health/restart count を Prometheus 形式で公開する。
   # probe_server ラベルは global.external_labels (home-ep) が自動付与するため
@@ -48,3 +57,16 @@ scrape_configs:
         labels:
           probe_server: home-ep
           target_server: speed.cloudflare.com
+  # TrueNAS SCALE (storage-srv) のメトリクス。TrueNAS の Reporting Exporter が
+  # Graphite で push したものを graphite_exporter が Prometheus 形式へ変換して
+  # 公開する。mapping が job/instance ラベルを付与する (job=truenas,
+  # instance=TrueNAS ホスト名) ため honor_labels: true で exporter 側を優先する。
+  - job_name: 'truenas'
+    honor_labels: true
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    static_configs:
+      - targets:
+          - home_ep_truenas_graphite_exporter:9108
+        labels:
+          host: storage-srv
