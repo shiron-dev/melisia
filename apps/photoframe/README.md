@@ -67,8 +67,10 @@ make photoframe-lint   # golangci-lint run ./...
 
 `apps/photoframe/**` を main にマージするか `photoframe-v*` タグを打つと
 `.github/workflows/photoframe-image.yml` が `ghcr.io/shiron-dev/photoframe` を
-linux/amd64 + linux/arm64 でビルド・push する (テスト等は photoframe.yml が担当)。
-`compose/projects/photoframe` はこのイメージを参照する。
+linux/amd64 + linux/arm64 でビルド・push する。PR では lint 等を含む検証を
+photoframe.yml が担うため重複を避け、公開パス (main / タグ push) でのみ
+`go vet` + `go test` を実行してから push する。`compose/projects/photoframe`
+はこのイメージを参照する。
 
 ## デプロイ (arm-srv)
 
