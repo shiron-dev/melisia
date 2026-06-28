@@ -111,6 +111,23 @@ func (e *apiError) Error() string {
 	return fmt.Sprintf("%s %s returned %s: %s", e.Method, e.URL, e.Status, e.Body)
 }
 
+// IsNotFound reports whether err indicates that the requested TrueNAS resource
+// does not exist. app.config returns HTTP 422 with a "does not exist" message
+// for a missing app, so callers can use this to drop a resource from Terraform
+// state instead of failing every subsequent refresh.
+func IsNotFound(err error) bool {
+	var apiErr *apiError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	if apiErr.StatusCode == http.StatusNotFound {
+		return true
+	}
+
+	return apiErr.StatusCode == http.StatusUnprocessableEntity &&
+		strings.Contains(apiErr.Body, "does not exist")
+}
+
 func New(baseURL, apiKey string, tlsInsecureSkipVerify bool) (*Client, error) {
 	if strings.TrimSpace(baseURL) == "" {
 		return nil, fmt.Errorf("base_url must not be empty")

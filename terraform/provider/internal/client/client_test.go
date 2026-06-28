@@ -687,6 +687,30 @@ func TestDeleteCustomAppUsesEscapedIDAndWaitsForJob(t *testing.T) {
 	}
 }
 
+func TestIsNotFoundDetectsMissingApp(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requireMethodPath(t, r, http.MethodPost, "/api/v2.0/app/config")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_, _ = w.Write([]byte(`{"null":[{"message":"App missing does not exist","errno":2}]}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	_, err := client.GetAppConfig(context.Background(), "missing")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !IsNotFound(err) {
+		t.Fatalf("expected IsNotFound to be true for %v", err)
+	}
+	if IsNotFound(errors.New("boom")) {
+		t.Fatal("expected IsNotFound to be false for a non-API error")
+	}
+	if IsNotFound(nil) {
+		t.Fatal("expected IsNotFound to be false for nil")
+	}
+}
+
 func TestWaitForJobReturnsFailure(t *testing.T) {
 	restoreJobSettings := setJobSettings(t, time.Millisecond, time.Second)
 	defer restoreJobSettings()

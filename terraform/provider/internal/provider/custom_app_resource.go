@@ -91,9 +91,23 @@ func (r *customAppResource) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 
+	// The app now exists. Persist it to state immediately, before reading it
+	// back, so a transient read failure cannot leave the created app untracked
+	// (a later apply would otherwise try to recreate the same app and conflict).
+	plan.ID = types.StringValue(name)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Refresh compose_config from the canonical form TrueNAS returns. On a
+	// transient failure the plan values saved above remain in state.
 	config, err := r.client.GetAppConfig(ctx, name)
 	if err != nil {
-		resp.Diagnostics.AddError("Unable to read TrueNAS custom app after create", err.Error())
+		resp.Diagnostics.AddWarning(
+			"Created TrueNAS custom app but could not read it back",
+			"The app was created and saved to state, but reading its configuration failed: "+err.Error(),
+		)
 		return
 	}
 
@@ -110,6 +124,10 @@ func (r *customAppResource) Read(ctx context.Context, req resource.ReadRequest, 
 	name := firstNonEmpty(state.Name.ValueString(), state.ID.ValueString())
 	config, err := r.client.GetAppConfig(ctx, name)
 	if err != nil {
+		if client.IsNotFound(err) {
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		resp.Diagnostics.AddError("Unable to read TrueNAS custom app", err.Error())
 		return
 	}
