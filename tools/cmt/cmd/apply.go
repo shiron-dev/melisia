@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -32,8 +33,9 @@ func newApplyCmd(configPath *string) *cobra.Command {
 	applyCommand := new(cobra.Command)
 	applyCommand.Use = "apply"
 	applyCommand.Short = "Sync files to remote hosts (with confirmation unless --auto-approve)"
-	applyCommand.RunE = func(_ *cobra.Command, _ []string) error {
+	applyCommand.RunE = func(cmd *cobra.Command, _ []string) error {
 		return runApplyCmd(
+			cmd.Context(),
 			*configPath,
 			hostFilter,
 			projectFilter,
@@ -50,6 +52,7 @@ func newApplyCmd(configPath *string) *cobra.Command {
 }
 
 func runApplyCmd(
+	ctx context.Context,
 	configPath string,
 	hostFilter, projectFilter []string,
 	autoApprove bool,
@@ -62,7 +65,7 @@ func runApplyCmd(
 		return err
 	}
 
-	release, err := acquireApplyLocks(cfg, hostFilter, projectFilter, applyDependencies)
+	release, err := acquireApplyLocks(ctx, cfg, hostFilter, projectFilter, applyDependencies)
 	if err != nil {
 		return err
 	}
@@ -79,7 +82,7 @@ func runApplyCmd(
 	planDependencies.SSHResolver = applyDependencies.SSHResolver
 	planDependencies.ProgressWriter = os.Stdout
 
-	plan, err := syncer.BuildPlanWithDeps(cfg, hostFilter, projectFilter, *planDependencies)
+	plan, err := syncer.BuildPlanWithDeps(ctx, cfg, hostFilter, projectFilter, *planDependencies)
 	if err != nil {
 		return err
 	}
@@ -92,6 +95,7 @@ func runApplyCmd(
 	applyDependencies.ConfigPath = configPath
 
 	return syncer.ApplyWithDeps(
+		ctx,
 		cfg,
 		plan,
 		autoApprove,
@@ -103,6 +107,7 @@ func runApplyCmd(
 
 // acquireApplyLocks resolves the apply targets and takes their remote locks.
 func acquireApplyLocks(
+	ctx context.Context,
 	cfg *config.CmtConfig,
 	hostFilter, projectFilter []string,
 	applyDependencies syncer.ApplyDependencies,
@@ -114,12 +119,12 @@ func acquireApplyLocks(
 		ProgressWriter: nil,
 	}
 
-	targets, err := syncer.ResolveLockTargets(cfg, hostFilter, projectFilter, lockDeps)
+	targets, err := syncer.ResolveLockTargets(ctx, cfg, hostFilter, projectFilter, lockDeps)
 	if err != nil {
 		return nil, err
 	}
 
-	return acquireRemoteLocks(remoteLocker(applyDependencies.ClientFactory), targets, os.Stdout)
+	return acquireRemoteLocks(ctx, remoteLocker(applyDependencies.ClientFactory), targets, os.Stdout)
 }
 
 // remoteLocker builds a RemoteLocker, defaulting to a real SSH client factory.

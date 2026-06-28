@@ -10,6 +10,7 @@
 package config
 
 import (
+	context "context"
 	reflect "reflect"
 
 	gomock "go.uber.org/mock/gomock"
@@ -40,9 +41,9 @@ func (m *MockSSHConfigRunner) EXPECT() *MockSSHConfigRunnerMockRecorder {
 }
 
 // SSHOutput mocks base method.
-func (m *MockSSHConfigRunner) SSHOutput(args ...string) ([]byte, error) {
+func (m *MockSSHConfigRunner) SSHOutput(ctx context.Context, args ...string) ([]byte, error) {
 	m.ctrl.T.Helper()
-	varargs := []any{}
+	varargs := []any{ctx}
 	for _, a := range args {
 		varargs = append(varargs, a)
 	}
@@ -53,9 +54,10 @@ func (m *MockSSHConfigRunner) SSHOutput(args ...string) ([]byte, error) {
 }
 
 // SSHOutput indicates an expected call of SSHOutput.
-func (mr *MockSSHConfigRunnerMockRecorder) SSHOutput(args ...any) *gomock.Call {
+func (mr *MockSSHConfigRunnerMockRecorder) SSHOutput(ctx any, args ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SSHOutput", reflect.TypeOf((*MockSSHConfigRunner)(nil).SSHOutput), args...)
+	varargs := append([]any{ctx}, args...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SSHOutput", reflect.TypeOf((*MockSSHConfigRunner)(nil).SSHOutput), varargs...)
 }
 
 // MockSSHConfigResolver is a mock of SSHConfigResolver interface.
@@ -83,15 +85,15 @@ func (m *MockSSHConfigResolver) EXPECT() *MockSSHConfigResolverMockRecorder {
 }
 
 // Resolve mocks base method.
-func (m *MockSSHConfigResolver) Resolve(entry *HostEntry, sshConfigPath, hostDir string) error {
+func (m *MockSSHConfigResolver) Resolve(ctx context.Context, entry *HostEntry, sshConfigPath, hostDir string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Resolve", entry, sshConfigPath, hostDir)
+	ret := m.ctrl.Call(m, "Resolve", ctx, entry, sshConfigPath, hostDir)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Resolve indicates an expected call of Resolve.
-func (mr *MockSSHConfigResolverMockRecorder) Resolve(entry, sshConfigPath, hostDir any) *gomock.Call {
+func (mr *MockSSHConfigResolverMockRecorder) Resolve(ctx, entry, sshConfigPath, hostDir any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Resolve", reflect.TypeOf((*MockSSHConfigResolver)(nil).Resolve), entry, sshConfigPath, hostDir)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Resolve", reflect.TypeOf((*MockSSHConfigResolver)(nil).Resolve), ctx, entry, sshConfigPath, hostDir)
 }

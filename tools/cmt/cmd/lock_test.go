@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"io/fs"
 	"os"
@@ -31,7 +32,7 @@ type fakeClient struct {
 
 var _ remote.RemoteClient = (*fakeClient)(nil)
 
-func (c *fakeClient) RunCommand(_ string, command string) (string, error) {
+func (c *fakeClient) RunCommand(_ context.Context, _ string, command string) (string, error) {
 	if c.runErr != nil {
 		return "", c.runErr
 	}
@@ -88,7 +89,7 @@ func (c *fakeClient) RunCommand(_ string, command string) (string, error) {
 	}
 }
 
-func (c *fakeClient) ReadFile(remotePath string) ([]byte, error) {
+func (c *fakeClient) ReadFile(_ context.Context, remotePath string) ([]byte, error) {
 	data, ok := c.files[remotePath]
 	if !ok {
 		return nil, errNoSuchFile
@@ -97,7 +98,7 @@ func (c *fakeClient) ReadFile(remotePath string) ([]byte, error) {
 	return []byte(data), nil
 }
 
-func (c *fakeClient) Remove(remotePath string) error {
+func (c *fakeClient) Remove(_ context.Context, remotePath string) error {
 	if c.removeErr != nil {
 		return c.removeErr
 	}
@@ -107,20 +108,20 @@ func (c *fakeClient) Remove(remotePath string) error {
 	return nil
 }
 
-func (c *fakeClient) Close() error                     { return nil }
-func (c *fakeClient) WriteFile(string, []byte) error   { return nil }
-func (c *fakeClient) MkdirAll(string) error            { return nil }
-func (c *fakeClient) Stat(string) (fs.FileInfo, error) {
+func (c *fakeClient) Close() error                                    { return nil }
+func (c *fakeClient) WriteFile(context.Context, string, []byte) error { return nil }
+func (c *fakeClient) MkdirAll(context.Context, string) error          { return nil }
+func (c *fakeClient) Stat(context.Context, string) (fs.FileInfo, error) {
 	if c.statErr != nil {
 		return nil, c.statErr
 	}
 
 	return nil, errNotSupported
 }
-func (c *fakeClient) StatDirMetadata(string) (*remote.DirMetadata, error) {
+func (c *fakeClient) StatDirMetadata(context.Context, string) (*remote.DirMetadata, error) {
 	return nil, errNotSupported
 }
-func (c *fakeClient) ListFilesRecursive(string) ([]string, error) { return nil, nil }
+func (c *fakeClient) ListFilesRecursive(context.Context, string) ([]string, error) { return nil, nil }
 
 func (c *fakeClient) tryCreate(lockPath, payload, created string) string {
 	if existing, exists := c.files[lockPath]; exists {
@@ -200,13 +201,13 @@ func TestAcquireRemoteLocksSuccess(t *testing.T) {
 
 	var buf strings.Builder
 
-	release, err := acquireRemoteLocks(locker, targets, &buf)
+	release, err := acquireRemoteLocks(context.Background(), locker, targets, &buf)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	for _, target := range targets {
-		locked, _ := locker.IsLocked(target)
+		locked, _ := locker.IsLocked(context.Background(), target)
 		if !locked {
 			t.Errorf("expected %s to be locked", target.Project)
 		}
@@ -215,7 +216,7 @@ func TestAcquireRemoteLocksSuccess(t *testing.T) {
 	_ = release()
 
 	for _, target := range targets {
-		locked, _ := locker.IsLocked(target)
+		locked, _ := locker.IsLocked(context.Background(), target)
 		if locked {
 			t.Errorf("expected %s to be unlocked after release", target.Project)
 		}
@@ -232,7 +233,7 @@ func TestAcquireRemoteLocksRollsBackCreatedEmptyDir(t *testing.T) {
 	var buf strings.Builder
 
 	// apply-style acquire (ensureDir=true) creates the project dir.
-	release, err := acquireRemoteLocks(locker, targets, &buf)
+	release, err := acquireRemoteLocks(context.Background(), locker, targets, &buf)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -258,7 +259,7 @@ func TestAcquireRemoteLocksKeepsDirWithFiles(t *testing.T) {
 
 	var buf strings.Builder
 
-	release, err := acquireRemoteLocks(locker, targets, &buf)
+	release, err := acquireRemoteLocks(context.Background(), locker, targets, &buf)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -282,7 +283,7 @@ func TestAcquireRemoteLocksReleaseSurfacesError(t *testing.T) {
 
 	var buf strings.Builder
 
-	release, err := acquireRemoteLocks(locker, targets, &buf)
+	release, err := acquireRemoteLocks(context.Background(), locker, targets, &buf)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -301,14 +302,14 @@ func TestAcquireRemoteLocksAlreadyLocked(t *testing.T) {
 	locker := newTestLocker()
 	targets := lockTargets("grafana")
 
-	_, err := locker.Acquire(targets[0], "existing-op", true)
+	_, err := locker.Acquire(context.Background(), targets[0], "existing-op", true)
 	if err != nil {
 		t.Fatalf("unexpected error pre-acquiring lock: %v", err)
 	}
 
 	var buf strings.Builder
 
-	release, err := acquireRemoteLocks(locker, targets, &buf)
+	release, err := acquireRemoteLocks(context.Background(), locker, targets, &buf)
 	if err == nil {
 		_ = release()
 
@@ -327,19 +328,19 @@ func TestAcquireRemoteLocksReleasesOnPartialFailure(t *testing.T) {
 	targets := lockTargets("grafana", "n8n")
 
 	// Pre-lock the second target so the second acquire fails.
-	_, err := locker.Acquire(targets[1], "existing-op", true)
+	_, err := locker.Acquire(context.Background(), targets[1], "existing-op", true)
 	if err != nil {
 		t.Fatalf("unexpected error pre-acquiring second target: %v", err)
 	}
 
 	var buf strings.Builder
 
-	_, err = acquireRemoteLocks(locker, targets, &buf)
+	_, err = acquireRemoteLocks(context.Background(), locker, targets, &buf)
 	if err == nil {
 		t.Fatal("expected error when second target is already locked")
 	}
 
-	locked, _ := locker.IsLocked(targets[0])
+	locked, _ := locker.IsLocked(context.Background(), targets[0])
 	if locked {
 		t.Error("expected first target to be released after partial failure")
 	}
@@ -352,7 +353,7 @@ func TestAcquireRemoteLocksEmpty(t *testing.T) {
 
 	var buf strings.Builder
 
-	release, err := acquireRemoteLocks(locker, nil, &buf)
+	release, err := acquireRemoteLocks(context.Background(), locker, nil, &buf)
 	if err != nil {
 		t.Fatalf("unexpected error for empty target list: %v", err)
 	}
@@ -365,7 +366,7 @@ func TestRunForceUnlockWithLockerNotFound(t *testing.T) {
 
 	locker := newTestLocker()
 
-	err := runForceUnlockWithLocker(locker, lockTargets("grafana")[0], false)
+	err := runForceUnlockWithLocker(context.Background(), locker, lockTargets("grafana")[0], false)
 	if !errors.Is(err, lock.ErrLockNotFound) {
 		t.Errorf("expected ErrLockNotFound, got %v", err)
 	}
@@ -377,17 +378,17 @@ func TestRunForceUnlockWithLockerSuccess(t *testing.T) {
 	locker := newTestLocker()
 	target := lockTargets("grafana")[0]
 
-	_, err := locker.Acquire(target, "apply", true)
+	_, err := locker.Acquire(context.Background(), target, "apply", true)
 	if err != nil {
 		t.Fatalf("unexpected error acquiring lock: %v", err)
 	}
 
-	err = runForceUnlockWithLocker(locker, target, true)
+	err = runForceUnlockWithLocker(context.Background(), locker, target, true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	locked, _ := locker.IsLocked(target)
+	locked, _ := locker.IsLocked(context.Background(), target)
 	if locked {
 		t.Error("expected lock to be released after force-unlock")
 	}
@@ -397,7 +398,7 @@ func TestRunForceUnlockWithLockerCancelConfirm(t *testing.T) { //nolint:parallel
 	locker := newTestLocker()
 	target := lockTargets("grafana")[0]
 
-	_, err := locker.Acquire(target, "plan", true)
+	_, err := locker.Acquire(context.Background(), target, "plan", true)
 	if err != nil {
 		t.Fatalf("unexpected error acquiring lock: %v", err)
 	}
@@ -415,12 +416,12 @@ func TestRunForceUnlockWithLockerCancelConfirm(t *testing.T) { //nolint:parallel
 
 	t.Cleanup(func() { os.Stdin = oldStdin; _ = r.Close() })
 
-	err = runForceUnlockWithLocker(locker, target, false)
+	err = runForceUnlockWithLocker(context.Background(), locker, target, false)
 	if err != nil {
 		t.Fatalf("unexpected error for cancelled force-unlock: %v", err)
 	}
 
-	locked, _ := locker.IsLocked(target)
+	locked, _ := locker.IsLocked(context.Background(), target)
 	if !locked {
 		t.Error("expected target to still be locked after cancelled force-unlock")
 	}
@@ -434,20 +435,20 @@ func TestForceUnlockManyReleasesOnlyLocked(t *testing.T) {
 
 	// Lock two of the three candidates.
 	for _, i := range []int{0, 2} {
-		_, err := locker.Acquire(targets[i], "apply", true)
+		_, err := locker.Acquire(context.Background(), targets[i], "apply", true)
 		if err != nil {
 			t.Fatalf("unexpected error acquiring lock: %v", err)
 		}
 	}
 
 	// force=true skips confirmation; n8n is untouched because it was never locked.
-	err := forceUnlockMany(locker, targets, true)
+	err := forceUnlockMany(context.Background(), locker, targets, true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	for _, target := range targets {
-		locked, _ := locker.IsLocked(target)
+		locked, _ := locker.IsLocked(context.Background(), target)
 		if locked {
 			t.Errorf("expected %s to be unlocked", target.Project)
 		}
@@ -460,7 +461,7 @@ func TestForceUnlockManyNoLocks(t *testing.T) {
 	locker := newTestLocker()
 
 	// No targets are locked, so this is a no-op success (no confirmation needed).
-	err := forceUnlockMany(locker, lockTargets("grafana", "n8n"), false)
+	err := forceUnlockMany(context.Background(), locker, lockTargets("grafana", "n8n"), false)
 	if err != nil {
 		t.Fatalf("unexpected error for no-lock batch: %v", err)
 	}
@@ -510,12 +511,12 @@ func TestForceUnlockManyUnreadableForceRemoves(t *testing.T) {
 	client := &fakeClient{files: map[string]string{target.LockPath: "{not valid json"}}
 	locker := lock.NewRemote(fakeFactory{client: client})
 
-	err := forceUnlockMany(locker, []lock.Target{target}, true)
+	err := forceUnlockMany(context.Background(), locker, []lock.Target{target}, true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	locked, _ := locker.IsLocked(target)
+	locked, _ := locker.IsLocked(context.Background(), target)
 	if locked {
 		t.Error("expected unreadable lock to be removed with --force")
 	}
@@ -541,12 +542,12 @@ func TestForceUnlockManyUnreadableWithoutForceErrors(t *testing.T) { //nolint:pa
 
 	t.Cleanup(func() { os.Stdin = oldStdin; _ = r.Close() })
 
-	err := forceUnlockMany(locker, []lock.Target{target}, false)
+	err := forceUnlockMany(context.Background(), locker, []lock.Target{target}, false)
 	if !errors.Is(err, errUnreadableLockNeedsForce) {
 		t.Errorf("expected errUnreadableLockNeedsForce, got %v", err)
 	}
 
-	locked, _ := locker.IsLocked(target)
+	locked, _ := locker.IsLocked(context.Background(), target)
 	if !locked {
 		t.Error("expected unreadable lock to be left in place without --force")
 	}
@@ -559,7 +560,7 @@ func TestForceUnlockManyReleaseErrorSurfaced(t *testing.T) {
 	locker := lock.NewRemote(fakeFactory{client: client})
 	target := lockTargets("grafana")[0]
 
-	_, err := locker.Acquire(target, "apply", true)
+	_, err := locker.Acquire(context.Background(), target, "apply", true)
 	if err != nil {
 		t.Fatalf("unexpected error acquiring lock: %v", err)
 	}
@@ -567,7 +568,7 @@ func TestForceUnlockManyReleaseErrorSurfaced(t *testing.T) {
 	// Removal now fails: the batch must surface the release error.
 	client.removeErr = errNotSupported
 
-	err = forceUnlockMany(locker, []lock.Target{target}, true)
+	err = forceUnlockMany(context.Background(), locker, []lock.Target{target}, true)
 	if err == nil {
 		t.Error("expected forceUnlockMany to surface the release failure")
 	}
@@ -581,7 +582,7 @@ func TestForceUnlockManyMultipleReleaseErrors(t *testing.T) {
 	targets := lockTargets("grafana", "n8n")
 
 	for _, target := range targets {
-		_, err := locker.Acquire(target, "apply", true)
+		_, err := locker.Acquire(context.Background(), target, "apply", true)
 		if err != nil {
 			t.Fatalf("unexpected error acquiring lock: %v", err)
 		}
@@ -590,7 +591,7 @@ func TestForceUnlockManyMultipleReleaseErrors(t *testing.T) {
 	// Both removals fail: only the first error is surfaced, the rest are warnings.
 	client.removeErr = errNotSupported
 
-	err := forceUnlockMany(locker, targets, true)
+	err := forceUnlockMany(context.Background(), locker, targets, true)
 	if !errors.Is(err, errNotSupported) {
 		t.Errorf("expected first release error to surface, got %v", err)
 	}
@@ -600,7 +601,7 @@ func TestForceUnlockManyCancelConfirm(t *testing.T) { //nolint:paralleltest
 	locker := newTestLocker()
 	target := lockTargets("grafana")[0]
 
-	_, err := locker.Acquire(target, "plan", true)
+	_, err := locker.Acquire(context.Background(), target, "plan", true)
 	if err != nil {
 		t.Fatalf("unexpected error acquiring lock: %v", err)
 	}
@@ -618,12 +619,12 @@ func TestForceUnlockManyCancelConfirm(t *testing.T) { //nolint:paralleltest
 
 	t.Cleanup(func() { os.Stdin = oldStdin; _ = r.Close() })
 
-	err = forceUnlockMany(locker, []lock.Target{target}, false)
+	err = forceUnlockMany(context.Background(), locker, []lock.Target{target}, false)
 	if err != nil {
 		t.Fatalf("unexpected error for cancelled batch: %v", err)
 	}
 
-	locked, _ := locker.IsLocked(target)
+	locked, _ := locker.IsLocked(context.Background(), target)
 	if !locked {
 		t.Error("expected target to still be locked after cancelled force-unlock")
 	}
@@ -632,7 +633,7 @@ func TestForceUnlockManyCancelConfirm(t *testing.T) { //nolint:paralleltest
 // cmdStubResolver satisfies config.SSHConfigResolver without invoking ssh.
 type cmdStubResolver struct{}
 
-func (cmdStubResolver) Resolve(entry *config.HostEntry, _, _ string) error {
+func (cmdStubResolver) Resolve(_ context.Context, entry *config.HostEntry, _, _ string) error {
 	if entry.Port == 0 {
 		entry.Port = 22
 	}
@@ -676,7 +677,7 @@ func TestRunForceUnlockAllReleasesLocked(t *testing.T) {
 		LockPath:  "/opt/compose/grafana/.cmt.lock",
 	}
 
-	_, err := locker.Acquire(graf, "apply", true)
+	_, err := locker.Acquire(context.Background(), graf, "apply", true)
 	if err != nil {
 		t.Fatalf("unexpected error acquiring lock: %v", err)
 	}
@@ -684,12 +685,12 @@ func TestRunForceUnlockAllReleasesLocked(t *testing.T) {
 	deps := syncer.PlanDependencies{SSHResolver: cmdStubResolver{}}
 	opts := forceUnlockOptions{force: true, all: true}
 
-	err = runForceUnlockAll(locker, cfg, opts, deps)
+	err = runForceUnlockAll(context.Background(), locker, cfg, opts, deps)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	locked, _ := locker.IsLocked(graf)
+	locked, _ := locker.IsLocked(context.Background(), graf)
 	if locked {
 		t.Error("expected grafana to be unlocked after --all force-unlock")
 	}
@@ -704,7 +705,7 @@ func TestRunForceUnlockDispatchesAll(t *testing.T) {
 	// at target resolution, before any remote (SSH) work is attempted.
 	opts := forceUnlockOptions{force: true, all: true, projectFilter: []string{"nonexistent"}}
 
-	err := runForceUnlock(configPath, nil, opts)
+	err := runForceUnlock(context.Background(), configPath, nil, opts)
 	if err == nil {
 		t.Error("expected error when --all matches no project")
 	}
@@ -716,7 +717,7 @@ func TestRunForceUnlockRejectsArgs(t *testing.T) {
 	configPath := writeTestRepo(t)
 
 	// --all with a stray positional arg is rejected before config work.
-	err := runForceUnlock(configPath, []string{"host1"}, forceUnlockOptions{all: true})
+	err := runForceUnlock(context.Background(), configPath, []string{"host1"}, forceUnlockOptions{all: true})
 	if !errors.Is(err, errForceUnlockAllNoArgs) {
 		t.Errorf("expected errForceUnlockAllNoArgs, got %v", err)
 	}
@@ -732,7 +733,7 @@ func TestRunForceUnlockAllResolveError(t *testing.T) {
 
 	// A non-existent project filter resolves to no targets -> error returned
 	// before any locker work.
-	err := runForceUnlockAll(locker, cfg, opts, deps)
+	err := runForceUnlockAll(context.Background(), locker, cfg, opts, deps)
 	if err == nil {
 		t.Error("expected error when no targets match the filter")
 	}

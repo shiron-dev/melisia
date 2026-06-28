@@ -1,6 +1,7 @@
 package syncer
 
 import (
+	"context"
 	"slices"
 	"testing"
 
@@ -45,7 +46,9 @@ func TestBuildDeleteFilePlansSkipsLockFile(t *testing.T) {
 	// so client.ReadFile is never called for it.
 	manifest := &Manifest{ManagedFiles: []string{lock.LockFileName}}
 
-	plans := buildDeleteFilePlans(manifest, map[string]bool{}, "/opt/compose/grafana", client, map[string]bool{})
+	plans := buildDeleteFilePlans(
+		context.Background(), manifest, map[string]bool{}, "/opt/compose/grafana", client, map[string]bool{},
+	)
 	if len(plans) != 0 {
 		t.Errorf("expected no delete plans for reserved lock file, got %d: %+v", len(plans), plans)
 	}
@@ -61,7 +64,9 @@ func TestBuildFilePlansSkipsLocalLockFile(t *testing.T) {
 	// no remote read/write is attempted for it.
 	localFiles := map[string]string{lock.LockFileName: "/local/.cmt.lock"}
 
-	plans, err := buildFilePlans(localFiles, "/opt/compose/grafana", nil, client, nil, map[string]bool{}, nil)
+	plans, err := buildFilePlans(
+		context.Background(), localFiles, "/opt/compose/grafana", nil, client, nil, map[string]bool{}, nil,
+	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

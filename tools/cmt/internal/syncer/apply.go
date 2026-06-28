@@ -2,6 +2,7 @@ package syncer
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -31,13 +32,14 @@ var (
 	errUnknownHookResult = errors.New("unknown hook result")
 )
 
-func Apply(cfg *config.CmtConfig, plan *SyncPlan, autoApprove bool, w io.Writer) error {
+func Apply(ctx context.Context, cfg *config.CmtConfig, plan *SyncPlan, autoApprove bool, w io.Writer) error {
 	var dependencies ApplyDependencies
 
-	return ApplyWithDeps(cfg, plan, autoApprove, false, w, dependencies)
+	return ApplyWithDeps(ctx, cfg, plan, autoApprove, false, w, dependencies)
 }
 
 func ApplyWithDeps(
+	ctx context.Context,
 	cfg *config.CmtConfig,
 	plan *SyncPlan,
 	autoApprove bool,
@@ -49,6 +51,7 @@ func ApplyWithDeps(
 	clientFactory, input, hookRunner := resolveApplyDependencies(deps)
 
 	shouldContinue, err := runApplyPreflight(
+		ctx,
 		cfg,
 		plan,
 		autoApprove,
@@ -70,7 +73,7 @@ func ApplyWithDeps(
 
 	_, _ = fmt.Fprintln(writer)
 
-	err = applyAllHosts(cfg, plan, clientFactory, writer, style)
+	err = applyAllHosts(ctx, cfg, plan, clientFactory, writer, style)
 	if err != nil {
 		return err
 	}
@@ -85,6 +88,7 @@ func ApplyWithDeps(
 }
 
 func runApplyPreflight(
+	ctx context.Context,
 	cfg *config.CmtConfig,
 	plan *SyncPlan,
 	autoApprove bool,
@@ -96,19 +100,19 @@ func runApplyPreflight(
 	style outputStyle,
 	deps ApplyDependencies,
 ) (bool, error) {
-	handled, err := handleNoChanges(plan, refreshManifestOnNoop, clientFactory, writer, style)
+	handled, err := handleNoChanges(ctx, plan, refreshManifestOnNoop, clientFactory, writer, style)
 	if handled || err != nil {
 		return false, err
 	}
 
-	cancelled, hookErr := runBeforePlanApplyHook(cfg, plan, deps, hookRunner, writer, style)
+	cancelled, hookErr := runBeforePlanApplyHook(ctx, cfg, plan, deps, hookRunner, writer, style)
 	if hookErr != nil || cancelled {
 		return false, hookErr
 	}
 
 	plan.Print(writer)
 
-	cancelled, hookErr = runBeforeApplyPromptHook(cfg, plan, deps, hookRunner, writer, style)
+	cancelled, hookErr = runBeforeApplyPromptHook(ctx, cfg, plan, deps, hookRunner, writer, style)
 	if hookErr != nil || cancelled {
 		return false, hookErr
 	}
@@ -117,7 +121,7 @@ func runApplyPreflight(
 		return false, nil
 	}
 
-	cancelled, hookErr = runBeforeApplyHook(cfg, plan, deps, hookRunner, writer, style)
+	cancelled, hookErr = runBeforeApplyHook(ctx, cfg, plan, deps, hookRunner, writer, style)
 	if hookErr != nil || cancelled {
 		return false, hookErr
 	}
@@ -126,6 +130,7 @@ func runApplyPreflight(
 }
 
 func runBeforePlanApplyHook(
+	ctx context.Context,
 	cfg *config.CmtConfig,
 	plan *SyncPlan,
 	deps ApplyDependencies,
@@ -140,6 +145,7 @@ func runBeforePlanApplyHook(
 	payload := buildBeforePlanPayload(plan, deps.ConfigPath, cfg.BasePath)
 
 	return executeApplyHook(
+		ctx,
 		cfg.BeforeApplyHooks.BeforePlan,
 		payload,
 		"beforePlan",
@@ -150,6 +156,7 @@ func runBeforePlanApplyHook(
 }
 
 func runBeforeApplyPromptHook(
+	ctx context.Context,
 	cfg *config.CmtConfig,
 	plan *SyncPlan,
 	deps ApplyDependencies,
@@ -164,6 +171,7 @@ func runBeforeApplyPromptHook(
 	payload := buildBeforeApplyPromptPayload(plan, deps.ConfigPath, cfg.BasePath)
 
 	return executeApplyHook(
+		ctx,
 		cfg.BeforeApplyHooks.BeforeApplyPrompt,
 		payload,
 		"beforeApplyPrompt",
@@ -174,6 +182,7 @@ func runBeforeApplyPromptHook(
 }
 
 func runBeforeApplyHook(
+	ctx context.Context,
 	cfg *config.CmtConfig,
 	plan *SyncPlan,
 	deps ApplyDependencies,
@@ -188,6 +197,7 @@ func runBeforeApplyHook(
 	payload := buildBeforeApplyPayload(plan, deps.ConfigPath, cfg.BasePath)
 
 	return executeApplyHook(
+		ctx,
 		cfg.BeforeApplyHooks.BeforeApply,
 		payload,
 		"beforeApply",
@@ -198,6 +208,7 @@ func runBeforeApplyHook(
 }
 
 func handleNoChanges(
+	ctx context.Context,
 	plan *SyncPlan,
 	refreshManifestOnNoop bool,
 	clientFactory remote.ClientFactory,
@@ -214,7 +225,7 @@ func handleNoChanges(
 		return true, nil
 	}
 
-	err := refreshManifestForAllHosts(plan, clientFactory, writer, style)
+	err := refreshManifestForAllHosts(ctx, plan, clientFactory, writer, style)
 	if err != nil {
 		return true, err
 	}
@@ -225,6 +236,7 @@ func handleNoChanges(
 }
 
 func executeApplyHook(
+	ctx context.Context,
 	hookCmd *config.HookCommand,
 	payload any,
 	hookName string,
@@ -232,7 +244,7 @@ func executeApplyHook(
 	writer io.Writer,
 	style outputStyle,
 ) (bool, error) {
-	result := runHook(hookCmd, payload, hookName, hookRunner, writer, style)
+	result := runHook(ctx, hookCmd, payload, hookName, hookRunner, writer, style)
 	switch result {
 	case hookContinue:
 		return false, nil
@@ -262,6 +274,7 @@ func confirmApplyOrCancel(autoApprove bool, input io.Reader, writer io.Writer, s
 }
 
 func refreshManifestForAllHosts(
+	ctx context.Context,
 	plan *SyncPlan,
 	clientFactory remote.ClientFactory,
 	writer io.Writer,
@@ -280,7 +293,7 @@ func refreshManifestForAllHosts(
 			return fmt.Errorf("connecting to %s: %w", hostPlan.Host.Name, err)
 		}
 
-		refreshErr := refreshHostManifest(hostPlan, client, writer, style)
+		refreshErr := refreshHostManifest(ctx, hostPlan, client, writer, style)
 		_ = client.Close()
 
 		if refreshErr != nil {
@@ -292,6 +305,7 @@ func refreshManifestForAllHosts(
 }
 
 func refreshHostManifest(
+	ctx context.Context,
 	hostPlan HostPlan,
 	client remote.RemoteClient,
 	writer io.Writer,
@@ -306,7 +320,7 @@ func refreshHostManifest(
 			style.projectName(projectPlan.ProjectName),
 		)
 
-		err := writeProjectManifest(projectPlan.RemoteDir, localFiles, maskHints, client)
+		err := writeProjectManifest(ctx, projectPlan.RemoteDir, localFiles, maskHints, client)
 		if err != nil {
 			_, _ = fmt.Fprintln(writer, style.danger("FAILED"))
 
@@ -319,7 +333,13 @@ func refreshHostManifest(
 	return nil
 }
 
-func applyHostPlan(cfg *config.CmtConfig, hostPlan HostPlan, client remote.RemoteClient, writer io.Writer) error {
+func applyHostPlan(
+	ctx context.Context,
+	cfg *config.CmtConfig,
+	hostPlan HostPlan,
+	client remote.RemoteClient,
+	writer io.Writer,
+) error {
 	style := newOutputStyle(writer)
 
 	for _, projectPlan := range hostPlan.Projects {
@@ -331,7 +351,7 @@ func applyHostPlan(cfg *config.CmtConfig, hostPlan HostPlan, client remote.Remot
 
 		_, _ = fmt.Fprintf(writer, "  %s:\n", style.projectName(projectPlan.ProjectName))
 
-		err := applyProjectPlan(cfg, hostPlan, projectPlan, client, writer, style)
+		err := applyProjectPlan(ctx, cfg, hostPlan, projectPlan, client, writer, style)
 		if err != nil {
 			return err
 		}
@@ -372,6 +392,7 @@ func confirmApply(input io.Reader, writer io.Writer, style outputStyle) bool {
 }
 
 func applyAllHosts(
+	ctx context.Context,
 	cfg *config.CmtConfig,
 	plan *SyncPlan,
 	clientFactory remote.ClientFactory,
@@ -386,7 +407,7 @@ func applyAllHosts(
 			return fmt.Errorf("connecting to %s: %w", hostPlan.Host.Name, err)
 		}
 
-		applyErr := applyHostPlan(cfg, hostPlan, client, writer)
+		applyErr := applyHostPlan(ctx, cfg, hostPlan, client, writer)
 		_ = client.Close()
 
 		if applyErr != nil {
@@ -430,6 +451,7 @@ func projectHasChanges(projectPlan ProjectPlan) bool {
 }
 
 func applyProjectPlan(
+	ctx context.Context,
 	_ *config.CmtConfig,
 	hostPlan HostPlan,
 	projectPlan ProjectPlan,
@@ -437,27 +459,27 @@ func applyProjectPlan(
 	writer io.Writer,
 	style outputStyle,
 ) error {
-	err := createMissingDirs(projectPlan, client, writer, style)
+	err := createMissingDirs(ctx, projectPlan, client, writer, style)
 	if err != nil {
 		return err
 	}
 
-	localFiles, maskHints, err := syncProjectFiles(projectPlan, client, writer, style)
+	localFiles, maskHints, err := syncProjectFiles(ctx, projectPlan, client, writer, style)
 	if err != nil {
 		return err
 	}
 
-	err = writeProjectManifest(projectPlan.RemoteDir, localFiles, maskHints, client)
+	err = writeProjectManifest(ctx, projectPlan.RemoteDir, localFiles, maskHints, client)
 	if err != nil {
 		return err
 	}
 
-	err = runPostSyncCommand(hostPlan, projectPlan, client, writer, style)
+	err = runPostSyncCommand(ctx, hostPlan, projectPlan, client, writer, style)
 	if err != nil {
 		return err
 	}
 
-	err = runComposeAction(hostPlan, projectPlan, client, writer, style)
+	err = runComposeAction(ctx, hostPlan, projectPlan, client, writer, style)
 	if err != nil {
 		return err
 	}
@@ -465,13 +487,19 @@ func applyProjectPlan(
 	return nil
 }
 
-func createMissingDirs(projectPlan ProjectPlan, client remote.RemoteClient, writer io.Writer, style outputStyle) error {
+func createMissingDirs(
+	ctx context.Context,
+	projectPlan ProjectPlan,
+	client remote.RemoteClient,
+	writer io.Writer,
+	style outputStyle,
+) error {
 	for _, dirPlan := range projectPlan.Dirs {
 		if !shouldProcessDir(dirPlan) {
 			continue
 		}
 
-		err := processDirPlan(dirPlan, client, writer, style)
+		err := processDirPlan(ctx, dirPlan, client, writer, style)
 		if err != nil {
 			return err
 		}
@@ -486,16 +514,22 @@ func shouldProcessDir(dirPlan DirPlan) bool {
 	return dirPlan.Action != ActionUnchanged || applyRecursiveOwnership
 }
 
-func processDirPlan(dirPlan DirPlan, client remote.RemoteClient, writer io.Writer, style outputStyle) error {
+func processDirPlan(
+	ctx context.Context,
+	dirPlan DirPlan,
+	client remote.RemoteClient,
+	writer io.Writer,
+	style outputStyle,
+) error {
 	actionLabel := dirActionLabel(dirPlan.Exists)
 	_, _ = fmt.Fprintf(writer, "    %s %s/... ", style.key(actionLabel), dirPlan.RelativePath)
 
-	err := ensureDirExists(dirPlan, client, writer, style)
+	err := ensureDirExists(ctx, dirPlan, client, writer, style)
 	if err != nil {
 		return err
 	}
 
-	err = applyDirMetadata(dirPlan, client, writer, style)
+	err = applyDirMetadata(ctx, dirPlan, client, writer, style)
 	if err != nil {
 		return err
 	}
@@ -513,12 +547,18 @@ func dirActionLabel(exists bool) string {
 	return "creating dir"
 }
 
-func ensureDirExists(dirPlan DirPlan, client remote.RemoteClient, writer io.Writer, style outputStyle) error {
+func ensureDirExists(
+	ctx context.Context,
+	dirPlan DirPlan,
+	client remote.RemoteClient,
+	writer io.Writer,
+	style outputStyle,
+) error {
 	if dirPlan.Exists {
 		return nil
 	}
 
-	err := client.MkdirAll(dirPlan.RemotePath)
+	err := client.MkdirAll(ctx, dirPlan.RemotePath)
 	if err != nil {
 		_, _ = fmt.Fprintln(writer, style.danger("FAILED"))
 
@@ -528,11 +568,17 @@ func ensureDirExists(dirPlan DirPlan, client remote.RemoteClient, writer io.Writ
 	return nil
 }
 
-func applyDirMetadata(dirPlan DirPlan, client remote.RemoteClient, writer io.Writer, style outputStyle) error {
+func applyDirMetadata(
+	ctx context.Context,
+	dirPlan DirPlan,
+	client remote.RemoteClient,
+	writer io.Writer,
+	style outputStyle,
+) error {
 	applyRecursiveOwnership := dirPlan.Recursive && (dirPlan.Owner != "" || dirPlan.Group != "") && dirPlan.Exists
 
 	if dirPlan.NeedsOwnerChange || applyRecursiveOwnership {
-		err := applyDirOwnership(dirPlan, client)
+		err := applyDirOwnership(ctx, dirPlan, client)
 		if err != nil {
 			_, _ = fmt.Fprintln(writer, style.danger("FAILED"))
 
@@ -541,7 +587,7 @@ func applyDirMetadata(dirPlan DirPlan, client remote.RemoteClient, writer io.Wri
 	}
 
 	if dirPlan.NeedsPermChange {
-		err := applyDirPermission(dirPlan, client)
+		err := applyDirPermission(ctx, dirPlan, client)
 		if err != nil {
 			_, _ = fmt.Fprintln(writer, style.danger("FAILED"))
 
@@ -552,7 +598,7 @@ func applyDirMetadata(dirPlan DirPlan, client remote.RemoteClient, writer io.Wri
 	return nil
 }
 
-func applyDirPermission(dirPlan DirPlan, client remote.RemoteClient) error {
+func applyDirPermission(ctx context.Context, dirPlan DirPlan, client remote.RemoteClient) error {
 	if dirPlan.Permission == "" {
 		return nil
 	}
@@ -562,7 +608,7 @@ func applyDirPermission(dirPlan DirPlan, client remote.RemoteClient) error {
 		fmt.Sprintf("chmod %s %s", dirPlan.Permission, shellQuote(dirPlan.RemotePath)),
 	)
 
-	_, err := client.RunCommand("", cmd)
+	_, err := client.RunCommand(ctx, "", cmd)
 	if err != nil {
 		return fmt.Errorf("chmod %s on %s: %w", dirPlan.Permission, dirPlan.RemotePath, err)
 	}
@@ -570,7 +616,7 @@ func applyDirPermission(dirPlan DirPlan, client remote.RemoteClient) error {
 	return nil
 }
 
-func applyDirOwnership(dirPlan DirPlan, client remote.RemoteClient) error {
+func applyDirOwnership(ctx context.Context, dirPlan DirPlan, client remote.RemoteClient) error {
 	if dirPlan.Owner == "" && dirPlan.Group == "" {
 		return nil
 	}
@@ -590,7 +636,7 @@ func applyDirOwnership(dirPlan DirPlan, client remote.RemoteClient) error {
 		fmt.Sprintf("%s %s %s", chownCmd, ownership, shellQuote(dirPlan.RemotePath)),
 	)
 
-	_, err := client.RunCommand("", cmd)
+	_, err := client.RunCommand(ctx, "", cmd)
 	if err != nil {
 		return fmt.Errorf("chown %s on %s: %w", ownership, dirPlan.RemotePath, err)
 	}
@@ -615,6 +661,7 @@ func shellQuote(input string) string {
 }
 
 func syncProjectFiles(
+	ctx context.Context,
 	projectPlan ProjectPlan,
 	client remote.RemoteClient,
 	writer io.Writer,
@@ -627,7 +674,7 @@ func syncProjectFiles(
 		case ActionAdd, ActionModify:
 			_, _ = fmt.Fprintf(writer, "    %s %s... ", style.key("uploading"), filePlan.RelativePath)
 
-			err := client.WriteFile(filePlan.RemotePath, filePlan.LocalData)
+			err := client.WriteFile(ctx, filePlan.RemotePath, filePlan.LocalData)
 			if err != nil {
 				_, _ = fmt.Fprintln(writer, style.danger("FAILED"))
 
@@ -639,7 +686,7 @@ func syncProjectFiles(
 		case ActionDelete:
 			_, _ = fmt.Fprintf(writer, "    %s %s... ", style.key("deleting"), filePlan.RelativePath)
 
-			err := client.Remove(filePlan.RemotePath)
+			err := client.Remove(ctx, filePlan.RemotePath)
 			if err != nil {
 				_, _ = fmt.Fprintln(writer, style.danger("FAILED"))
 
@@ -676,6 +723,7 @@ func collectManifestInputs(projectPlan ProjectPlan) (map[string]string, map[stri
 }
 
 func writeProjectManifest(
+	ctx context.Context,
 	remoteDir string,
 	localFiles map[string]string,
 	maskHints map[string][]MaskHint,
@@ -690,7 +738,7 @@ func writeProjectManifest(
 
 	manifestPath := path.Join(remoteDir, manifestFile)
 
-	err = client.WriteFile(manifestPath, manifestData)
+	err = client.WriteFile(ctx, manifestPath, manifestData)
 	if err != nil {
 		return fmt.Errorf("writing manifest: %w", err)
 	}
@@ -699,6 +747,7 @@ func writeProjectManifest(
 }
 
 func runPostSyncCommand(
+	ctx context.Context,
 	hostPlan HostPlan,
 	projectPlan ProjectPlan,
 	client remote.RemoteClient,
@@ -711,7 +760,7 @@ func runPostSyncCommand(
 
 	_, _ = fmt.Fprintf(writer, "    %s... ", style.key("running post-sync command"))
 
-	output, err := client.RunCommand(projectPlan.RemoteDir, projectPlan.PostSyncCommand)
+	output, err := client.RunCommand(ctx, projectPlan.RemoteDir, projectPlan.PostSyncCommand)
 	if err != nil {
 		_, _ = fmt.Fprintln(writer, style.danger("FAILED"))
 		if output != "" {
@@ -735,6 +784,7 @@ func runPostSyncCommand(
 }
 
 func runComposeAction(
+	ctx context.Context,
 	hostPlan HostPlan,
 	projectPlan ProjectPlan,
 	client remote.RemoteClient,
@@ -748,7 +798,7 @@ func runComposeAction(
 
 	_, _ = fmt.Fprintf(writer, "    %s %s... ", style.key("compose"), cmd)
 
-	output, err := client.RunCommand(projectPlan.RemoteDir, cmd)
+	output, err := client.RunCommand(ctx, projectPlan.RemoteDir, cmd)
 	if err != nil {
 		_, _ = fmt.Fprintln(writer, style.danger("FAILED"))
 		if output != "" {

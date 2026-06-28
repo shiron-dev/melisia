@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -54,8 +55,8 @@ confirmation covers the whole batch.
 
 Use --force to skip the confirmation prompt.`
 	cmd.Args = cobra.MaximumNArgs(forceUnlockArgCount)
-	cmd.RunE = func(_ *cobra.Command, args []string) error {
-		return runForceUnlock(*configPath, args, opts)
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		return runForceUnlock(cmd.Context(), *configPath, args, opts)
 	}
 
 	cmd.Flags().BoolVar(&opts.force, "force", false, "skip confirmation prompt")
@@ -66,7 +67,7 @@ Use --force to skip the confirmation prompt.`
 	return cmd
 }
 
-func runForceUnlock(configPath string, args []string, opts forceUnlockOptions) error {
+func runForceUnlock(ctx context.Context, configPath string, args []string, opts forceUnlockOptions) error {
 	err := validateForceUnlockArgs(args, opts)
 	if err != nil {
 		return err
@@ -85,7 +86,7 @@ func runForceUnlock(configPath string, args []string, opts forceUnlockOptions) e
 	}
 
 	if opts.all {
-		return runForceUnlockAll(remoteLocker(nil), cfg, opts, deps)
+		return runForceUnlockAll(ctx, remoteLocker(nil), cfg, opts, deps)
 	}
 
 	// validateForceUnlockArgs already guaranteed exactly two args here; the guard
@@ -94,12 +95,12 @@ func runForceUnlock(configPath string, args []string, opts forceUnlockOptions) e
 		return errForceUnlockNeedsTwoArgs
 	}
 
-	target, err := resolveSingleLockTarget(cfg, args[0], args[1], deps)
+	target, err := resolveSingleLockTarget(ctx, cfg, args[0], args[1], deps)
 	if err != nil {
 		return err
 	}
 
-	return runForceUnlockWithLocker(remoteLocker(nil), target, opts.force)
+	return runForceUnlockWithLocker(ctx, remoteLocker(nil), target, opts.force)
 }
 
 // validateForceUnlockArgs rejects flag/argument combinations that don't make
@@ -126,6 +127,7 @@ func validateForceUnlockArgs(args []string, opts forceUnlockOptions) error {
 }
 
 func runForceUnlockAll(
+	ctx context.Context,
 	locker *lock.RemoteLocker,
 	cfg *config.CmtConfig,
 	opts forceUnlockOptions,
@@ -133,12 +135,12 @@ func runForceUnlockAll(
 ) error {
 	// Lenient resolution: a host that never runs the filtered project is skipped
 	// rather than aborting the whole batch.
-	targets, err := syncer.ResolveLockTargetsLenient(cfg, opts.hostFilter, opts.projectFilter, deps)
+	targets, err := syncer.ResolveLockTargetsLenient(ctx, cfg, opts.hostFilter, opts.projectFilter, deps)
 	if err != nil {
 		return err
 	}
 
-	return forceUnlockMany(locker, targets, opts.force)
+	return forceUnlockMany(ctx, locker, targets, opts.force)
 }
 
 type lockedTarget struct {
@@ -162,11 +164,11 @@ func (s lockScan) count() int {
 	return len(s.locked) + len(s.unreadable)
 }
 
-func scanLockedTargets(locker *lock.RemoteLocker, candidates []lock.Target) lockScan {
+func scanLockedTargets(ctx context.Context, locker *lock.RemoteLocker, candidates []lock.Target) lockScan {
 	var scan lockScan
 
 	for _, target := range candidates {
-		info, readErr := locker.Read(target)
+		info, readErr := locker.Read(ctx, target)
 
 		switch {
 		case readErr == nil:
@@ -183,8 +185,8 @@ func scanLockedTargets(locker *lock.RemoteLocker, candidates []lock.Target) lock
 
 // forceUnlockMany scans the candidate targets, force-unlocks only the ones that
 // are currently locked, and asks for a single confirmation covering the batch.
-func forceUnlockMany(locker *lock.RemoteLocker, candidates []lock.Target, force bool) error {
-	scan := scanLockedTargets(locker, candidates)
+func forceUnlockMany(ctx context.Context, locker *lock.RemoteLocker, candidates []lock.Target, force bool) error {
+	scan := scanLockedTargets(ctx, locker, candidates)
 
 	if scan.empty() {
 		_, _ = fmt.Fprintln(os.Stdout, "No locks found to release.")
@@ -206,17 +208,17 @@ func forceUnlockMany(locker *lock.RemoteLocker, candidates []lock.Target, force 
 		return nil
 	}
 
-	return releaseScannedLocks(locker, scan, force)
+	return releaseScannedLocks(ctx, locker, scan, force)
 }
 
 // releaseScannedLocks removes every readable lock and, when --force is set, every
 // unreadable one too (mirroring the single-target force path). Without --force an
 // unreadable lock can't be safely removed, so it is reported as an error.
-func releaseScannedLocks(locker *lock.RemoteLocker, scan lockScan, force bool) error {
+func releaseScannedLocks(ctx context.Context, locker *lock.RemoteLocker, scan lockScan, force bool) error {
 	var firstErr error
 
 	for _, lt := range scan.locked {
-		err := locker.ForceUnlockWithID(lt.target, lt.info.ID)
+		err := locker.ForceUnlockWithID(ctx, lt.target, lt.info.ID)
 		firstErr = reportRelease(lt.target, err, firstErr)
 	}
 
@@ -233,7 +235,7 @@ func releaseScannedLocks(locker *lock.RemoteLocker, scan lockScan, force bool) e
 			continue
 		}
 
-		err := locker.ForceUnlock(target)
+		err := locker.ForceUnlock(ctx, target)
 		firstErr = reportRelease(target, err, firstErr)
 	}
 
@@ -260,11 +262,12 @@ func reportRelease(target lock.Target, err, firstErr error) error {
 }
 
 func resolveSingleLockTarget(
+	ctx context.Context,
 	cfg *config.CmtConfig,
 	hostName, project string,
 	deps syncer.PlanDependencies,
 ) (lock.Target, error) {
-	targets, err := syncer.ResolveLockTargets(cfg, []string{hostName}, []string{project}, deps)
+	targets, err := syncer.ResolveLockTargets(ctx, cfg, []string{hostName}, []string{project}, deps)
 	if err != nil {
 		return lock.Target{}, err
 	}
@@ -278,8 +281,8 @@ func resolveSingleLockTarget(
 	return lock.Target{}, fmt.Errorf("%w: host %q, project %q", errLockTargetNotResolved, hostName, project)
 }
 
-func runForceUnlockWithLocker(locker *lock.RemoteLocker, target lock.Target, force bool) error {
-	info, readErr := locker.Read(target)
+func runForceUnlockWithLocker(ctx context.Context, locker *lock.RemoteLocker, target lock.Target, force bool) error {
+	info, readErr := locker.Read(ctx, target)
 	if readErr != nil {
 		if errors.Is(readErr, lock.ErrLockNotFound) {
 			return readErr
@@ -306,9 +309,9 @@ func runForceUnlockWithLocker(locker *lock.RemoteLocker, target lock.Target, for
 
 	var err error
 	if info != nil {
-		err = locker.ForceUnlockWithID(target, info.ID)
+		err = locker.ForceUnlockWithID(ctx, target, info.ID)
 	} else {
-		err = locker.ForceUnlock(target)
+		err = locker.ForceUnlock(ctx, target)
 	}
 
 	if err != nil {

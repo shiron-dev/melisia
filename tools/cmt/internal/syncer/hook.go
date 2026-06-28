@@ -15,7 +15,12 @@ import (
 	"github.com/shiron-dev/melisia/tools/cmt/internal/config"
 )
 
-type HookRunner func(command string, workdir string, stdinData []byte) (exitCode int, combinedOutput string, err error)
+type HookRunner func(
+	ctx context.Context,
+	command string,
+	workdir string,
+	stdinData []byte,
+) (exitCode int, combinedOutput string, err error)
 
 type hookResult int
 
@@ -25,8 +30,8 @@ const (
 	hookError
 )
 
-func defaultHookRunner(command string, workdir string, stdinData []byte) (int, string, error) {
-	cmd := exec.CommandContext(context.Background(), "sh", "-c", "eval \"$CMT_HOOK_COMMAND\"")
+func defaultHookRunner(ctx context.Context, command string, workdir string, stdinData []byte) (int, string, error) {
+	cmd := exec.CommandContext(ctx, "sh", "-c", "eval \"$CMT_HOOK_COMMAND\"")
 	if workdir != "" {
 		cmd.Dir = filepath.Clean(workdir)
 	}
@@ -53,6 +58,7 @@ func defaultHookRunner(command string, workdir string, stdinData []byte) (int, s
 }
 
 func runHook(
+	ctx context.Context,
 	hookCmd *config.HookCommand,
 	payload any,
 	hookName string,
@@ -73,7 +79,7 @@ func runHook(
 
 	_, _ = fmt.Fprintf(writer, "\n%s %s...\n", style.key("Running hook"), hookName)
 
-	exitCode, output, err := runner(hookCmd.Command, hookWorkdir(payload), stdinData)
+	exitCode, output, err := runner(ctx, hookCmd.Command, hookWorkdir(payload), stdinData)
 	if err != nil {
 		_, _ = fmt.Fprintf(writer, "%s %s: %v\n", style.danger("Hook error"), hookName, err)
 		printHookOutput(output, writer)
