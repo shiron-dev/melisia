@@ -13,10 +13,8 @@ runs:
       run: |
         set -euo pipefail
 
-        # AWS is intentionally excluded while its credentials are managed outside this check/plan flow.
         matrix_json=$(find terraform -type f -name provider.tf \
           -not -path '*/.terraform/*' \
-          -not -path 'terraform/aws/*' \
           -exec dirname {} \; \
           | sort -u \
           | jq -R -s -c '
