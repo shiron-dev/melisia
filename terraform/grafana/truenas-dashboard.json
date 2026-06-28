@@ -6006,7 +6006,11 @@
         },
         "refresh": 2,
         "regex": "",
-        "type": "query"
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "P95B22FBE6FE890D0"
+        }
       }
     ]
   },
