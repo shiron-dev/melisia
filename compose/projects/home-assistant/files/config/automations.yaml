@@ -89,6 +89,9 @@
     domain: cover
     entity_id: a2a870ca6966347cac1d3aa2a70ed80a
     type: close
+  - variables:
+      main_lights: "{{\n  label_entities('living_light')\n  | select('in', area_entities('main_room'))\n
+        \ | list\n}}\n"
   - if:
     - condition: template
       value_template: "{{\n  label_entities('occupancy_sensor')\n  | select('in',
