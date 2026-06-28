@@ -3472,3 +3472,18 @@ func TestBuildLocalFilePlan_JinjaWithoutIgnoreErrors(t *testing.T) {
 		t.Fatal("expected a render error for HA Jinja when templateIgnore is not applied")
 	}
 }
+
+func TestBuildLocalFilePlan_ReadError(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	// ローカル読み込みが先に失敗するため remote へのアクセスは発生しない。
+	client := remote.NewMockRemoteClient(ctrl)
+
+	_, err := buildLocalFilePlan(
+		"compose.yml", filepath.Join(t.TempDir(), "missing.yml"), "/srv/grafana", client, nil, nil, false,
+	)
+	if err == nil {
+		t.Fatal("expected an error reading a missing local file")
+	}
+}
