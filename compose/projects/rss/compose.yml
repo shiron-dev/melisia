@@ -1,13 +1,68 @@
 services:
+  rsshub:
+    image: diygod/rsshub:latest
+    container_name: rsshub
+    restart: unless-stopped
+    # FreshRSS とは同一 compose プロジェクトの default ネットワークを共有するため、
+    # FreshRSS は Cloudflare Access を介さず http://rsshub:1200 で直接フィードを取得できる
+    # (旧 rss-internal 共有ネットワークは統合により不要)。
+    environment:
+      NODE_ENV: production
+      CACHE_TYPE: redis
+      CACHE_EXPIRE: "{{ .rsshub_cache_expire }}"
+      REDIS_URL: redis://rsshub-redis:6379
+    depends_on:
+      rsshub-redis:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:1200/', r => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  rsshub-redis:
+    image: redis:8.8.0-alpine@sha256:09160599abd229764c0fb44cb6be640294e1d360a54b19985ab4843dcf2d90f1
+    container_name: rsshub-redis
+    restart: unless-stopped
+    user: "1000:1000"
+    volumes:
+      - ./redis_data:/data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
   freshrss:
     image: freshrss/freshrss:1.29.1@sha256:ab6b363102ccdbc39f6a62db926f567c61a5289bf25ba460f1c34423d8cc1a4d
     container_name: freshrss
     restart: unless-stopped
-    # 既定ネットワーク (db/tunnel) に加え、同一ホストの RSSHub へ Cloudflare Access
-    # を介さず http://rsshub:1200 で直接アクセスするための共有ネットワークに参加する。
-    networks:
-      - default
-      - rss-internal
     environment:
       TZ: Asia/Tokyo
       CRON_MIN: "{{ .freshrss_cron_min }}"
@@ -77,15 +132,22 @@ services:
       retries: 5
       start_period: 30s
 
-  freshrss-tunnel:
+  # RSSHub (rsshub.melisia.net) と FreshRSS (freshrss.melisia.net) の両ホスト名を
+  # 1 本の Cloudflare Tunnel (arm-srv-rss) で配信する。どのホスト名をどのローカル
+  # サービスへ振るかは Terraform の cloudflare_zero_trust_tunnel_cloudflared_config
+  # (ingress) で管理し、このコンテナは token でトンネルを張るだけ。両サービスと
+  # 同一 default ネットワーク上にあるため http://freshrss:80 / http://rsshub:1200 を解決できる。
+  rss-tunnel:
     image: cloudflare/cloudflared:2026.6.1@sha256:6d91c121b803126f7a5344005d17a9324788fc09d305b6e2560ec6040a7ae283
-    container_name: freshrss-tunnel
+    container_name: rss-tunnel
     restart: unless-stopped
     command: tunnel run
     environment:
       TUNNEL_TOKEN: "{{ .cf_tunnel_token }}"
     depends_on:
       freshrss:
+        condition: service_healthy
+      rsshub:
         condition: service_healthy
     security_opt:
       - no-new-privileges:true
@@ -105,11 +167,3 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-
-networks:
-  default:
-  # RSSHub との同一ホスト内通信用の共有ネットワーク。host.yml の postSyncCommand
-  # が compose up 前に `docker network create rss-internal` で用意する。
-  rss-internal:
-    external: true
-    name: rss-internal
