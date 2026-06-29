@@ -1,27 +1,27 @@
-# ESPHome デバイス (音声サテライト + 環境センサー)
+# ESPHome デバイス (音声サテライト + コントローラー + 環境センサー)
 
 ## 構成
 
 ```text
  esphome_config/
-├── secrets.yaml.example            # WiFi シークレットのサンプル
-├── m5stick-s3-voice.yaml           # 音声サテライト (M5Stack StickS3)
-└── m5stack-atom-s3-lite.yaml       # 環境センサーノード (CO2 / BME688)
+├── secrets.yaml.example            # シークレットのサンプル
+├── atoms3r-echo-base.yaml          # 音声サテライト (M5Stack AtomS3R + Atomic Echo Base)
+├── m5dial.yaml                     # コントローラー (M5Dial v1.1)
+└── m5stack-atom-s3-lite.yaml       # 環境センサーノード (CO2 / BME688) + BLE プロキシ
 ```
 
-> 実体の `secrets.yaml`(`wifi_ssid` / `wifi_password`)はリポジトリに含めず、
-> `host.yml` の `preserveRemoteFiles` で cmt の同期・削除対象から除外している。
-> API 暗号化キー / OTA パスワードは各デバイス YAML に直書き。
+> 実体の `secrets.yaml` はリポジトリに含めず、`host.yml` の `preserveRemoteFiles` で
+> cmt の同期・削除対象から除外している。WiFi 資格情報・各デバイスの API 暗号化キー /
+> OTA パスワードはすべて `!secret` 参照とし、値はインラインに置かない
+> (サンプルは `secrets.yaml.example`)。
 
 ## 役割分担
 
 | デバイス | 役割 | 備考 |
 | --- | --- | --- |
-| **M5Stack StickS3** | 音声サテライト | **8MB PSRAM** 搭載。ES8311+マイク+AW8737+スピーカー内蔵。音声向き。 |
-| **M5Stack AtomS3-Lite** | 環境センサー | Grove PaHub 経由で SCD4x(CO2)+ BME688。PSRAM 非搭載で音声には不向きだったため役割を分離。 |
-
-AtomS3-Lite は PSRAM 非搭載で、音声バッファ確保が `ESP_ERR_NO_MEM` で破綻したため、
-音声機能は PSRAM 搭載の StickS3 に移設した。
+| **M5Stack AtomS3R Echo Base** | 音声サテライト | ES8311 codec + MEMS mic + NS4150B amp。M5Stack 公式 ESPHome パッケージを使用。 |
+| **M5Dial v1.1** | コントローラー | ロータリーエンコーダ + タッチ + RFID。HA の操作端末。 |
+| **M5Stack AtomS3-Lite** | 環境センサー | Grove PaHub 経由で SCD4x(CO2) + BME688。Bluetooth プロキシも兼ねる。 |
 
 ## 音声パイプライン (compose.yml 内のコンテナ)
 
@@ -35,40 +35,31 @@ AtomS3-Lite は PSRAM 非搭載で、音声バッファ確保が `ESP_ERR_NO_MEM
 HA の内部 URL は `configuration.yaml` で `internal_url: http://192.168.1.61:8123`
 を設定済み(デバイスが TTS 音声を取得するのに必須)。
 
-## StickS3 セットアップ
+## セットアップ
 
 ### 1. デプロイ
 
 ```sh
-cmt apply --host home-ep --project home-assistant
+make cmt-apply CMT_OPT="--host=home-ep --project=home-assistant"
 ```
 
 ### 2. フラッシュ
 
-ESPHome ダッシュボード (`http://192.168.1.61:6052`) で `m5stick-s3-voice` を
-**Install**(初回は USB / Chrome 系の Web Serial、以降 OTA)。
+ESPHome ダッシュボード (`http://192.168.1.61:6052`) で各デバイスを **Install**
+(初回は USB / Chrome 系の Web Serial、以降 OTA)。`!secret` の値は事前に
+リモートの `secrets.yaml`(またはダッシュボード右上「Secrets」エディタ)へ。
 
-### 3. Home Assistant
+### 3. Home Assistant (音声サテライト)
 
 1. **Wyoming 統合** 3つ:`127.0.0.1` の `10300`(Whisper)/`10200`(Piper)/`10400`(openWakeWord)。
 2. **Assist パイプライン**:会話=LLM、STT=Whisper、TTS=Piper、ウェイクワード=ok_nabu。
-3. デバイス `m5stick-s3-voice` にパイプラインを割り当て。
+3. デバイス `atoms3r-echo-base` にパイプラインを割り当て。
 
-### ⚠️ StickS3 は実機未検証の推定を含む
+## シークレットのローテーション
 
-M5 公式の ESPHome パッケージが StickS3 用にまだ無いため、以下は実機で要確認:
-
-1. **PSRAM mode**: `octal` を指定(N8R8 の定説)。boot 失敗/クラッシュ時は `quad` に。
-2. **M5PM1 電源**: LCD/MIC/SPK 電源(L3B)は M5PM1(0x6E)の PYG2=GPIO2 で給電。
-   **アクティブ LOW**(M5 公式)なので on_boot で GPIO2 を出力 **LOW** にして給電する。
-   HIGH だと給電されず音声回路が動かない(「ジジ」になる)。
-3. **ES8311 マイク経路**: `use_microphone: true`(ADC 経由)と推定。マイクが拾わなければ
-   `use_microphone` / `adc_type` を見直す。
-4. **ウェイクワード**: 現状サーバ側 openWakeWord(`start_continuous`)。PSRAM があるので
-   on-device `micro_wake_word` も可能(その場合 HA のデバイス設定で wake word を選べる)。
-
-起動ログ(`ESP_ERR_NO_MEM` が無いか、音声が出るか、マイク RMS など)を見ながら
-上記を詰める。
+API 暗号化キー / OTA パスワードを更新したら、`secrets.yaml` の該当値を新しい値へ
+更新し、対象デバイスを再フラッシュ(OTA パスワードを変える場合は初回 USB)、
+HA 側でデバイスの API 暗号化キーを再入力(再ペアリング)する。
 
 ## 注意: 日本語 TTS
 

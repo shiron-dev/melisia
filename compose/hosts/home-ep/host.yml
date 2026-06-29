@@ -56,7 +56,7 @@ projects:
       # / OTA パスワード)。資格情報のため repo に置かず、リモート (ESPHome ダッシュボードの
       # Secrets エディタ) で管理する。削除されると全デバイスが起動不能になるため必ず保護する。
       # サンプルは repo の esphome_config/secrets.yaml.example を参照。
-      # 各デバイス YAML (m5stack-atom-s3-lite / m5stick-s3-voice / m5dial 等) は repo 管理
+      # 各デバイス YAML (atoms3r-echo-base / m5dial / m5stack-atom-s3-lite 等) は repo 管理
       # (同期対象) になったため preserveRemoteFiles には含めない。
       - esphome_config/secrets.yaml
     dirs:

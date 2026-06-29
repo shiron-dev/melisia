@@ -1,7 +1,7 @@
 # =============================================================================
 # M5Stack AtomS3-Lite — 環境センサー + Bluetooth プロキシ
 # =============================================================================
-# 音声サテライト機能は M5Stack StickS3 (m5stick-s3-voice.yaml) に移設したため、
+# 音声サテライト機能は AtomS3R Echo Base (atoms3r-echo-base.yaml) が担うため、
 # このデバイスは Grove の環境センサー + Home Assistant 用 Bluetooth プロキシに。
 #   - Grove: TCA9548A (PaHub) 経由で SCD4x (CO2) と BME688 (環境センサー)
 #   - Bluetooth プロキシ: HA から BLE 機器に到達するための中継 (esp-idf 必須)
