@@ -119,6 +119,10 @@ touchscreen:
     id: touch
     i2c_id: internal_i2c
     address: 0x38
+    display: round_display
+    # 画面に触れたらブザーで軽くフィードバック
+    on_touch:
+      - rtttl.play: "tap:d=32,o=7,b=200:c"
 
 # --- コントローラーとしての入力 ---
 
@@ -155,6 +159,16 @@ sensor:
       - rtttl.play: "click:d=32,o=7,b=200:c"
 
 binary_sensor:
+  # タッチ。画面全体 (240x240) を 1 つの領域として HA に公開し、操作トリガにする
+  - platform: touchscreen
+    name: Touch
+    id: dial_touch
+    touchscreen_id: touch
+    x_min: 0
+    x_max: 240
+    y_min: 0
+    y_max: 240
+
   # エンコーダ押し込み (前面ボタン)。HA に公開して操作トリガにする
   - platform: gpio
     name: Button
