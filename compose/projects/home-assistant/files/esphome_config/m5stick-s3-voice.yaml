@@ -34,10 +34,10 @@ esphome:
     # LCD/MIC/SPK 電源レベルを給電する。ESPHome に M5PM1 対応が無いため I2C 直叩き。
     # レジスタ: FUNC0=0x16(bit5:4=GPIO), MODE=0x10(bit2=out), DRV=0x13(bit2=pushpull),
     #           OUT=0x11(bit2=LOW で給電)。全て read-modify-write。
-    # 【診断モード】priority 200: ロガーが確実に出力する段階で M5PM1 の到達性を
-    # プローブしログに出す。0x6E が読めれば 47/48 にいる(=給電順序の問題)、
-    # 読めなければ別バス/別初期化が必要。確認後に正しい priority へ戻す。
-    priority: 200
+    # priority 900: I2C バス初期化後・かつ es8311 (audio_dac) 初期化前に給電する。
+    # これより低い priority (例: 200) だと es8311 が給電前に初期化され、音声回路が
+    # 動かない (「ジジ」)。lambda 冒頭の 0x6E プローブは到達性確認用のログ (無害)。
+    priority: 900
     then:
       - lambda: |-
           auto *bus = id(bus_a);
