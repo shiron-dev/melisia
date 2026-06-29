@@ -49,6 +49,9 @@ projects:
       - mosquitto_passwd
       # ESPHome のデバイス設定はリモートのダッシュボードで管理されており repo に存在しない。
       # cmt が orphan として削除しないよう明示的に保護する。
+      # secrets.yaml は資格情報のためリモート専用 (repo 非管理)。削除されると全デバイスが
+      # 起動不能になるため必ず保護する。
+      - esphome_config/secrets.yaml
       - esphome_config/README.md
       - esphome_config/m5stack-atom-s3-lite.yaml
       - esphome_config/m5stick-s3-voice.yaml

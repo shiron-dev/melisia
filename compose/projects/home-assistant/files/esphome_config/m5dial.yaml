@@ -1,0 +1,197 @@
+# M5Stack Dial v1.1 (M5Stack K136) を Home Assistant のコントローラーにする構成
+#
+# ESP32-S3 + 1.28" 丸型タッチ液晶 (GC9A01A) + ロータリーエンコーダ + 物理ボタン +
+# ブザー + RFID(RC522) + RTC(PCF8563) を搭載した M5Dial を、
+# ロータリーエンコーダ / ボタン / タッチを HA に公開して操作端末として使う。
+#
+# M5Dial は公式 ESPHome パッケージ (m5stack/esphome-yaml) に含まれないため、
+# atoms3r-echo-base.yaml のようなパッケージ参照ではなく定義をインラインで持つ。
+# ピン定義は M5Stack 公式ドキュメントと ESPHome Devices を参照:
+#   https://docs.m5stack.com/en/homeassistant/kit/dial
+#   https://devices.esphome.io/devices/m5stack-dial
+#
+# wifi_ssid / wifi_password / m5dial_api_encryption_key / m5dial_ota_password は
+# このディレクトリの secrets.yaml (git 非管理・リモート専用) に追加して参照する。
+# 公開リポジトリに資格情報を残さないため、値はインラインにしない。
+#   m5dial_api_encryption_key: openssl rand -base64 32 で生成
+#   m5dial_ota_password:       任意の文字列
+
+substitutions:
+  name: m5dial
+  friendly_name: M5Dial
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  on_boot:
+    # RTC から時刻を読み出す (HA と同期するまでのフォールバック)
+    then:
+      - pcf8563.read_time:
+  platformio_options:
+    board_build.flash_mode: dio
+
+esp32:
+  variant: esp32s3
+  framework:
+    type: esp-idf
+
+logger:
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  # ルータ側で DHCP 予約する IP に合わせて設定 (ダッシュボード/OTA の接続先ヒント)。
+  # atoms3r-echo-base は 192.168.1.77 を使用済み。
+  use_address: 192.168.1.78
+  ap: {}
+
+# Wi-Fi に繋がらないときのフォールバック AP からセットアップするためのポータル
+captive_portal:
+
+api:
+  encryption:
+    key: !secret m5dial_api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret m5dial_ota_password
+
+# I2C: タッチ(FT5x06) / RFID(RC522) / RTC(PCF8563) が同一バスにぶら下がる
+i2c:
+  - id: internal_i2c
+    sda: GPIO11
+    scl: GPIO12
+    frequency: 400kHz
+
+# SPI: 丸型ディスプレイ(GC9A01A) 用
+spi:
+  id: spi_bus
+  mosi_pin: GPIO5
+  clk_pin: GPIO6
+
+output:
+  # バックライト (LEDC PWM で調光)
+  - platform: ledc
+    pin: GPIO9
+    id: backlight_output
+    frequency: 1000Hz
+  # ブザー
+  - platform: ledc
+    pin: GPIO3
+    id: buzzer_output
+    frequency: 4000Hz
+
+light:
+  - platform: monochromatic
+    name: Backlight
+    output: backlight_output
+    id: display_backlight
+    restore_mode: ALWAYS_ON
+    default_transition_length: 0s
+
+# ブザーで操作フィードバック音を鳴らす
+rtttl:
+  id: buzzer
+  output: buzzer_output
+  gain: 0.6
+
+font:
+  - file: "gfonts://Roboto"
+    id: roboto
+    size: 28
+
+display:
+  - platform: ili9xxx
+    id: round_display
+    model: GC9A01A
+    cs_pin: GPIO7
+    reset_pin: GPIO8
+    dc_pin: GPIO4
+    invert_colors: true
+    data_rate: 40MHz
+    update_interval: 1s
+    auto_clear_enabled: true
+    lambda: |-
+      it.printf(120, 120, id(roboto), TextAlign::CENTER, "%d", id(dial_value));
+
+touchscreen:
+  - platform: ft5x06
+    id: touch
+    i2c_id: internal_i2c
+    address: 0x38
+
+# --- コントローラーとしての入力 ---
+
+globals:
+  # エンコーダの現在値を表示用に保持する
+  - id: dial_value
+    type: int
+    restore_value: false
+    initial_value: "0"
+
+sensor:
+  # ロータリーエンコーダ。回転量を HA にセンサーとして公開し、自動化のトリガにする
+  - platform: rotary_encoder
+    name: Rotary Encoder
+    id: dial_encoder
+    pin_a:
+      number: GPIO40
+      mode:
+        input: true
+        pullup: true
+    pin_b:
+      number: GPIO41
+      mode:
+        input: true
+        pullup: true
+    resolution: 4
+    publish_initial_value: true
+    # 回したらブザーで軽くフィードバック + 表示値を更新
+    on_clockwise:
+      - lambda: id(dial_value) += 1;
+      - rtttl.play: "click:d=32,o=7,b=200:c"
+    on_anticlockwise:
+      - lambda: id(dial_value) -= 1;
+      - rtttl.play: "click:d=32,o=7,b=200:c"
+
+binary_sensor:
+  # エンコーダ押し込み (前面ボタン)。HA に公開して操作トリガにする
+  - platform: gpio
+    name: Button
+    id: dial_button
+    pin:
+      number: GPIO42
+      inverted: true
+      mode:
+        input: true
+        pullup: true
+    on_press:
+      - rtttl.play: "press:d=16,o=6,b=200:e"
+
+# 押下フィードバック用にブザーを HA からも鳴らせるようにしておく
+button:
+  - platform: template
+    name: Beep
+    icon: mdi:bell-ring
+    on_press:
+      - rtttl.play: "beep:d=4,o=5,b=180:16e,16e"
+
+# RFID リーダ。タグ UID を HA に公開して認証/トリガに使う
+rc522_i2c:
+  - id: nfc_reader
+    i2c_id: internal_i2c
+    address: 0x28
+    update_interval: 500ms
+
+# RTC。HA と時刻同期し、停電/再起動時のフォールバックにする
+time:
+  - platform: pcf8563
+    id: rtctime
+    i2c_id: internal_i2c
+    address: 0x51
+    update_interval: never
+  - platform: homeassistant
+    id: ha_time
+    on_time_sync:
+      then:
+        - pcf8563.write_time:
