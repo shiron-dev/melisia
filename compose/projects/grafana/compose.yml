@@ -103,7 +103,7 @@ services:
   # のみを転送するリバースプロキシ。それ以外のパスはルート無しで拒否される。
   vmauth:
     container_name: vmauth
-    image: victoriametrics/vmauth:v1.145.0@sha256:c816c52c4d9187566c3dc23298dbd7c273352bfbacc811c353ff6e7f41921e10
+    image: victoriametrics/vmauth:v1.146.0@sha256:a18c3abb9860576118fb20fbfdc3d651a8919fc2e223a342c74154d6f6111502
     ports:
       - "127.0.0.1:8427:8427"
     volumes:
