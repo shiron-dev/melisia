@@ -1,0 +1,140 @@
+# =============================================================================
+# M5Stack AtomS3-Lite — 環境センサー + Bluetooth プロキシ
+# =============================================================================
+# 音声サテライト機能は AtomS3R Echo Base (atoms3r-echo-base.yaml) が担うため、
+# このデバイスは Grove の環境センサー + Home Assistant 用 Bluetooth プロキシに。
+#   - Grove: TCA9548A (PaHub) 経由で SCD4x (CO2) と BME688 (環境センサー)
+#   - Bluetooth プロキシ: HA から BLE 機器に到達するための中継 (esp-idf 必須)
+#   - オンボード: WS2812 LED (GPIO35) / ボタン (GPIO41)
+#
+# 注意: PSRAM 非搭載のため、BSEC2(BME688) + BLE + WiFi で RAM が逼迫する可能性あり。
+#       不安定 (再起動ループ等) なら起動ログの free heap を確認し、BME688 を外す検討を。
+#
+# シークレット: wifi_ssid / wifi_password / atom_s3_lite_api_key /
+#   atom_s3_lite_ota_password を secrets.yaml (リモート管理) で参照する。実体は
+#   リポジトリには置かない (サンプルは secrets.yaml.example)。
+# =============================================================================
+
+esphome:
+  name: m5stack-atom-s3-lite
+  friendly_name: M5Stack ATOM S3 Lite
+
+esp32:
+  board: esp32-s3-devkitc-1
+  flash_size: 8MB
+  framework:
+    type: esp-idf
+
+logger:
+
+api:
+  encryption:
+    key: !secret atom_s3_lite_api_key
+
+ota:
+  - platform: esphome
+    password: !secret atom_s3_lite_ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  use_address: 192.168.1.72
+
+captive_portal:
+
+# ---- Bluetooth プロキシ (HA から BLE 機器への中継) --------------------------
+esp32_ble_tracker:
+  scan_parameters:
+    interval: 1100ms
+    window: 1100ms
+    active: true
+
+bluetooth_proxy:
+  active: true
+
+# ---- Grove I2C + PaHub (環境センサー) --------------------------------------
+i2c:
+  - id: grove_i2c
+    sda: GPIO2
+    scl: GPIO1
+    scan: true
+
+tca9548a:
+  - id: pahub
+    address: 0x70
+    i2c_id: grove_i2c
+    channels:
+      - bus_id: pahub_ch0
+        channel: 0
+      - bus_id: pahub_ch1
+        channel: 1
+
+bme68x_bsec2_i2c:
+  id: env_pro_bme688
+  i2c_id: pahub_ch1
+  address: 0x77
+  model: bme688
+  operating_age: 28d
+  sample_rate: LP
+  supply_voltage: 3.3V
+  state_save_interval: 6h
+
+# ---- 環境センサー ----------------------------------------------------------
+sensor:
+  - platform: scd4x
+    i2c_id: pahub_ch0
+    co2:
+      name: "M5Stack ATOM S3 Lite CO2"
+    temperature:
+      name: "M5Stack ATOM S3 Lite Temperature"
+    humidity:
+      name: "M5Stack ATOM S3 Lite Humidity"
+    address: 0x62
+    update_interval: 60s
+    automatic_self_calibration: true
+    temperature_offset: 4.0
+  - platform: bme68x_bsec2
+    bme68x_bsec2_id: env_pro_bme688
+    temperature:
+      name: "M5Stack ATOM S3 Lite ENV Pro Temperature"
+    pressure:
+      name: "M5Stack ATOM S3 Lite ENV Pro Pressure"
+    humidity:
+      name: "M5Stack ATOM S3 Lite ENV Pro Humidity"
+    gas_resistance:
+      name: "M5Stack ATOM S3 Lite ENV Pro Gas Resistance"
+    iaq:
+      name: "M5Stack ATOM S3 Lite ENV Pro IAQ"
+      id: env_pro_iaq
+    iaq_accuracy:
+      name: "M5Stack ATOM S3 Lite ENV Pro IAQ Accuracy"
+    co2_equivalent:
+      name: "M5Stack ATOM S3 Lite ENV Pro CO2 Equivalent"
+    breath_voc_equivalent:
+      name: "M5Stack ATOM S3 Lite ENV Pro Breath VOC Equivalent"
+
+text_sensor:
+  - platform: bme68x_bsec2
+    bme68x_bsec2_id: env_pro_bme688
+    iaq_accuracy:
+      name: "M5Stack ATOM S3 Lite ENV Pro IAQ Accuracy Text"
+
+# ---- オンボード LED / ボタン ------------------------------------------------
+light:
+  - platform: esp32_rmt_led_strip
+    id: led
+    name: "M5Stack ATOM S3 Lite LED"
+    pin: GPIO35
+    num_leds: 1
+    chipset: WS2812
+    rgb_order: GRB
+
+binary_sensor:
+  - platform: gpio
+    name: "M5Stack ATOM S3 Lite Button"
+    pin:
+      number: GPIO41
+      inverted: true
+      mode:
+        input: true
+        pullup: true

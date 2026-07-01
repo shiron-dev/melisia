@@ -1,0 +1,67 @@
+unknown:
+  sequence:
+  - target:
+      entity_id: '{{ label_entities(''living_light'') }}'
+    action: light.turn_off
+  alias: 家を出る
+  description: ''
+'1775903120462':
+  sequence:
+  - action: alarmo.arm
+    metadata: {}
+    data:
+      mode: away
+      skip_delay: false
+      force: false
+      entity_id: alarm_control_panel.alarmo
+  - action: script.turn_on
+    metadata: {}
+    target:
+      entity_id: script.unknown
+    data: {}
+  alias: 外にいるALL
+  description: ''
+unknown_2:
+  alias: ゴミ収集予定を2ヶ月分登録
+  mode: single
+  sequence:
+  - variables:
+      total_days: 62
+      base_date: '{{ now().strftime(''%Y-%m-%d'') }}'
+  - repeat:
+      count: '{{ total_days }}'
+      sequence:
+      - variables:
+          current_day_str: '{{ (as_datetime(base_date) + timedelta(days=repeat.index
+            - 1)).strftime(''%Y-%m-%d'') }}'
+          next_day_str: '{{ (as_datetime(base_date) + timedelta(days=repeat.index)).strftime(''%Y-%m-%d'')
+            }}'
+          weekday: '{{ as_datetime(current_day_str).weekday() | int }}'
+          week_nth: '{{ ((as_datetime(current_day_str).day - 1) // 7) + 1 }}'
+          event_name: "{% if weekday == 0 %}\n  資源\n{% elif weekday in [1, 4] %}\n
+            \ 可燃\n{% elif weekday == 2 and week_nth in [1, 3] %}\n  不燃\n{% elif weekday
+            == 2 and week_nth in [2, 4] %}\n  ペットボトル\n{% else %}\n  \n{% endif %}"
+      - if:
+        - condition: template
+          value_template: '{{ event_name | trim != '''' }}'
+        then:
+        - action: calendar.get_events
+          target:
+            entity_id: calendar.garbage_collection
+          data:
+            start_date_time: '{{ current_day_str }} 00:00:00'
+            end_date_time: '{{ next_day_str }} 00:00:00'
+          response_variable: day_events
+        - if:
+          - condition: template
+            value_template: "{{\n  (\n    day_events['calendar.garbage_collection'].events\n
+              \   | selectattr('summary', 'eq', event_name | trim)\n    | list\n    |
+              length\n  ) == 0\n}}"
+          then:
+          - action: calendar.create_event
+            target:
+              entity_id: calendar.garbage_collection
+            data:
+              summary: '{{ event_name | trim }}'
+              start_date: '{{ current_day_str }}'
+              end_date: '{{ next_day_str }}'
