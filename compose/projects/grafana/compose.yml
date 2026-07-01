@@ -103,7 +103,7 @@ services:
   # のみを転送するリバースプロキシ。それ以外のパスはルート無しで拒否される。
   vmauth:
     container_name: vmauth
-    image: victoriametrics/vmauth:v1.145.0@sha256:c816c52c4d9187566c3dc23298dbd7c273352bfbacc811c353ff6e7f41921e10
+    image: victoriametrics/vmauth:v1.146.0@sha256:a18c3abb9860576118fb20fbfdc3d651a8919fc2e223a342c74154d6f6111502
     ports:
       - "127.0.0.1:8427:8427"
     volumes:
@@ -136,7 +136,7 @@ services:
   # 永続化は Mimir 側に集約される。
   vmagent:
     container_name: vmagent
-    image: victoriametrics/vmagent:v1.145.0@sha256:71f19af5c80bec6ea955c171bab0aae01314a80016b3600412c2b4bbb8d95d70
+    image: victoriametrics/vmagent:v1.146.0@sha256:2c73a6acb0b0c91e0894158ba0e4d3615da43d6833655f27169933bd1161633e
     ports:
       - "127.0.0.1:8429:8429"
     volumes:
@@ -335,7 +335,7 @@ services:
       start_period: 40s
   loki:
     container_name: loki
-    image: grafana/loki:3.7.2@sha256:191d4fdfb7264f16989f0a57f320872620a5a7c2ceeec6229212c4190ec49b86
+    image: grafana/loki:3.7.3@sha256:70b9f699fc9bb868b62f1cfd4f787dfa50242f1fd92e6089787d5d7daea75fe8
     user: "10001"
     ports:
       - "127.0.0.1:3100:3100"
