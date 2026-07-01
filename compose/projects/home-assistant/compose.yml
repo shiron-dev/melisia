@@ -348,7 +348,7 @@ services:
   whisper:
     <<: *resource-stt
     container_name: whisper
-    image: rhasspy/wyoming-whisper:latest@sha256:9501d2659eee83b6eead98d53842193e5fed011eda6c5b1c3ad36f3146b28fed
+    image: rhasspy/wyoming-whisper:latest@sha256:258956d1508a042ae52ceca04da85f6e74e7fab81676e3678619b8047e88c721
     command:
       - --uri
       - tcp://0.0.0.0:10300
