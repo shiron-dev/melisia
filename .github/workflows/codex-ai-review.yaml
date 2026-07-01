@@ -997,7 +997,7 @@ jobs:
       # fixed key and replay it on the next run.
       - name: Restore tools cache
         id: tools_cache
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .github/tools/node_modules
           key: github-tools-${{ hashFiles('.github/tools/package-lock.json') }}-node24.15.0
@@ -1027,7 +1027,7 @@ jobs:
       # serena would fail to start. ~/.local/share/uv covers tools + python.
       - name: Restore Serena tool cache
         id: serena_cache
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.local/share/uv
@@ -1052,14 +1052,14 @@ jobs:
       # PR-supplied symlink can get a tampered binary persisted under the key.
       - name: Save tools cache
         if: steps.tools_cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .github/tools/node_modules
           key: github-tools-${{ hashFiles('.github/tools/package-lock.json') }}-node24.15.0
 
       - name: Save Serena tool cache
         if: steps.serena_cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.local/share/uv
