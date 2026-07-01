@@ -33,17 +33,5 @@ http:
     - 127.0.0.1
     - 172.19.0.250
 
-alexa:
-  smart_home:
-    filter:
-      include_entities:
-        - switch.washroom_light
-        # include_domains:
-        #   - light
-        # include_entity_globs:
-        #   - "light.*"
-
 logger:
   default: warning
-  logs:
-    homeassistant.components.alexa: debug
