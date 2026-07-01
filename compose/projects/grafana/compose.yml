@@ -136,7 +136,7 @@ services:
   # 永続化は Mimir 側に集約される。
   vmagent:
     container_name: vmagent
-    image: victoriametrics/vmagent:v1.145.0@sha256:71f19af5c80bec6ea955c171bab0aae01314a80016b3600412c2b4bbb8d95d70
+    image: victoriametrics/vmagent:v1.146.0@sha256:2c73a6acb0b0c91e0894158ba0e4d3615da43d6833655f27169933bd1161633e
     ports:
       - "127.0.0.1:8429:8429"
     volumes:
