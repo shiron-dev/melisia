@@ -13,6 +13,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   terraform-status-check:
     runs-on: ubuntu-latest
@@ -46,6 +49,9 @@ jobs:
 
   changes:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       should_run: ${{ steps.filter.outputs.src }}
     steps:
@@ -81,24 +87,21 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - name: Get Terraform version from mise.toml
-        id: terraform-version
+      - name: Setup Terraform
+        uses: ./.github/actions/setup-terraform
+      - name: Get TFLint version from mise.toml
+        id: tflint-version
         run: |
-          if grep -q 'terraform = "latest"' mise.toml; then
+          if grep -q 'tflint = "latest"' mise.toml; then
             echo "version=latest" >> "$GITHUB_OUTPUT"
           else
-            version=$(grep 'terraform = ' mise.toml | sed 's/.*terraform = "\(.*\)".*/\1/')
-            echo "version=$version" >> "$GITHUB_OUTPUT"
+            version=$(grep 'tflint = ' mise.toml | sed 's/.*tflint = "\(.*\)".*/\1/')
+            echo "version=v$version" >> "$GITHUB_OUTPUT"
           fi
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
-        with:
-          terraform_version: ${{ steps.terraform-version.outputs.version }}
-          terraform_wrapper: false
       - name: Setup TFLint
         uses: terraform-linters/setup-tflint@b480b8fcdaa6f2c577f8e4fa799e89e756bb7c93 # v6.2.2
         with:
-          tflint_version: latest
+          tflint_version: ${{ steps.tflint-version.outputs.version }}
       - name: Setup Go for local TrueNAS provider
         if: matrix.target.path == 'terraform/truenas'
         uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
@@ -106,34 +109,9 @@ jobs:
           go-version-file: terraform/provider/go.mod
           cache-dependency-path: terraform/provider/go.sum
       - name: Build local TrueNAS provider mirror
+        id: provider-mirror
         if: matrix.target.path == 'terraform/truenas'
-        run: |
-          set -euo pipefail
-          provider_version="0.0.1"
-          provider_host="registry.terraform.io"
-          provider_namespace="shiron-dev"
-          provider_type="truenas"
-          provider_os="$(go env GOOS)"
-          provider_arch="$(go env GOARCH)"
-          mirror_dir="${GITHUB_WORKSPACE}/.local/terraform-provider-mirror"
-          package_dir="${mirror_dir}/${provider_host}/${provider_namespace}/${provider_type}/${provider_version}/${provider_os}_${provider_arch}"
-          devrc="${GITHUB_WORKSPACE}/.local/terraform-provider-truenas.tfrc"
-
-          (cd terraform/provider && go build -o terraform-provider-truenas .)
-          mkdir -p "${package_dir}" "$(dirname "${devrc}")"
-          cp terraform/provider/terraform-provider-truenas "${package_dir}/terraform-provider-${provider_type}_v${provider_version}"
-          cat > "${devrc}" <<EOF
-          provider_installation {
-            filesystem_mirror {
-              path = "${mirror_dir}"
-              include = ["${provider_host}/${provider_namespace}/${provider_type}"]
-            }
-
-            direct {
-              exclude = ["${provider_host}/${provider_namespace}/${provider_type}"]
-            }
-          }
-          EOF
+        uses: ./.github/actions/build-truenas-provider-mirror
       - name: Terraform Format Check
         run: |
           cd "${{ matrix.target.path }}"
@@ -145,7 +123,7 @@ jobs:
             if [[ -f .terraform.lock.hcl ]]; then
               mv .terraform.lock.hcl .terraform.lock.hcl.ci-disabled
             fi
-            TF_CLI_CONFIG_FILE="${GITHUB_WORKSPACE}/.local/terraform-provider-truenas.tfrc" terraform init -backend=false
+            TF_CLI_CONFIG_FILE="${{ steps.provider-mirror.outputs.tfrc-path }}" terraform init -backend=false
           else
             terraform init -backend=false
           fi
@@ -153,7 +131,7 @@ jobs:
         run: |
           cd "${{ matrix.target.path }}"
           if [[ "${{ matrix.target.path }}" == "terraform/truenas" ]]; then
-            TF_CLI_CONFIG_FILE="${GITHUB_WORKSPACE}/.local/terraform-provider-truenas.tfrc" terraform validate
+            TF_CLI_CONFIG_FILE="${{ steps.provider-mirror.outputs.tfrc-path }}" terraform validate
           else
             terraform validate
           fi
@@ -161,20 +139,16 @@ jobs:
         run: |
           cd "${{ matrix.target.path }}"
           if [[ "${{ matrix.target.path }}" == "terraform/truenas" ]]; then
-            TF_CLI_CONFIG_FILE="${GITHUB_WORKSPACE}/.local/terraform-provider-truenas.tfrc" tflint
+            TF_CLI_CONFIG_FILE="${{ steps.provider-mirror.outputs.tfrc-path }}" tflint
           else
             tflint
           fi
 
+  # A single full-tree scan instead of one matrix job per root: Trivy needs no
+  # Terraform setup, so per-root fan-out only multiplies runner startup + DB pulls.
   terraform-trivy:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: discover-terraform-roots
-    strategy:
-      fail-fast: false
-      matrix:
-        target: ${{ fromJson(needs.discover-terraform-roots.outputs.matrix) }}
-    name: terraform-trivy (${{ matrix.target.path }})
     steps:
       - name: Checkout code
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -182,7 +156,7 @@ jobs:
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: 'config'
-          scan-ref: ${{ matrix.target.path }}
+          scan-ref: terraform/
 
   terraform-checkov:
     runs-on: ubuntu-latest
@@ -241,23 +215,14 @@ jobs:
   infracost:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - name: Checkout code
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - name: Get Terraform version from mise.toml
-        id: terraform-version
-        run: |
-          if grep -q 'terraform = "latest"' mise.toml; then
-            echo "version=latest" >> "$GITHUB_OUTPUT"
-          else
-            version=$(grep 'terraform = ' mise.toml | sed 's/.*terraform = "\(.*\)".*/\1/')
-            echo "version=$version" >> "$GITHUB_OUTPUT"
-          fi
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
-        with:
-          terraform_version: ${{ steps.terraform-version.outputs.version }}
-          terraform_wrapper: false
+        uses: ./.github/actions/setup-terraform
       - name: Setup Infracost
         uses: infracost/actions/setup@d51fc54d23c9ad90f984b884257bd96dc2625067 # v4.1.0
         with:

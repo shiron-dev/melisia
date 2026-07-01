@@ -78,8 +78,19 @@ Managed application service settings:
   stores it in state, so the GCS state bucket must be treated as containing app
   secrets. The resources read `/api/v2.0/app/config` during refresh, so plan
   reports drift before apply.
-- Installed app lifecycle, catalog app versions, workloads, and app data are not
-  managed in this Terraform root.
+- The `node-exporter` Prometheus exporter runs as a custom (docker-compose) app,
+  managed by the `truenas_custom_app` resource in `custom_apps.tf`. It exists
+  because TrueNAS SCALE 25.04+ dropped many host metrics (memory, CPU) from its
+  netdata Graphite export; running node_exporter as an app provides them durably
+  (apps survive TrueNAS updates), and home-ep's vmagent scrapes
+  `storage-srv:9100`. The compose document is passed through a
+  `truenas_app_config_document` data source (mirroring the catalog-app pattern)
+  and read back via `/api/v2.0/app/config`, so plan reports drift. Adopt the
+  manually-created app the first time with
+  `terraform import truenas_custom_app.node_exporter node-exporter`.
+- Catalog app lifecycle (installation, versions, upgrades), app workloads, and
+  app data are not managed in this Terraform root. `truenas_custom_app` manages
+  only the lifecycle of custom (compose) apps it declares.
 
 Tracked but not imported as pool resources:
 

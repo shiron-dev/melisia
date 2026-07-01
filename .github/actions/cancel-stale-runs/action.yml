@@ -1,0 +1,106 @@
+name: Cancel stale workflow runs
+description: >-
+  On workflow_dispatch, cancel older active runs of this workflow whose apply job
+  has not started yet. Runs whose apply job already began are left untouched.
+inputs:
+  apply-job-patterns:
+    description: >-
+      JSON array of substrings. A candidate run is preserved (not cancelled) when any
+      of its jobs has a name containing one of these substrings and has already started.
+    required: true
+outputs:
+  cancelled_run_ids:
+    description: Space-separated list of cancelled run IDs
+    value: ${{ steps.cancel-stale.outputs.cancelled_run_ids }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+      id: cancel-stale
+      if: github.event_name == 'workflow_dispatch'
+      env:
+        APPLY_JOB_PATTERNS: ${{ inputs.apply-job-patterns }}
+      with:
+        script: |
+          const applyJobPatterns = JSON.parse(process.env.APPLY_JOB_PATTERNS);
+          const owner = context.repo.owner;
+          const repo = context.repo.repo;
+          const branch = context.ref.replace("refs/heads/", "");
+          const currentRunId = context.runId;
+          const currentRunNumber = context.runNumber;
+          const workflowRef = process.env.GITHUB_WORKFLOW_REF || "";
+          const workflowId = workflowRef
+            .split("@")[0]
+            .replace(`${owner}/${repo}/`, "");
+
+          if (!workflowId) {
+            core.warning("Failed to resolve workflow_id from GITHUB_WORKFLOW_REF. Skip stale run cancellation.");
+            return;
+          }
+
+          const runs = await github.paginate(
+            github.rest.actions.listWorkflowRuns,
+            {
+              owner,
+              repo,
+              workflow_id: workflowId,
+              branch,
+              event: "push",
+              per_page: 100,
+            },
+          );
+
+          const activeStatuses = new Set([
+            "queued",
+            "in_progress",
+            "waiting",
+            "requested",
+            "pending",
+            "action_required",
+          ]);
+
+          const candidates = runs.filter((run) => {
+            if (run.id === currentRunId) return false;
+            if (run.run_number >= currentRunNumber) return false;
+            if (!activeStatuses.has(run.status)) return false;
+            return true;
+          });
+
+          let cancelled = 0;
+          const cancelledRunIds = [];
+
+          for (const run of candidates) {
+            const jobs = await github.paginate(
+              github.rest.actions.listJobsForWorkflowRun,
+              {
+                owner,
+                repo,
+                run_id: run.id,
+                per_page: 100,
+              },
+            );
+
+            const applyJobs = jobs.filter((job) =>
+              applyJobPatterns.some((pattern) => job.name.includes(pattern)),
+            );
+            const applyStarted = applyJobs.some(
+              (job) => Boolean(job.started_at) || job.status === "in_progress" || Boolean(job.conclusion),
+            );
+
+            if (applyStarted) {
+              core.info(`Skip run ${run.id}: apply already started.`);
+              continue;
+            }
+
+            await github.rest.actions.cancelWorkflowRun({
+              owner,
+              repo,
+              run_id: run.id,
+            });
+            cancelled += 1;
+            cancelledRunIds.push(String(run.id));
+            core.info(`Cancelled stale run ${run.id}.`);
+          }
+
+          core.setOutput("cancelled_run_ids", cancelledRunIds.join(" "));
+          core.info(`Cancelled ${cancelled} stale run(s).`);

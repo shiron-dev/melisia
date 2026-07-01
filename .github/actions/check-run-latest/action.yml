@@ -1,0 +1,69 @@
+name: Check run is latest
+description: >-
+  Detect whether a newer run of this workflow exists. On merge_group a newer run
+  fails this run; on workflow_dispatch it sets is_latest=false so later steps can skip.
+inputs:
+  action-label:
+    description: Human-readable label for the guarded action, used in log messages (e.g. "apply", "terraform apply").
+    required: false
+    default: apply
+outputs:
+  is_latest:
+    description: "'true' when this run is the latest, 'false' when a newer workflow_dispatch run exists"
+    value: ${{ steps.stale-check.outputs.is_latest }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+      id: stale-check
+      env:
+        ACTION_LABEL: ${{ inputs.action-label }}
+      with:
+        script: |
+          const actionLabel = process.env.ACTION_LABEL;
+          const owner = context.repo.owner;
+          const repo = context.repo.repo;
+          const currentRunId = context.runId;
+          const currentRunNumber = context.runNumber;
+          const workflowRef = process.env.GITHUB_WORKFLOW_REF || "";
+          const workflowId = workflowRef
+            .split("@")[0]
+            .replace(`${owner}/${repo}/`, "");
+
+          if (!workflowId) {
+            core.setFailed("Failed to resolve workflow_id from GITHUB_WORKFLOW_REF.");
+            return;
+          }
+
+          const request = {
+            owner,
+            repo,
+            workflow_id: workflowId,
+            event: context.eventName,
+            per_page: 100,
+          };
+          if (context.eventName === "workflow_dispatch") {
+            request.branch = context.ref.replace("refs/heads/", "");
+          }
+
+          const runs = await github.paginate(
+            github.rest.actions.listWorkflowRuns,
+            request,
+          );
+
+          const newerRun = runs.find(
+            (run) => run.id !== currentRunId && run.run_number > currentRunNumber,
+          );
+
+          if (newerRun) {
+            const message = `Skip ${actionLabel} for stale run ${currentRunId}: newer ${context.eventName} run ${newerRun.id} exists.`;
+            if (context.eventName === "merge_group") {
+              core.setFailed(message);
+              return;
+            }
+            core.warning(message);
+            core.setOutput("is_latest", "false");
+            return;
+          }
+
+          core.setOutput("is_latest", "true");

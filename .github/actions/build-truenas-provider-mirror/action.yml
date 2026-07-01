@@ -1,0 +1,50 @@
+name: Build TrueNAS provider mirror
+description: >-
+  Build the local TrueNAS provider and write a Terraform filesystem mirror plus a
+  CLI config file (tfrc) so terraform resolves the provider locally. Requires Go to
+  be set up beforehand (e.g. via actions/setup-go).
+outputs:
+  tfrc-path:
+    description: Path to the generated Terraform CLI config file (set as TF_CLI_CONFIG_FILE)
+    value: ${{ steps.build.outputs.tfrc_path }}
+  mirror-dir:
+    description: Path to the generated filesystem mirror directory
+    value: ${{ steps.build.outputs.mirror_dir }}
+runs:
+  using: composite
+  steps:
+    - name: Build local TrueNAS provider mirror
+      id: build
+      shell: bash
+      run: |
+        set -euo pipefail
+        provider_version="0.0.1"
+        provider_host="registry.terraform.io"
+        provider_namespace="shiron-dev"
+        provider_type="truenas"
+        provider_os="$(go env GOOS)"
+        provider_arch="$(go env GOARCH)"
+        mirror_dir="${GITHUB_WORKSPACE}/.local/terraform-provider-mirror"
+        package_dir="${mirror_dir}/${provider_host}/${provider_namespace}/${provider_type}/${provider_version}/${provider_os}_${provider_arch}"
+        devrc="${GITHUB_WORKSPACE}/.local/terraform-provider-truenas.tfrc"
+
+        (cd terraform/provider && go build -o terraform-provider-truenas .)
+        mkdir -p "${package_dir}" "$(dirname "${devrc}")"
+        cp terraform/provider/terraform-provider-truenas "${package_dir}/terraform-provider-${provider_type}_v${provider_version}"
+        cat > "${devrc}" <<EOF
+        provider_installation {
+          filesystem_mirror {
+            path = "${mirror_dir}"
+            include = ["${provider_host}/${provider_namespace}/${provider_type}"]
+          }
+
+          direct {
+            exclude = ["${provider_host}/${provider_namespace}/${provider_type}"]
+          }
+        }
+        EOF
+
+        {
+          echo "tfrc_path=${devrc}"
+          echo "mirror_dir=${mirror_dir}"
+        } >> "$GITHUB_OUTPUT"

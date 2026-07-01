@@ -1,6 +1,7 @@
 package remote
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -24,13 +25,13 @@ type mockCommandRunner struct {
 	capturedSCPArgs []string
 }
 
-func (m *mockCommandRunner) SSHCombinedOutput(args ...string) ([]byte, error) {
+func (m *mockCommandRunner) SSHCombinedOutput(_ context.Context, args ...string) ([]byte, error) {
 	m.capturedSSHArgs = args
 
 	return m.sshOutput, m.sshErr
 }
 
-func (m *mockCommandRunner) SCPCombinedOutput(args ...string) ([]byte, error) {
+func (m *mockCommandRunner) SCPCombinedOutput(_ context.Context, args ...string) ([]byte, error) {
 	m.capturedSCPArgs = args
 
 	return nil, m.scpErr
@@ -232,7 +233,7 @@ func TestClient_MkdirAll(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mkdirErr := client.MkdirAll("/srv/data")
+	mkdirErr := client.MkdirAll(context.Background(), "/srv/data")
 	if mkdirErr != nil {
 		t.Fatalf("MkdirAll: %v", mkdirErr)
 	}
@@ -253,7 +254,7 @@ func TestClient_Remove(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	removeErr := client.Remove("/srv/data/old.txt")
+	removeErr := client.Remove(context.Background(), "/srv/data/old.txt")
 	if removeErr != nil {
 		t.Fatalf("Remove: %v", removeErr)
 	}
@@ -274,7 +275,7 @@ func TestClient_ReadFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	data, readErr := client.ReadFile("/srv/compose.yml")
+	data, readErr := client.ReadFile(context.Background(), "/srv/compose.yml")
 	if readErr != nil {
 		t.Fatalf("ReadFile: %v", readErr)
 	}
@@ -299,7 +300,7 @@ func TestClient_ReadFile_SSHError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, readErr := client.ReadFile("/srv/compose.yml")
+	_, readErr := client.ReadFile(context.Background(), "/srv/compose.yml")
 	if readErr == nil {
 		t.Fatal("ReadFile should return error on SSH failure")
 	}
@@ -315,7 +316,7 @@ func TestClient_RunCommand_NoWorkdir(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, runErr := client.RunCommand("", "echo hello")
+	out, runErr := client.RunCommand(context.Background(), "", "echo hello")
 	if runErr != nil {
 		t.Fatalf("RunCommand: %v", runErr)
 	}
@@ -341,7 +342,7 @@ func TestClient_RunCommand_WithWorkdir(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, runErr := client.RunCommand("/srv/grafana", "docker compose up -d")
+	_, runErr := client.RunCommand(context.Background(), "/srv/grafana", "docker compose up -d")
 	if runErr != nil {
 		t.Fatalf("RunCommand: %v", runErr)
 	}
@@ -363,7 +364,7 @@ func TestClient_ListFilesRecursive(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	files, listErr := client.ListFilesRecursive("/srv/grafana")
+	files, listErr := client.ListFilesRecursive(context.Background(), "/srv/grafana")
 	if listErr != nil {
 		t.Fatalf("ListFilesRecursive: %v", listErr)
 	}
@@ -391,7 +392,7 @@ func TestClient_ListFilesRecursive_Empty(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	files, listErr := client.ListFilesRecursive("/srv/grafana")
+	files, listErr := client.ListFilesRecursive(context.Background(), "/srv/grafana")
 	if listErr != nil {
 		t.Fatalf("ListFilesRecursive: %v", listErr)
 	}
@@ -446,7 +447,7 @@ func TestClient_Stat_Exists(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	info, statErr := client.Stat("/srv/data/file.txt")
+	info, statErr := client.Stat(context.Background(), "/srv/data/file.txt")
 	if statErr != nil {
 		t.Fatalf("Stat: %v", statErr)
 	}
@@ -470,7 +471,7 @@ func TestClient_Stat_UnknownError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, statErr := client.Stat("/srv/data/file.txt")
+	_, statErr := client.Stat(context.Background(), "/srv/data/file.txt")
 	if statErr == nil {
 		t.Fatal("expected error")
 	}
@@ -494,7 +495,7 @@ func TestClient_StatDirMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	meta, statErr := client.StatDirMetadata("/srv/data")
+	meta, statErr := client.StatDirMetadata(context.Background(), "/srv/data")
 	if statErr != nil {
 		t.Fatalf("StatDirMetadata: %v", statErr)
 	}
@@ -518,7 +519,7 @@ func TestClient_StatDirMetadata_Error(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, statErr := client.StatDirMetadata("/srv/data")
+	_, statErr := client.StatDirMetadata(context.Background(), "/srv/data")
 	if statErr == nil {
 		t.Fatal("expected error from StatDirMetadata on SSH failure")
 	}

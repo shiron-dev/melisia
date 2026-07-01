@@ -13,6 +13,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 env:
   REVIEWDOG_GITHUB_API_TOKEN: ${{ github.token }}
 
@@ -36,6 +39,7 @@ jobs:
       - renovate-deps-comment
       - gitleaks
       - trufflehog
+      - secret-strength-linter-test
     if: ${{ always() }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -145,6 +149,9 @@ jobs:
   yaml-lint:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      checks: write
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: reviewdog/action-yamllint@b5f7217d8c815ae374d1d55840d5e569d82f01f0 # v1.22.0
@@ -186,11 +193,15 @@ jobs:
         run: npm ci
         working-directory: .github/tools
       - name: Run markdownlint
-        run: .github/tools/node_modules/.bin/markdownlint . || true
+        run: .github/tools/node_modules/.bin/markdownlint .
 
   shell-lint:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: reviewdog/action-shellcheck@4c07458293ac342d477251099501a718ae5ef86e # v1.32.0
@@ -213,6 +224,9 @@ jobs:
   action-lint:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      checks: write
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: reviewdog/action-actionlint@6fb7acc99f4a1008869fa8a0f09cfca740837d9d # v1.72.0
@@ -224,6 +238,9 @@ jobs:
   dotenv-lint:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      checks: write
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: dotenv-linter/action-dotenv-linter@afde61cfda2ecffe7bea35837b6f20b956c88689 # v3.0.0
@@ -251,7 +268,12 @@ jobs:
   renovate-deps-comment:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    if: ${{ github.event_name == 'pull_request' && startsWith(github.head_ref, 'renovate/') }}
+    permissions:
+      contents: read
+      pull-requests: write
+    # Fork PRs receive a read-only GITHUB_TOKEN, so commenting would silently
+    # fail; restrict to same-repository PRs (which includes Renovate's branches).
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
     continue-on-error: true
     steps:
       - uses: shiron-dev/actions/renovate-deps-comment@8780bd20d1ef046844aa1a1c2e9d96fefaa1384b # v1.7.0
@@ -294,3 +316,43 @@ jobs:
           path: ./
           base: ${{ github.event.pull_request.base.sha || github.event.before }}
           head: ${{ github.event.pull_request.head.sha || github.sha }}
+
+  secret-strength-linter-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+      - name: Detect linter changes
+        id: detect
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          # Without a usable base (e.g. workflow_dispatch) run unconditionally.
+          if [ -z "${BASE_SHA}" ] || [ "${BASE_SHA}" = "0000000000000000000000000000000000000000" ]; then
+            echo "No base ref; running tests"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # No --diff-filter: deletions must trigger the tests too, since
+          # removing check.py or a test can break the suite.
+          CHANGED=$(git diff --name-only "${BASE_SHA}..${HEAD_SHA}" -- tools/secret-strength-linter)
+          if [ -z "${CHANGED}" ]; then
+            echo "No changes under tools/secret-strength-linter, skipping"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Changed files:"
+            echo "${CHANGED}"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        if: steps.detect.outputs.skip == 'false'
+      - name: Install dependencies
+        if: steps.detect.outputs.skip == 'false'
+        run: uv sync --project tools/secret-strength-linter
+      - name: Run pytest
+        if: steps.detect.outputs.skip == 'false'
+        run: uv run --project tools/secret-strength-linter pytest tools/secret-strength-linter

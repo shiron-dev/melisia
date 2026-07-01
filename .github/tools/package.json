@@ -1,6 +1,6 @@
 {
   "devDependencies": {
-    "@openai/codex": "0.142.1",
+    "@openai/codex": "0.142.3",
     "markdownlint-cli": "0.49.0"
   }
 }

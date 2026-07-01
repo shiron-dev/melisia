@@ -3,12 +3,22 @@ package main
 import (
 	"context"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"path"
 	"strings"
+)
+
+// maxErrorBodyBytes caps how much of an unexpected response body we read back
+// into the error message.
+const maxErrorBodyBytes = 2048
+
+var (
+	errNotAbsoluteURL   = errors.New("WEBDAV_BASE_URL must be an absolute URL")
+	errUnexpectedStatus = errors.New("unexpected PROPFIND status")
 )
 
 // propfindBody requests just the properties we need to decide whether an entry
@@ -63,24 +73,16 @@ func NewWebDAVClient(cfg Config, hc *http.Client) (*WebDAVClient, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid WEBDAV_BASE_URL: %w", err)
 	}
+
 	if u.Scheme == "" || u.Host == "" {
-		return nil, fmt.Errorf("WEBDAV_BASE_URL must be an absolute URL")
+		return nil, errNotAbsoluteURL
 	}
+
 	return &WebDAVClient{
 		cfg:    cfg,
 		http:   hc,
 		origin: u.Scheme + "://" + u.Host,
 	}, nil
-}
-
-// applyAuth adds Basic auth plus optional Cloudflare Access service-token
-// headers to an outbound request.
-func (c *WebDAVClient) applyAuth(req *http.Request) {
-	req.SetBasicAuth(c.cfg.WebDAVUsername, c.cfg.WebDAVPassword)
-	if c.cfg.CFAccessClientID != "" {
-		req.Header.Set("CF-Access-Client-Id", c.cfg.CFAccessClientID)
-		req.Header.Set("CF-Access-Client-Secret", c.cfg.CFAccessClientSecret)
-	}
 }
 
 // List performs a Depth:1 PROPFIND on the configured folder and returns the
@@ -99,6 +101,7 @@ func (c *WebDAVClient) List(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	req.Header.Set("Depth", "1")
 	req.Header.Set("Content-Type", "application/xml")
 	c.applyAuth(req)
@@ -107,39 +110,35 @@ func (c *WebDAVClient) List(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusMultiStatus {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
-		return nil, fmt.Errorf("PROPFIND %s: unexpected status %s: %s", target, resp.Status, strings.TrimSpace(string(body)))
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
+		snippet := strings.TrimSpace(string(body))
+
+		return nil, fmt.Errorf("PROPFIND %s: %w %s: %s", target, errUnexpectedStatus, resp.Status, snippet)
 	}
 
 	var ms multistatus
-	if err := xml.NewDecoder(resp.Body).Decode(&ms); err != nil {
+
+	err = xml.NewDecoder(resp.Body).Decode(&ms)
+	if err != nil {
 		return nil, fmt.Errorf("decode PROPFIND response: %w", err)
 	}
 
 	// The folder itself is returned as one of the responses; skip it and any
 	// sub-collections, keeping only image files.
 	requestPath := mustPath(target)
+
 	var images []string
+
 	for _, r := range ms.Responses {
-		href := strings.TrimSpace(r.Href)
-		if href == "" {
-			continue
+		if href, ok := imageHref(r, requestPath); ok {
+			images = append(images, href)
 		}
-		prop, ok := okProp(r)
-		if !ok || prop.ResourceType.Collection != nil {
-			continue
-		}
-		if !isImage(prop.ContentType, href) {
-			continue
-		}
-		if samePath(href, requestPath) {
-			continue
-		}
-		images = append(images, href)
 	}
+
 	return images, nil
 }
 
@@ -147,12 +146,52 @@ func (c *WebDAVClient) List(ctx context.Context) ([]string, error) {
 // WebDAV endpoint. The caller owns closing the returned body.
 func (c *WebDAVClient) Fetch(ctx context.Context, href string) (*http.Response, error) {
 	target := c.origin + href
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
 		return nil, err
 	}
+
 	c.applyAuth(req)
+
 	return c.http.Do(req)
+}
+
+// applyAuth adds Basic auth plus optional Cloudflare Access service-token
+// headers to an outbound request.
+func (c *WebDAVClient) applyAuth(req *http.Request) {
+	req.SetBasicAuth(c.cfg.WebDAVUsername, c.cfg.WebDAVPassword)
+
+	if c.cfg.CFAccessClientID != "" {
+		// Go canonicalises header keys on the wire, so the "Cf-" casing here is
+		// equivalent to Cloudflare's documented "CF-Access-Client-*".
+		req.Header.Set("Cf-Access-Client-Id", c.cfg.CFAccessClientID)
+		req.Header.Set("Cf-Access-Client-Secret", c.cfg.CFAccessClientSecret)
+	}
+}
+
+// imageHref returns the href of a PROPFIND response entry if it is a displayable
+// image file (not the folder itself or a sub-collection).
+func imageHref(r davResponse, requestPath string) (string, bool) {
+	href := strings.TrimSpace(r.Href)
+	if href == "" {
+		return "", false
+	}
+
+	prop, ok := okProp(r)
+	if !ok || prop.ResourceType.Collection != nil {
+		return "", false
+	}
+
+	if !isImage(prop.ContentType, href) {
+		return "", false
+	}
+
+	if samePath(href, requestPath) {
+		return "", false
+	}
+
+	return href, true
 }
 
 func okProp(r davResponse) (davProp, bool) {
@@ -161,7 +200,10 @@ func okProp(r davResponse) (davProp, bool) {
 			return ps.Prop, true
 		}
 	}
-	return davProp{}, false
+
+	var zero davProp
+
+	return zero, false
 }
 
 // isImage decides whether an entry is a displayable image, preferring the
@@ -170,21 +212,26 @@ func isImage(contentType, href string) bool {
 	if strings.HasPrefix(strings.ToLower(contentType), "image/") {
 		return true
 	}
+
 	if contentType != "" {
 		return false
 	}
+
 	switch strings.ToLower(path.Ext(decodePath(href))) {
 	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".avif", ".heic":
 		return true
 	}
+
 	return false
 }
 
 // mustPath extracts the path component of a URL, falling back to the raw value.
 func mustPath(raw string) string {
-	if u, err := url.Parse(raw); err == nil {
+	u, err := url.Parse(raw)
+	if err == nil {
 		return strings.TrimRight(u.EscapedPath(), "/")
 	}
+
 	return strings.TrimRight(raw, "/")
 }
 
@@ -195,8 +242,10 @@ func samePath(href, p string) bool {
 
 // decodePath best-effort percent-decodes a path for extension inspection.
 func decodePath(href string) string {
-	if d, err := url.PathUnescape(href); err == nil {
+	d, err := url.PathUnescape(href)
+	if err == nil {
 		return d
 	}
+
 	return href
 }

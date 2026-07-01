@@ -42,13 +42,13 @@ var (
 )
 
 type LocalCommandRunner interface {
-	Run(name string, args []string, workdir string) (string, error)
+	Run(ctx context.Context, name string, args []string, workdir string) (string, error)
 }
 
 type ExecLocalCommandRunner struct{}
 
-func (ExecLocalCommandRunner) Run(name string, args []string, workdir string) (string, error) {
-	cmd := exec.CommandContext(context.Background(), name)
+func (ExecLocalCommandRunner) Run(ctx context.Context, name string, args []string, workdir string) (string, error) {
+	cmd := exec.CommandContext(ctx, name)
 	cmd.Args = make([]string, 1+len(args))
 	cmd.Args[0] = name
 	copy(cmd.Args[1:], args)
@@ -867,13 +867,14 @@ func printFileDiff(writer io.Writer, style outputStyle, diff string) {
 	}
 }
 
-func BuildPlan(cfg *config.CmtConfig, hostFilter, projectFilter []string) (*SyncPlan, error) {
+func BuildPlan(ctx context.Context, cfg *config.CmtConfig, hostFilter, projectFilter []string) (*SyncPlan, error) {
 	var dependencies PlanDependencies
 
-	return BuildPlanWithDeps(cfg, hostFilter, projectFilter, dependencies)
+	return BuildPlanWithDeps(ctx, cfg, hostFilter, projectFilter, dependencies)
 }
 
 func BuildPlanWithDeps(
+	ctx context.Context,
 	cfg *config.CmtConfig,
 	hostFilter, projectFilter []string,
 	deps PlanDependencies,
@@ -904,7 +905,7 @@ func BuildPlanWithDeps(
 	for hostIdx, host := range hosts {
 		progress.hostStart(hostIdx+1, len(hosts), host.Name)
 
-		hostPlan, err := buildHostPlanForTarget(cfg, host, projects, clientFactory, sshResolver, localRunner, progress)
+		hostPlan, err := buildHostPlanForTarget(ctx, cfg, host, projects, clientFactory, sshResolver, localRunner, progress)
 		if err != nil {
 			return nil, err
 		}
@@ -1019,6 +1020,7 @@ func resolvePlanDependencies(
 }
 
 func buildHostPlanForTarget(
+	ctx context.Context,
 	cfg *config.CmtConfig,
 	host config.HostEntry,
 	projects []string,
@@ -1036,7 +1038,7 @@ func buildHostPlanForTarget(
 		hostCfg = nil
 	}
 
-	err = resolveHostSSHConfig(cfg.BasePath, &host, hostCfg, sshResolver)
+	err = resolveHostSSHConfig(ctx, cfg.BasePath, &host, hostCfg, sshResolver)
 	if err != nil {
 		return nil, fmt.Errorf("resolving SSH config for %s: %w", host.Name, err)
 	}
@@ -1050,7 +1052,7 @@ func buildHostPlanForTarget(
 		_ = client.Close()
 	}()
 
-	hostPlan, err := buildHostPlan(cfg, host, hostCfg, projects, client, localRunner, progress)
+	hostPlan, err := buildHostPlan(ctx, cfg, host, hostCfg, projects, client, localRunner, progress)
 	if err != nil {
 		return nil, err
 	}
@@ -1072,6 +1074,7 @@ func loadHostConfig(basePath, hostName string) (*config.HostConfig, bool, error)
 }
 
 func resolveHostSSHConfig(
+	ctx context.Context,
 	basePath string,
 	host *config.HostEntry,
 	hostCfg *config.HostConfig,
@@ -1084,7 +1087,7 @@ func resolveHostSSHConfig(
 
 	hostDir := filepath.Join(basePath, "hosts", host.Name)
 
-	return sshResolver.Resolve(host, sshConfigPath, hostDir)
+	return sshResolver.Resolve(ctx, host, sshConfigPath, hostDir)
 }
 
 type projectResult struct {
@@ -1093,6 +1096,7 @@ type projectResult struct {
 }
 
 func buildHostPlan(
+	ctx context.Context,
 	cfg *config.CmtConfig,
 	host config.HostEntry,
 	hostCfg *config.HostConfig,
@@ -1125,7 +1129,7 @@ func buildHostPlan(
 
 			progress.projectStart(idx+1, len(projects), proj)
 
-			plan, err := buildProjectPlanForHost(cfg, host, hostCfg, proj, client, localRunner)
+			plan, err := buildProjectPlanForHost(ctx, cfg, host, hostCfg, proj, client, localRunner)
 			results[idx] = projectResult{plan: plan, err: err}
 
 			if err == nil {
@@ -1171,6 +1175,7 @@ func filterHostProjects(
 }
 
 func buildProjectPlanForHost(
+	ctx context.Context,
 	cfg *config.CmtConfig,
 	host config.HostEntry,
 	hostCfg *config.HostConfig,
@@ -1184,7 +1189,7 @@ func buildProjectPlanForHost(
 	}
 
 	remoteDir := path.Join(resolved.RemotePath, project)
-	dirPlans := buildDirPlans(resolved.Dirs, remoteDir, client)
+	dirPlans := buildDirPlans(ctx, resolved.Dirs, remoteDir, client)
 
 	templateVars, err := LoadTemplateVars(cfg.BasePath, host.Name, project, resolved.TemplateVarSources)
 	if err != nil {
@@ -1199,21 +1204,21 @@ func buildProjectPlanForHost(
 	preserveSet := buildPreserveRemoteFileSet(resolved.PreserveRemoteFiles)
 	filterPreservedLocalFiles(localFiles, preserveSet)
 
-	manifest := readManifest(client, remoteDir)
+	manifest := readManifest(ctx, client, remoteDir)
 
-	filePlans, err := buildFilePlans(localFiles, remoteDir, manifest, client,
+	filePlans, err := buildFilePlans(ctx, localFiles, remoteDir, manifest, client,
 		templateVars, preserveSet, resolved.TemplateIgnore)
 	if err != nil {
 		return ProjectPlan{}, fmt.Errorf("building file plan for %s/%s: %w", host.Name, project, err)
 	}
 
-	err = validateComposeConfigForPlan(host.Name, project, filePlans, localRunner)
+	err = validateComposeConfigForPlan(ctx, host.Name, project, filePlans, localRunner)
 	if err != nil {
 		return ProjectPlan{}, err
 	}
 
 	hasFileChanges := projectFilesOrDirsChanged(filePlans, dirPlans)
-	composePlan := buildComposePlan(resolved.ComposeAction, remoteDir, client, hasFileChanges)
+	composePlan := buildComposePlan(ctx, resolved.ComposeAction, remoteDir, client, hasFileChanges)
 
 	return ProjectPlan{
 		ProjectName:         project,
@@ -1229,6 +1234,7 @@ func buildProjectPlanForHost(
 }
 
 func validateComposeConfigForPlan(
+	ctx context.Context,
 	hostName string,
 	projectName string,
 	filePlans []FilePlan,
@@ -1256,7 +1262,7 @@ func validateComposeConfigForPlan(
 
 	args := buildComposeConfigArgs(filesToValidate)
 
-	output, runErr := localRunner.Run("docker", args, tempDir)
+	output, runErr := localRunner.Run(ctx, "docker", args, tempDir)
 	if runErr != nil {
 		return fmt.Errorf(
 			"validating docker compose config for %s/%s failed: %w\n%s",
@@ -1318,12 +1324,17 @@ func buildComposeConfigArgs(filesToValidate map[string][]byte) []string {
 	return append(args, "config")
 }
 
-func buildDirPlans(directories []config.DirConfig, remoteDir string, client remote.RemoteClient) []DirPlan {
+func buildDirPlans(
+	ctx context.Context,
+	directories []config.DirConfig,
+	remoteDir string,
+	client remote.RemoteClient,
+) []DirPlan {
 	dirPlans := make([]DirPlan, 0, len(directories))
 
 	for _, directory := range directories {
 		absDir := path.Join(remoteDir, directory.Path)
-		_, statErr := client.Stat(absDir)
+		_, statErr := client.Stat(ctx, absDir)
 		exists := statErr == nil
 		existenceUnknown := errors.Is(statErr, remote.ErrExistenceUnknown)
 
@@ -1356,7 +1367,7 @@ func buildDirPlans(directories []config.DirConfig, remoteDir string, client remo
 			plan.NeedsPermChange = directory.Permission != ""
 			plan.NeedsOwnerChange = directory.Owner != "" || directory.Group != ""
 		default:
-			computeDirDrift(&plan, client)
+			computeDirDrift(ctx, &plan, client)
 		}
 
 		dirPlans = append(dirPlans, plan)
@@ -1365,14 +1376,14 @@ func buildDirPlans(directories []config.DirConfig, remoteDir string, client remo
 	return dirPlans
 }
 
-func computeDirDrift(plan *DirPlan, client remote.RemoteClient) {
+func computeDirDrift(ctx context.Context, plan *DirPlan, client remote.RemoteClient) {
 	if !dirPlanHasDesiredMetadata(plan) {
 		plan.Action = ActionUnchanged
 
 		return
 	}
 
-	meta, err := client.StatDirMetadata(plan.RemotePath)
+	meta, err := client.StatDirMetadata(ctx, plan.RemotePath)
 	if err != nil {
 		markDirPlanAsNeedsMetadataUpdate(plan)
 
@@ -1437,7 +1448,13 @@ func permissionsMatch(desired, actual string) bool {
 	return dVal == aVal
 }
 
-func buildComposePlan(action string, remoteDir string, client remote.RemoteClient, hasFileChanges bool) *ComposePlan {
+func buildComposePlan(
+	ctx context.Context,
+	action string,
+	remoteDir string,
+	client remote.RemoteClient,
+	hasFileChanges bool,
+) *ComposePlan {
 	plan := &ComposePlan{
 		DesiredAction: action,
 		ActionType:    ComposeNoChange,
@@ -1446,8 +1463,8 @@ func buildComposePlan(action string, remoteDir string, client remote.RemoteClien
 
 	switch action {
 	case config.ComposeActionUp:
-		defined := queryComposeServices(client, remoteDir)
-		running := queryRunningServices(client, remoteDir)
+		defined := queryComposeServices(ctx, client, remoteDir)
+		running := queryRunningServices(ctx, client, remoteDir)
 
 		if hasFileChanges && len(defined) > 0 {
 			plan.ActionType = ComposeRecreateServices
@@ -1460,7 +1477,7 @@ func buildComposePlan(action string, remoteDir string, client remote.RemoteClien
 			}
 		}
 	case config.ComposeActionDown:
-		running := queryRunningServices(client, remoteDir)
+		running := queryRunningServices(ctx, client, remoteDir)
 		if len(running) > 0 {
 			plan.ActionType = ComposeStopServices
 			plan.Services = running
@@ -1473,8 +1490,8 @@ func buildComposePlan(action string, remoteDir string, client remote.RemoteClien
 	return plan
 }
 
-func queryComposeServices(client remote.RemoteClient, remoteDir string) []string {
-	output, err := client.RunCommand(remoteDir, "docker compose config --services 2>/dev/null")
+func queryComposeServices(ctx context.Context, client remote.RemoteClient, remoteDir string) []string {
+	output, err := client.RunCommand(ctx, remoteDir, "docker compose config --services 2>/dev/null")
 	if err != nil {
 		return nil
 	}
@@ -1482,8 +1499,8 @@ func queryComposeServices(client remote.RemoteClient, remoteDir string) []string
 	return parseServiceLines(output)
 }
 
-func queryRunningServices(client remote.RemoteClient, remoteDir string) []string {
-	output, err := client.RunCommand(remoteDir, "docker compose ps --services --filter status=running 2>/dev/null")
+func queryRunningServices(ctx context.Context, client remote.RemoteClient, remoteDir string) []string {
+	output, err := client.RunCommand(ctx, remoteDir, "docker compose ps --services --filter status=running 2>/dev/null")
 	if err != nil {
 		return nil
 	}
@@ -1600,6 +1617,7 @@ func matchesTemplateIgnore(relPath string, patterns []string) bool {
 }
 
 func buildFilePlans(
+	ctx context.Context,
 	localFiles map[string]string,
 	remoteDir string,
 	manifest *Manifest,
@@ -1620,6 +1638,7 @@ func buildFilePlans(
 		localSet[relPath] = true
 
 		filePlan, err := buildLocalFilePlan(
+			ctx,
 			relPath,
 			localPath,
 			remoteDir,
@@ -1635,7 +1654,7 @@ func buildFilePlans(
 		plans = append(plans, filePlan)
 	}
 
-	plans = append(plans, buildDeleteFilePlans(manifest, localSet, remoteDir, client, preserveSet)...)
+	plans = append(plans, buildDeleteFilePlans(ctx, manifest, localSet, remoteDir, client, preserveSet)...)
 
 	sort.Slice(plans, func(i, j int) bool {
 		return plans[i].RelativePath < plans[j].RelativePath
@@ -1680,6 +1699,7 @@ func renderLocalFileData(
 }
 
 func buildLocalFilePlan(
+	ctx context.Context,
 	relPath string,
 	localPath string,
 	remoteDir string,
@@ -1694,7 +1714,7 @@ func buildLocalFilePlan(
 	}
 
 	remotePath := path.Join(remoteDir, relPath)
-	remoteData, readErr := client.ReadFile(remotePath)
+	remoteData, readErr := client.ReadFile(ctx, remotePath)
 
 	filePlan := FilePlan{
 		RelativePath: relPath,
@@ -1730,6 +1750,7 @@ func buildLocalFilePlan(
 }
 
 func buildDeleteFilePlans(
+	ctx context.Context,
 	manifest *Manifest,
 	localSet map[string]bool,
 	remoteDir string,
@@ -1748,7 +1769,7 @@ func buildDeleteFilePlans(
 		}
 
 		remotePath := path.Join(remoteDir, managedFile)
-		remoteData, _ := client.ReadFile(remotePath)
+		remoteData, _ := client.ReadFile(ctx, remotePath)
 		deletePlans = append(deletePlans, FilePlan{
 			RelativePath: managedFile,
 			LocalPath:    "",
@@ -1791,8 +1812,8 @@ func CollectLocalFiles(basePath, hostName, projectName string) (map[string]strin
 	return files, nil
 }
 
-func readManifest(client remote.RemoteClient, remoteDir string) *Manifest {
-	data, err := client.ReadFile(path.Join(remoteDir, manifestFile))
+func readManifest(ctx context.Context, client remote.RemoteClient, remoteDir string) *Manifest {
+	data, err := client.ReadFile(ctx, path.Join(remoteDir, manifestFile))
 	if err != nil {
 		return nil
 	}

@@ -16,7 +16,7 @@ projects:
 
   network-monitor:
     removeOrphans: true
-    postSyncCommand: chmod 0644 icmp-ping-exporter.py cloudflare-speedtest-exporter.py docker-compose-exporter.py vmagent.yml promtail.yml
+    postSyncCommand: chmod 0644 icmp-ping-exporter.py cloudflare-speedtest-exporter.py docker-compose-exporter.py vmagent.yml promtail.yml graphite_mapping.conf
     dirs:
       # vmagent の remote_write オンディスクバッファ (arm-srv VM 断時の取りこぼし防止)
       - vmagent_data:
@@ -49,6 +49,9 @@ projects:
       - mosquitto_passwd
       # ESPHome のデバイス設定はリモートのダッシュボードで管理されており repo に存在しない。
       # cmt が orphan として削除しないよう明示的に保護する。
+      # secrets.yaml は資格情報のためリモート専用 (repo 非管理)。削除されると全デバイスが
+      # 起動不能になるため必ず保護する。
+      - esphome_config/secrets.yaml
       - esphome_config/README.md
       - esphome_config/m5stack-atom-s3-lite.yaml
       - esphome_config/m5stick-s3-voice.yaml
